@@ -32,8 +32,10 @@ verbatim.
 
 ## Run with Docker
 
+No local clone needed — `docker build` can pull the repo straight from GitHub:
+
 ```bash
-docker build -t musicd-lms-remote .
+docker build -t musicd-lms-remote https://github.com/meltface-80/MusicD-LMS-Remote.git
 docker run -d \
   --name musicd-lms-remote \
   --restart unless-stopped \
@@ -55,20 +57,20 @@ If your LMS has a username/password, set `LMS_USER` / `LMS_PASS`.
 ```bash
 npm install
 LMS_HOST=192.168.1.50 npm start
-# open http://localhost:3399
+# open http://localhost:3390
 ```
 
 ## Tests
 
 ```bash
-npm test          # adapter (17) + search index (8) unit tests
+npm test          # adapter (19) + search index (8) unit tests
 ```
 
 ## Environment variables
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `PORT` | `3399` | HTTP port for this app |
+| `PORT` | `3390` | HTTP port for this app |
 | `LMS_HOST` | *(discover)* | LMS server host/IP |
 | `LMS_PORT` | `9000` | LMS JSON-RPC/web port |
 | `LMS_USER` / `LMS_PASS` | – | LMS HTTP auth, if enabled |
