@@ -180,6 +180,22 @@ function ensureIndex() {
 }
 
 // ---------------------------------------------------------------------------
+// Genre list cache — the Home genre row and the genre-filtered wall both need
+// {id, title, count}; genre_id resolution (title → id) for the filtered wall
+// reuses this instead of re-querying LMS's `genres` + per-genre counts on
+// every /api/random-albums call.
+// ---------------------------------------------------------------------------
+let genresCache = null;           // { at, list }
+const GENRES_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+async function getGenres() {
+  if (genresCache && (Date.now() - genresCache.at) < GENRES_CACHE_MAX_AGE_MS) return genresCache.list;
+  const list = await state.lms.genres();
+  genresCache = { at: Date.now(), list };
+  return list;
+}
+
+// ---------------------------------------------------------------------------
 // Image proxy + byte-bounded LRU cache (mirrors the Roon build's server cache).
 // ---------------------------------------------------------------------------
 const IMG_CACHE_MAX_BYTES = 96 * 1024 * 1024;
@@ -267,6 +283,38 @@ app.get("/api/random-albums", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const count = Math.max(1, Math.min(96, parseInt(req.query.count || "24", 10)));
   try {
+    // Genre isn't a tag in the in-memory search index (ALBUM_TAGS carries no
+    // genre field), so a genre-filtered wall is served with a fresh, filtered
+    // LMS query instead — simpler than adding a new tag and re-indexing the
+    // whole library just for this one filter.
+    if (req.query.filter_type === "genre" && req.query.filter_value) {
+      const wanted = String(req.query.filter_value);
+      const list = await getGenres();
+      const match = list.find(g => g.title === wanted) ||
+        list.find(g => g.title.toLowerCase() === wanted.toLowerCase());
+      if (!match) return res.json({ albums: [], total: 0, filtered: true });
+      const total = await state.lms.countAlbums({ genreId: match.id });
+      if (!total) return res.json({ albums: [], total: 0, filtered: true });
+      const want = Math.min(count, total);
+      // No offset-based random access in one LMS call, so pull a page big
+      // enough to cover the request and sample from it.
+      const { albums } = await state.lms.listAlbums({ start: 0, count: Math.min(total, 500), genreId: match.id });
+      const pool = albums;
+      const picked = new Set();
+      while (picked.size < Math.min(want, pool.length)) picked.add(Math.floor(Math.random() * pool.length));
+      // listAlbums()'s `offset` is this filtered page's local position
+      // (start + i), NOT the album's position in the full library — but
+      // /api/album?offset=N looks up index.byOffset, the GLOBAL index. Map
+      // each filtered album back to its real indexed record by LMS id so
+      // tapping a genre tile opens the correct album.
+      await ensureIndex();
+      const out = [...picked]
+        .map(i => index.byId.get(pool[i].id))
+        .filter(Boolean)
+        .map(albumOut);
+      return res.json({ albums: out, total, filtered: true });
+    }
+
     await ensureIndex();
     const pool = index.records;
     if (!pool.length) return res.json({ albums: [], total: 0, filtered: false });
@@ -311,6 +359,16 @@ app.get("/api/artist-albums", (req, res) => {
 app.get("/api/library-stats", (req, res) => {
   if (!state.connected) return notConnected(res);
   res.json({ albums: index.records.length, building: index.records.length === 0 && !!indexBuilding });
+});
+
+// Genre list for the Home "Browse by genre" row, biggest-first (the frontend
+// slices to its own top-N; we just need to return the counts sorted).
+app.get("/api/filters/genres", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    const list = await getGenres();
+    res.json({ genres: list.map(g => ({ title: g.title, count: g.count })).sort((a, b) => b.count - a.count) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get("/api/music-mount", (req, res) => {
@@ -641,7 +699,6 @@ app.get("/api/home/unplayed",        emptyRow);                                 
 app.get("/api/home/album-of-the-day", (req, res) => res.json({ album: null }));   // PHASE 2
 app.get("/api/home/label-of-the-week", (req, res) => res.json({ label: null, albums: [] })); // PHASE 2
 app.get("/api/home/genre-groups",    (req, res) => res.json({ groups: [] }));     // PHASE 2
-app.get("/api/filters/genres",       (req, res) => res.json({ genres: [] }));     // PHASE 2 (LMS `genres` query)
 app.get("/api/filters/tags",         (req, res) => res.json({ tags: [] }));       // PHASE 2
 app.get("/api/filters/labels",       (req, res) => res.json({ labels: [] }));     // PHASE 2
 app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));    // PHASE 2 (LMS `years` query)
