@@ -40,7 +40,7 @@ docker run -d \
   --name musicd-lms-remote \
   --restart unless-stopped \
   --network host \
-  -e LMS_HOST=192.168.1.50 \
+  -e LMS_HOST=192.168.1.57 \
   -e LMS_PORT=9000 \
   -v musicd-lms-remote-data:/app/data \
   musicd-lms-remote
@@ -56,7 +56,7 @@ If your LMS has a username/password, set `LMS_USER` / `LMS_PASS`.
 
 ```bash
 npm install
-LMS_HOST=192.168.1.50 npm start
+LMS_HOST=192.168.1.57 npm start
 # open http://localhost:3390
 ```
 
