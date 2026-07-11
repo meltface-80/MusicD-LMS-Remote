@@ -1,0 +1,21 @@
+{
+  "name": "musicd-lms-remote",
+  "version": "0.1.0",
+  "description": "A music-discovery PWA and wall display for Lyrion Music Server (LMS) — the LMS port of MusicD Remote. Random-album browsing, whole-library instant search, Play / Queue, and a Material-skin-level settings surface.",
+  "license": "MIT",
+  "author": "Lewis Menzies (Music Duck / MusicD)",
+  "homepage": "https://github.com/meltface-80/MusicD-LMS-Remote",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/meltface-80/MusicD-LMS-Remote.git"
+  },
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node lib/lms.test.js && node lib/search.test.js"
+  },
+  "dependencies": {
+    "compression": "^1.7.4",
+    "express": "^4.19.2"
+  }
+}

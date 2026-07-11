@@ -1,0 +1,90 @@
+# Roon → LMS porting blueprint
+
+How the Roon build maps onto Lyrion Music Server, and the per-route status of the
+port. The guiding rule: **keep every `/api/*` response shape identical** to the Roon
+build so the shared PWA frontend runs unchanged; only the backend behind each route
+is swapped.
+
+## Primitive mapping
+
+| Roon primitive | LMS equivalent | Adapter method |
+|---|---|---|
+| Pairing / `core_paired` | none — HTTP host:port (+ UDP 3483 discovery) | `createLms`, `discover`, `ping`, `serverStatus` |
+| Browse `albums` hierarchy (paged) | `albums` DB query with `tags:` | `listAlbums`, `countAlbums` |
+| Album's tracks (drill in) | `titles album_id:<id>` | `albumTracks` |
+| `RoonApiImage.get_image(key)` | HTTP `GET /music/<coverid>/cover_<s>x<s>_o.jpg` | `artworkUrl` (+ server-side proxy/cache) |
+| Filtered "Play Now/Next/Queue" action item | single `playlistcontrol cmd:load\|insert\|add album_id/track_id` | `playAlbum`, `playTracks` |
+| `subscribe_zones` (zones + now-playing) | `players` + per-player `status` (polled) | `players`, `playerStatus` |
+| `subscribe_queue` | `status 0 N` (playlist_loop) | `queue` |
+| `transport.control` | `play` / `pause` / `stop` / `playlist index ±1` | `transport` |
+| `transport.seek` | `time <s>` | `seek` |
+| `transport.change_volume` / `mute` | `mixer volume` / `mixer muting` | `setVolume`, `setMute` |
+| `transport.play_from_here(queue_item_id)` | `playlist index <n>` (queue_item_id **is** the index) | `playIndex` |
+| `transport.transfer_zone` | `sync` target then `unsync` source | `syncPlayers` + `unsync` |
+| Roon Settings service (radio, update) | LMS `pref` / `playerpref` + app-local settings | `getPref/setPref`, `getPlayerPref/setPlayerPref` |
+
+### Offsets & image keys (contract shims)
+
+- The frontend addresses albums by **`offset`** (position in the full library list)
+  and images by **`image_key`**. LMS gives a stable album **`id`** and a **`coverid`**.
+- The album index stores `{offset, id, image_key: coverid, …}`. `/api/album?offset=N`
+  and `/api/play {offset}` look up the record by offset to get the LMS `id`;
+  `/api/image/:image_key` treats `image_key` as the coverid. The frontend never sees
+  the difference.
+
+## Route status
+
+### ✅ Ported & tested (phase 1)
+
+Core library + playback. All verified end-to-end against a mock LMS
+(`lib/*.test.js` + integration run: connect, index build, zones, random-albums,
+search, album/tracks/actions, artwork, play, control, zone-state).
+
+`/api/status` · `/api/zones` · `/api/random-albums` · `/api/search` ·
+`/api/search-status` · `/api/artist-albums` · `/api/library-stats` ·
+`/api/music-mount` · `/api/album` · `/api/image/:image_key` · `/api/play` ·
+`/api/play-multi` · `/api/play-track` · `/api/play-from-here` · `/api/control` ·
+`/api/seek` · `/api/volume` · `/api/transfer-zone` · `/api/zone-state` ·
+`/api/album/now-playing` · `/api/queue` · `/api/reindex` · `/api/shortcut/zones` ·
+`/api/play-unheard`
+
+New LMS-specific routes (back the settings UI):
+`/api/lms/connection` (GET/POST) · `/api/lms/discover` · `/api/lms/pref/:name`
+(GET/POST) · `/api/lms/player/:id/pref/:name` (GET/POST) · `/api/lms/rescan`
+
+### 🟡 Stubbed — safe empty response (phase 2)
+
+Return neutral shapes so the UI degrades gracefully instead of erroring. Each is
+marked `// PHASE 2` in `index.js`.
+
+| Route(s) | LMS plan |
+|---|---|
+| `/api/home/unplayed`, `/api/home/album-of-the-day` | Reuse the album index + a local plays table (port the SQLite plays store, or track via LMS `songinfo`/history). |
+| `/api/home/label-of-the-week`, `/api/filters/labels` | LMS has no first-class label facet — derive from track `label`/`publisher` tag (`titles tags:...`), or port the Roon label-scan pipeline. |
+| `/api/home/genre-groups`, `/api/filters/genres` | LMS `genres` query. |
+| `/api/filters/decades` | LMS `years` query (or per-album year already in the index). |
+| `/api/filters/tags` | Map to LMS moods/genres, or drop. |
+| `/api/labels-scan-status`, `/api/labels/*` | Port the label logo/merge pipeline (Discogs/FanArt) — backend-agnostic; can be lifted mostly verbatim. |
+| `/api/settings/display`, `/display`, `/api/display/content` | Wall display — backend-agnostic except now-playing; port after core. |
+| `/api/update/*` | LMS-repo self-updater (adapt `lib/updater.js` to this repo). |
+| `/api/settings/qobuz`, `/api/qobuz/*`, `/api/settings/tidal`, `/api/tidal/*` | Backend-agnostic (their own APIs) — lift `lib/qobuz.js` / `lib/tidal.js` verbatim. |
+| `/api/pitchfork/*`, `/api/search/external` | Backend-agnostic — lift verbatim. |
+| `/api/settings/discogs-token`, `/api/settings/fanart-key`, `/api/settings/label-folder-depth` | Settings persistence — trivial to port. |
+
+### ⛔ Not applicable (Roon-only)
+
+- Roon **Settings service** layout (`makeSettingsLayout`), **Roon Radio** zone
+  behaviour, and **scrobble-to-Roon** state have no LMS analogue. LMS repeat/shuffle
+  and alarms replace the "radio" idea; see `SETTINGS.md`.
+- Roon pairing persistence (`roonstate.json`) → replaced by `data/lms-settings.json`
+  (host/port/credentials).
+
+## Phase-2 order (suggested)
+
+1. Plays table + `/api/home/unplayed` + `/api/home/album-of-the-day` (highest-value
+   discovery rows; index already in memory).
+2. `/api/filters/genres` + `/api/filters/decades` (direct LMS queries).
+3. Lift the backend-agnostic modules verbatim: Qobuz, Tidal, Pitchfork, labels
+   logo/merge pipeline, wall display.
+4. Material-skin settings UI on top of `/api/lms/pref/*` (see `SETTINGS.md`).
+5. Self-updater retargeted at `MusicD-LMS-Remote`.
