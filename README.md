@@ -35,7 +35,7 @@ verbatim.
 No local clone needed — `docker build` can pull the repo straight from GitHub:
 
 ```bash
-docker build -t musicd-lms-remote https://github.com/meltface-80/MusicD-LMS-Remote.git
+docker build -t musicd-lms-remote https://github.com/meltface-80/MusicD-LMS-Remote.git#main
 docker run -d \
   --name musicd-lms-remote \
   --restart unless-stopped \
