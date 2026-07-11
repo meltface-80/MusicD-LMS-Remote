@@ -16,9 +16,9 @@ RUN mkdir -p /app/data
 
 VOLUME /app/data
 
-EXPOSE 3399
+EXPOSE 3390
 
-ENV PORT=3399
+ENV PORT=3390
 ENV DOCKER=1
 # Point at your Lyrion Music Server. If unset, the app tries UDP auto-discovery
 # on the local network and you can also set the host in the in-app settings.
