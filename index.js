@@ -29,7 +29,7 @@ const search = require("./lib/search");
 
 const pkg = require("./package.json");
 const DEBUG = process.env.DEBUG === "1";
-const PORT = Number(process.env.PORT) || 3399;
+const PORT = Number(process.env.PORT) || 3390;
 
 // ---------------------------------------------------------------------------
 // Persisted settings (LMS connection + app-local prefs) on the data volume.
