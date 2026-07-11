@@ -57,6 +57,7 @@ function saveSettings(patch) {
 const state = {
   lms:        null,     // adapter instance (rebuilt when host/port change)
   connected:  false,
+  lastError:  null,     // reason the last connection attempt failed (null once connected)
   server:     null,     // { version, uuid, playerCount, ... }
   players:    [],       // [{ id, name, model, connected, power }]
   statuses:   new Map() // playerId → normalised status (for cheap zone reads)
@@ -109,12 +110,17 @@ async function refreshConnectionInner() {
       } catch (e) { /* discovery best-effort; user can configure manually */ }
     }
   }
-  if (!state.lms) { state.connected = false; return; }
+  if (!state.lms) {
+    state.connected = false;
+    state.lastError = "No LMS host configured (set LMS_HOST or use Settings)";
+    return;
+  }
 
   try {
     const ss = await state.lms.serverStatus();
     const wasConnected = state.connected;
     state.connected = true;
+    state.lastError = null;
     state.server = ss;
     state.players = ss.players;
     // Refresh per-player status (cheap for a handful of players).
@@ -128,7 +134,12 @@ async function refreshConnectionInner() {
     }
   } catch (e) {
     state.connected = false;
-    if (DEBUG) console.error("[lms] connection failed:", e.message);
+    // Log on every distinct failure (not just under DEBUG) so `docker logs`
+    // shows why, without needing a container recreate to add -e DEBUG=1.
+    if (e.message !== state.lastError) {
+      console.error("[lms] connection to", state.lms.cfg.host + ":" + state.lms.cfg.port, "failed:", e.message);
+    }
+    state.lastError = e.message;
   }
 }
 
@@ -217,7 +228,9 @@ app.use(compression());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-const notConnected = (res) => res.status(503).json({ error: "Not connected to Lyrion Music Server yet" });
+const notConnected = (res) => res.status(503).json({
+  error: "Not connected to Lyrion Music Server yet" + (state.lastError ? " (" + state.lastError + ")" : "")
+});
 
 // ---- status / zones ----
 
@@ -578,7 +591,7 @@ app.post("/api/play-unheard", async (req, res) => {
 // ---- LMS connection settings (used by the new Material-skin settings UI) ----
 app.get("/api/lms/connection", (req, res) => {
   const cfg = lmsConfigFromSettings();
-  res.json({ host: cfg.host, port: cfg.port, connected: state.connected, server: state.server });
+  res.json({ host: cfg.host, port: cfg.port, connected: state.connected, server: state.server, lastError: state.lastError });
 });
 app.post("/api/lms/connection", async (req, res) => {
   const { host, port, username, password } = req.body || {};
@@ -635,8 +648,13 @@ app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));  
 app.get("/api/labels-scan-status",   (req, res) => res.json({ scanning: false, done: true, total: 0, scanned: 0 })); // PHASE 2
 app.get("/api/settings/display",     (req, res) => res.json({ enabled: false, seconds: 10 })); // PHASE 2
 app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version })); // PHASE 2
+const notPorted = (name) => (req, res) => res.status(501).json({
+  ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
+});
 app.get("/api/settings/qobuz",       (req, res) => res.json({ connected: false })); // PHASE 2
+app.post("/api/settings/qobuz",      notPorted("Qobuz"));                          // PHASE 2
 app.get("/api/settings/tidal",       (req, res) => res.json({ connected: false })); // PHASE 2
+app.post("/api/settings/tidal/start", notPorted("Tidal"));                         // PHASE 2
 
 // ---------------------------------------------------------------------------
 // Boot
