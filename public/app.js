@@ -3327,6 +3327,43 @@
     } catch { /* fall back */ }
   }
 
+  // ShareCard normally loads via the classic <script src="/sharecard.js">
+  // tag in index.html. If that request was slow/dropped (e.g. a flaky
+  // mobile connection to the LMS host), the bare `ShareCard` identifier
+  // never gets bound and calling ShareCard.render() below throws a
+  // ReferenceError. Detect that and (re)inject the script on demand.
+  let shareCardLoadPromise = null;
+  function ensureShareCard() {
+    if (typeof ShareCard !== "undefined") return Promise.resolve();
+    if (shareCardLoadPromise) return shareCardLoadPromise;
+    shareCardLoadPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/sharecard.js";
+      const timer = setTimeout(() => {
+        reject(new Error("Timed out loading the share-card component."));
+      }, 8000);
+      script.addEventListener("load", () => {
+        clearTimeout(timer);
+        if (typeof ShareCard === "undefined") {
+          reject(new Error("Share-card component failed to initialize."));
+        } else {
+          resolve();
+        }
+      });
+      script.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error("Failed to load the share-card component."));
+      });
+      document.head.appendChild(script);
+    }).catch((e) => {
+      // Allow a future retry (e.g. next tap of Share) instead of caching
+      // a permanent failure.
+      shareCardLoadPromise = null;
+      throw e;
+    });
+    return shareCardLoadPromise;
+  }
+
   function close() {
     overlay.classList.add("hidden");
     frame.innerHTML =
@@ -3357,6 +3394,7 @@
 
     try {
       await ensureFont();
+      await ensureShareCard();
 
       // Best-effort release year + label + review via extras endpoint
       let releaseRaw = "";
