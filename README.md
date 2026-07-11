@@ -44,7 +44,7 @@ docker run -d \
   musicd-lms-remote
 ```
 
-Then open `http://<this-host>:3399`. (Host networking is recommended so UDP
+Then open `http://<this-host>:3390`. (Host networking is recommended so UDP
 discovery works and LMS artwork URLs resolve; if you use bridge networking,
 set `LMS_HOST` explicitly.)
 
