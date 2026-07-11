@@ -358,7 +358,7 @@
     try {
       const r = await unplayedPromise;
       if (r.status === 503) {
-        if (!rowHasContent(homeUnplayed)) homeUnplayed.innerHTML = '<div class="home-carousel-empty">Waiting for Roon Core…</div>';
+        if (!rowHasContent(homeUnplayed)) homeUnplayed.innerHTML = '<div class="home-carousel-empty">Waiting for LMS…</div>';
         homeRowsLoadedAt = 0;   // retry on the next Home visit
         return;   // keep any cached tiles + cache untouched while the index builds
       }
@@ -397,7 +397,7 @@
     try {
       const r = await fetch("/api/random-albums?count=30");
       if (r.status === 503) {
-        if (!rowHasContent(homeRandom)) homeRandom.innerHTML = '<div class="home-carousel-empty">Waiting for Roon Core…</div>';
+        if (!rowHasContent(homeRandom)) homeRandom.innerHTML = '<div class="home-carousel-empty">Waiting for LMS…</div>';
         homeRowsLoadedAt = 0;   // retry on the next Home visit
         return;   // keep any cached tiles while the index builds
       }
@@ -483,7 +483,7 @@
       const r = await fetch("/api/home/unplayed?months=6&count=96");
       if (r.status === 503) {
         const j = await r.json().catch(() => ({}));
-        setBanner(j.error || "Waiting for Roon Core. Enable this extension in Roon → Settings → Extensions.", true);
+        setBanner(j.error || "Waiting for LMS. Check the server connection in Settings.", true);
         grid.innerHTML = ""; return;
       }
       const j = await r.json();
@@ -585,7 +585,7 @@
         fetch("/api/home/genre-groups").catch(() => null)
       ]);
       if ((genresRes && genresRes.status === 503) || (groupsRes && groupsRes.status === 503)) {
-        if (!rowHasContent(homeGenres)) homeGenres.innerHTML = '<div class="home-carousel-empty">Waiting for Roon Core…</div>';
+        if (!rowHasContent(homeGenres)) homeGenres.innerHTML = '<div class="home-carousel-empty">Waiting for LMS…</div>';
         return;   // keep any cached cards while the index builds
       }
       const genresJ = genresRes ? await genresRes.json().catch(() => ({})) : {};
@@ -865,7 +865,7 @@
       const r = await fetch(`/api/random-albums?count=${albumCount}${filterQS()}`);
       if (r.status === 503) {
         const j = await r.json().catch(() => ({}));
-        setBanner(j.error || "Waiting for Roon Core. Enable this extension in Roon \u2192 Settings \u2192 Extensions.", true);
+        setBanner(j.error || "Waiting for LMS. Check the server connection in Settings.", true);
         grid.innerHTML = ""; return;
       }
       if (!r.ok) {
@@ -1672,7 +1672,7 @@
         // results would let this query's external sections append beneath them
         // (a mixed-query page). The banner/status explains what's missing, and
         // extAllowBannerClear stays false so arriving externals can't wipe it.
-        if (r.status === 503) { grid.innerHTML = ""; extReappend(mySeq); setBanner("Waiting for Roon Core…", true); return; }
+        if (r.status === 503) { grid.innerHTML = ""; extReappend(mySeq); setBanner("Waiting for LMS…", true); return; }
         if (!r.ok) { grid.innerHTML = ""; extReappend(mySeq); setStatus("search error"); return; }
         const j = await r.json();
         if (mySeq !== seq) return;
@@ -2622,7 +2622,7 @@
     // screen. Skipped when a filtered wall is being restored (activeFilter), and
     // when there's nothing cached (first-ever launch) we fall back to the banner.
     const painted = !activeFilter && hydrateHomeFromCache();
-    if (!painted) setBanner("Connecting to Roon…");
+    if (!painted) setBanner("Connecting to LMS…");
     for (let i = 0; i < 30; i++) {
       try {
         const r = await fetch("/api/status");
@@ -2656,10 +2656,10 @@
           return;
         }
       } catch (e) {} // /api/status fetch failed — server not ready yet, fall through to "Waiting" banner
-      setBanner("Waiting for Roon Core. Open Roon → Settings → Extensions and click Enable on “Random Albums”.");
+      setBanner("Waiting for LMS. Check the server connection in Settings.");
       await new Promise(r => setTimeout(r, 2000));
     }
-    setBanner("Still not paired with Roon. Check that this extension is enabled in Roon → Settings → Extensions.", true);
+    setBanner("Still not connected to LMS. Check the server address in Settings.", true);
   }
   bootstrap();
 })();
