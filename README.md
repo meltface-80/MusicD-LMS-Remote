@@ -1,3 +1,9 @@
+<div align="center"> 
+
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/fc1dd26e-db7f-4e27-8f66-b0ab74db89e3" />
+
+</div>
+
 # MusicD LMS Remote
 
 A music-discovery PWA and wall display for **[Lyrion Music Server](https://lyrion.org)**
