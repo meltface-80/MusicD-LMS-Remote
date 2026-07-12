@@ -640,7 +640,7 @@ app.get("/api/zones", (req, res) => {
 // ---- library reads ----
 
 function albumOut(rec) {
-  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null };
+  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null };
 }
 
 app.get("/api/random-albums", async (req, res) => {

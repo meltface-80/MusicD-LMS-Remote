@@ -761,6 +761,24 @@
       artWrap.classList.add("no-image");
     }
 
+    // Online-source badge (top-right of the art). Best-effort: only lights up
+    // when the backend threaded a recognised `source`. Only Qobuz was requested;
+    // extend the map below to badge other sources.
+    if (a.source === "qobuz") {
+      const badge = document.createElement("div");
+      badge.className = "album-source-badge qobuz";
+      badge.setAttribute("aria-label", "Qobuz");
+      badge.title = "Qobuz";
+      // Same "Q" logomark as the header toggle (Arcticons, CC BY 4.0).
+      badge.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 48 48" fill="none" stroke="currentColor" ' +
+        'stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M39.203 39.203A21.43 21.43 0 0 0 45.5 24c0-11.874-9.626-21.5-21.5-21.5S2.5 12.126 2.5 24S12.126 45.5 24 45.5c4.89 0 9.4-1.633 13.012-4.383"/>' +
+        '<circle cx="24" cy="24" r="4.873"/>' +
+        '<path d="M32.944 32.944L45.5 45.5"/></svg>';
+      artWrap.appendChild(badge);
+    }
+
     const meta = document.createElement("div");
     meta.className = "album-meta";
     meta.innerHTML = `<div class="album-title"></div><div class="album-artist"></div>`;
