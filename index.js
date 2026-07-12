@@ -301,6 +301,14 @@ const labels = makeLabels({
   debug:               DEBUG
 });
 
+// ---------------------------------------------------------------------------
+// Update notifier — checks GitHub for a newer release and nudges the user to
+// rebuild their container. NOT a self-updater (Docker filesystem is ephemeral;
+// see lib/updater.js). Backs the /api/update/* routes.
+// ---------------------------------------------------------------------------
+const { makeUpdater } = require("./lib/updater");
+const updater = makeUpdater({ owner: "meltface-80", repo: "MusicD-LMS-Remote", currentVersion: pkg.version, debug: DEBUG });
+
 // FNV-1a string hash — a stable seed for deterministic daily/weekly picks
 // (album-of-the-day, label-of-the-week). Returns an unsigned 32-bit int;
 // callers do `hash % n` to choose an index.
@@ -1400,7 +1408,20 @@ app.get("/api/display/content", async (req, res) => {
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version, is_docker: true })); // PHASE 2
+// Update notifier routes. This is a Docker install, so we NOTIFY (rebuild the
+// container) rather than self-apply — see lib/updater.js for the why.
+app.get("/api/update/status", (req, res) => {
+  updater.maybeCheck(); // fire-and-forget background refresh (throttled to hourly)
+  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+});
+app.post("/api/update/check", async (req, res) => {
+  await updater.checkNow();
+  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+});
+app.post("/api/update/apply", (req, res) => {
+  // Kept so any stray self-update call gets a clear, actionable message.
+  res.status(400).json({ ok: false, error: "This is a Docker install — update by rebuilding the image and recreating the container (see the README). In-app self-update isn't available inside the container." });
+});
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
 });

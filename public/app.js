@@ -3600,10 +3600,20 @@
       if (s.available && s.latest && s.latest !== dismissedVer()) {
         actions.classList.remove("busy"); btnNow.disabled = false;
         toast.classList.remove("is-error");
-        const label = s.isDowngrade ? "Rollback to v" : "v";
-        show((label) + s.latest + " available (you have v" + s.current + ")");
-        showNotes(s.notes);
-        btnNow.querySelector("span").textContent = s.isDowngrade ? "Roll back" : "Update";
+        if (s.is_docker) {
+          // Docker install: notify, don't self-apply. Hide the "Update" button
+          // (rebuilding the container is the real upgrade path) but keep "Later".
+          btnNow.classList.add("hidden");
+          show("v" + s.latest + " available — rebuild your container to update");
+          const rebuildLine = "Rebuild your Docker container to update — see the README.";
+          showNotes(s.notes ? rebuildLine + "\n\n" + s.notes : rebuildLine);
+        } else {
+          btnNow.classList.remove("hidden"); // symmetric re-show for the non-docker path
+          const label = s.isDowngrade ? "Rollback to v" : "v";
+          show((label) + s.latest + " available (you have v" + s.current + ")");
+          showNotes(s.notes);
+          btnNow.querySelector("span").textContent = s.isDowngrade ? "Roll back" : "Update";
+        }
       } else if (!applying) {
         hide();
       }
@@ -5407,7 +5417,17 @@ initServiceBrowser({
       await fetch("/api/update/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const r = await fetch("/api/update/status", { cache: "no-store" });
       const s = await r.json();
-      if (s && s.available && s.latest) {
+      if (s && s.available && s.latest && s.is_docker) {
+        // Docker install: notify only. Don't arm the self-update "pending" state
+        // (no is-update-ready, no apply-on-second-tap) — the fix is a container
+        // rebuild. Just report the available version and any release notes.
+        btn.disabled = false;
+        btn.textContent = "v" + s.latest + " available — rebuild container";
+        if (notesDiv && s.notes) {
+          notesDiv.textContent = s.notes;
+          notesDiv.classList.remove("hidden");
+        }
+      } else if (s && s.available && s.latest) {
         pendingUpdate = true;
         btn.disabled = false;
         btn.classList.add("is-update-ready");
