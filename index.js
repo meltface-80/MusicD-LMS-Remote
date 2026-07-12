@@ -839,7 +839,7 @@ app.get("/api/filters/labels",       (req, res) => res.json({ labels: [] }));   
 app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));    // PHASE 2 (LMS `years` query)
 app.get("/api/labels-scan-status",   (req, res) => res.json({ scanning: false, done: true, total: 0, scanned: 0 })); // PHASE 2
 app.get("/api/settings/display",     (req, res) => res.json({ enabled: false, seconds: 10 })); // PHASE 2
-app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version })); // PHASE 2
+app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version, is_docker: true })); // PHASE 2
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
 });
