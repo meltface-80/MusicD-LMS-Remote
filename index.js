@@ -1092,39 +1092,6 @@ app.post("/api/lms/rescan", async (req, res) => {
 //   review body is never emitted — only the score, the Best New Music flag,
 //   and a LINK to read the review on pitchfork.com (description stays null).
 // ---------------------------------------------------------------------------
-// Diagnostic: dump the raw LMS album row (with an expanded tag set) and the
-// raw first tracks for an album, so we can see where a given LMS reports an
-// album's online-library provenance (Qobuz/Tidal). Look for a `qobuz:...`
-// value in the album row's `extid`, or a `qobuz://...` value in a track `url`.
-// Open e.g. http://<host>:3390/api/debug/album-source?title=Charango
-app.get("/api/debug/album-source", async (req, res) => {
-  if (!state.connected) return notConnected(res);
-  const title  = String(req.query.title  || "");
-  const artist = String(req.query.artist || "");
-  const offParam = parseInt(req.query.offset, 10);
-  const rec = Number.isFinite(offParam)
-    ? index.byOffset.get(offParam)
-    : (title
-        ? index.records.find(r => search.normalize(r.title) === search.normalize(title) &&
-            (!artist || search.normalize(r.subtitle).includes(search.normalize(artist))))
-        : null);
-  if (!rec) return res.status(404).json({ error: "album not found in index (pass ?title= or ?offset=)" });
-  try {
-    // Expanded album tag set (LMS ignores tags it doesn't know). `x` = remote
-    // flag; we also just want to see every field LMS returns for this row.
-    const albRaw = await state.lms.request("", ["albums", rec.offset, 1, "tags:laySjtiqwXeExR"]);
-    const albRow = (albRaw.albums_loop && albRaw.albums_loop[0]) || null;
-    // First few tracks with url (u) + remote (x) tags — a Qobuz track's url is
-    // `qobuz://...`, which is the most reliable provenance signal.
-    const trkRaw = await state.lms.request("", ["titles", 0, 3, "album_id:" + rec.id, "tags:uxeElyd"]);
-    res.json({
-      indexRecord: rec,
-      rawAlbumRow: albRow,
-      rawTracks:   trkRaw.titles_loop || []
-    });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.get("/api/album/extras", async (req, res) => {
   const title  = String(req.query.title  || "");
   const artist = String(req.query.artist || "");
