@@ -1205,6 +1205,20 @@ main {
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
+.queue-list .q-remove {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.queue-list .q-remove:hover  { color: var(--text); background: var(--bg-elev-2); }
+.queue-list .q-remove:active { transform: scale(.9); }
 .queue-empty {
   color: var(--text-faint);
   font-size: 14px;
@@ -2800,6 +2814,22 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   box-shadow: 0 1px 4px rgba(0,0,0,.4);
 }
 [data-theme="light"] .aotd-badge { color: #ffffff; }
+
+/* Online-source badge — sits in the TOP-RIGHT of the album art (the
+   aotd-badge takes the top-left). Mirrors the aotd-badge treatment
+   (translucent chip, rounded, soft shadow) so the two feel like one
+   system. Non-interactive; the art-wrap is already position:relative. */
+.album-source-badge {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 999px;
+  background: rgba(8, 12, 16, .55);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.album-source-badge svg { width: 13px; height: 13px; display: block; }
 
 /* ------------------------------------------------------------------ */
 /*  Album detail refresh — Home-language styling (v1.6.6 onward)       */

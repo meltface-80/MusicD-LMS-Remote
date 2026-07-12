@@ -301,6 +301,14 @@ const labels = makeLabels({
   debug:               DEBUG
 });
 
+// ---------------------------------------------------------------------------
+// Update notifier — checks GitHub for a newer release and nudges the user to
+// rebuild their container. NOT a self-updater (Docker filesystem is ephemeral;
+// see lib/updater.js). Backs the /api/update/* routes.
+// ---------------------------------------------------------------------------
+const { makeUpdater } = require("./lib/updater");
+const updater = makeUpdater({ owner: "meltface-80", repo: "MusicD-LMS-Remote", currentVersion: pkg.version, debug: DEBUG });
+
 // FNV-1a string hash — a stable seed for deterministic daily/weekly picks
 // (album-of-the-day, label-of-the-week). Returns an unsigned 32-bit int;
 // callers do `hash % n` to choose an index.
@@ -632,7 +640,7 @@ app.get("/api/zones", (req, res) => {
 // ---- library reads ----
 
 function albumOut(rec) {
-  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null };
+  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null };
 }
 
 app.get("/api/random-albums", async (req, res) => {
@@ -850,6 +858,17 @@ app.post("/api/play-from-here", async (req, res) => {
   }
   // In the LMS queue, queue_item_id is the playlist index (see /api/queue).
   try { await state.lms.playIndex(zone_or_output_id, Number(queue_item_id)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/queue/remove", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { zone_or_output_id, queue_item_id } = req.body || {};
+  if (!zone_or_output_id || queue_item_id === undefined || queue_item_id === null) {
+    return res.status(400).json({ error: "zone_or_output_id and queue_item_id required" });
+  }
+  // In the LMS queue, queue_item_id is the playlist index (see /api/queue).
+  try { await state.lms.removeFromQueue(zone_or_output_id, Number(queue_item_id)); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1400,7 +1419,20 @@ app.get("/api/display/content", async (req, res) => {
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version, is_docker: true })); // PHASE 2
+// Update notifier routes. This is a Docker install, so we NOTIFY (rebuild the
+// container) rather than self-apply — see lib/updater.js for the why.
+app.get("/api/update/status", (req, res) => {
+  updater.maybeCheck(); // fire-and-forget background refresh (throttled to hourly)
+  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+});
+app.post("/api/update/check", async (req, res) => {
+  await updater.checkNow();
+  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+});
+app.post("/api/update/apply", (req, res) => {
+  // Kept so any stray self-update call gets a clear, actionable message.
+  res.status(400).json({ ok: false, error: "This is a Docker install — update by rebuilding the image and recreating the container (see the README). In-app self-update isn't available inside the container." });
+});
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
 });

@@ -761,6 +761,24 @@
       artWrap.classList.add("no-image");
     }
 
+    // Online-source badge (top-right of the art). Best-effort: only lights up
+    // when the backend threaded a recognised `source`. Only Qobuz was requested;
+    // extend the map below to badge other sources.
+    if (a.source === "qobuz") {
+      const badge = document.createElement("div");
+      badge.className = "album-source-badge qobuz";
+      badge.setAttribute("aria-label", "Qobuz");
+      badge.title = "Qobuz";
+      // Same "Q" logomark as the header toggle (Arcticons, CC BY 4.0).
+      badge.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 48 48" fill="none" stroke="currentColor" ' +
+        'stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M39.203 39.203A21.43 21.43 0 0 0 45.5 24c0-11.874-9.626-21.5-21.5-21.5S2.5 12.126 2.5 24S12.126 45.5 24 45.5c4.89 0 9.4-1.633 13.012-4.383"/>' +
+        '<circle cx="24" cy="24" r="4.873"/>' +
+        '<path d="M32.944 32.944L45.5 45.5"/></svg>';
+      artWrap.appendChild(badge);
+    }
+
     const meta = document.createElement("div");
     meta.className = "album-meta";
     meta.innerHTML = `<div class="album-title"></div><div class="album-artist"></div>`;
@@ -770,15 +788,16 @@
     btn.appendChild(artWrap);
     btn.appendChild(meta);
     btn.addEventListener("click", () => {
-      if (!onClick && albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
+      // In select mode a tap always toggles selection — even for tiles that
+      // carry a custom open handler (Home carousels, label albums).
+      if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
       (onClick || (() => openAlbum(a)))();
     });
-    if (!onClick) {
-      addLongPress(btn, () => {
-        if (!albumSelectMode) enterAlbumSelectMode();
-        handleAlbumTileSelect(btn, a);
-      });
-    }
+    // Long-press enters select mode on every album tile, wherever it lives.
+    addLongPress(btn, () => {
+      if (!albumSelectMode) enterAlbumSelectMode();
+      handleAlbumTileSelect(btn, a);
+    });
     return btn;
   }
 
@@ -791,7 +810,9 @@
     albumSelectMode = false;
     albumSelected = [];
     if (albumActionBar) albumActionBar.classList.add("hidden");
-    grid.querySelectorAll(".album.is-selected").forEach(b => b.classList.remove("is-selected"));
+    // Clear the highlight on every selectable album tile — the grid plus the
+    // Home carousels — but leave the labels browser's own selection alone.
+    document.querySelectorAll(".album.is-selected:not(.label-tile)").forEach(b => b.classList.remove("is-selected"));
   }
 
   function updateAlbumActionBar() {
@@ -1263,6 +1284,34 @@
         li.appendChild(art); li.appendChild(tx); li.appendChild(len);
 
         if (i !== 0) {
+          const rm = document.createElement("button");
+          rm.className = "q-remove";
+          rm.type = "button";
+          rm.setAttribute("aria-label", "Remove from queue");
+          rm.textContent = "✕";
+          rm.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            try {
+              const r = await fetch("/api/queue/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  zone_or_output_id: currentSourceZoneId,
+                  queue_item_id: it.queue_item_id
+                })
+              });
+              if (!r.ok) {
+                const j = await r.json().catch(() => ({}));
+                window.alert("Couldn't remove: " + (j.error || `HTTP ${r.status}`));
+                return;
+              }
+              loadQueue();
+            } catch (e) {
+              window.alert("Couldn't remove: " + e.message);
+            }
+          });
+          li.appendChild(rm);
+
           li.addEventListener("click", async () => {
             const trackName = it.title || "this track";
             if (!window.confirm(`Play from "${trackName}"?`)) return;
@@ -3600,10 +3649,20 @@
       if (s.available && s.latest && s.latest !== dismissedVer()) {
         actions.classList.remove("busy"); btnNow.disabled = false;
         toast.classList.remove("is-error");
-        const label = s.isDowngrade ? "Rollback to v" : "v";
-        show((label) + s.latest + " available (you have v" + s.current + ")");
-        showNotes(s.notes);
-        btnNow.querySelector("span").textContent = s.isDowngrade ? "Roll back" : "Update";
+        if (s.is_docker) {
+          // Docker install: notify, don't self-apply. Hide the "Update" button
+          // (rebuilding the container is the real upgrade path) but keep "Later".
+          btnNow.classList.add("hidden");
+          show("v" + s.latest + " available — rebuild your container to update");
+          const rebuildLine = "Rebuild your Docker container to update — see the README.";
+          showNotes(s.notes ? rebuildLine + "\n\n" + s.notes : rebuildLine);
+        } else {
+          btnNow.classList.remove("hidden"); // symmetric re-show for the non-docker path
+          const label = s.isDowngrade ? "Rollback to v" : "v";
+          show((label) + s.latest + " available (you have v" + s.current + ")");
+          showNotes(s.notes);
+          btnNow.querySelector("span").textContent = s.isDowngrade ? "Roll back" : "Update";
+        }
       } else if (!applying) {
         hide();
       }
@@ -5407,7 +5466,17 @@ initServiceBrowser({
       await fetch("/api/update/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
       const r = await fetch("/api/update/status", { cache: "no-store" });
       const s = await r.json();
-      if (s && s.available && s.latest) {
+      if (s && s.available && s.latest && s.is_docker) {
+        // Docker install: notify only. Don't arm the self-update "pending" state
+        // (no is-update-ready, no apply-on-second-tap) — the fix is a container
+        // rebuild. Just report the available version and any release notes.
+        btn.disabled = false;
+        btn.textContent = "v" + s.latest + " available — rebuild container";
+        if (notesDiv && s.notes) {
+          notesDiv.textContent = s.notes;
+          notesDiv.classList.remove("hidden");
+        }
+      } else if (s && s.available && s.latest) {
         pendingUpdate = true;
         btn.disabled = false;
         btn.classList.add("is-update-ready");
