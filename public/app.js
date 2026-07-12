@@ -770,15 +770,16 @@
     btn.appendChild(artWrap);
     btn.appendChild(meta);
     btn.addEventListener("click", () => {
-      if (!onClick && albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
+      // In select mode a tap always toggles selection — even for tiles that
+      // carry a custom open handler (Home carousels, label albums).
+      if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
       (onClick || (() => openAlbum(a)))();
     });
-    if (!onClick) {
-      addLongPress(btn, () => {
-        if (!albumSelectMode) enterAlbumSelectMode();
-        handleAlbumTileSelect(btn, a);
-      });
-    }
+    // Long-press enters select mode on every album tile, wherever it lives.
+    addLongPress(btn, () => {
+      if (!albumSelectMode) enterAlbumSelectMode();
+      handleAlbumTileSelect(btn, a);
+    });
     return btn;
   }
 
@@ -791,7 +792,9 @@
     albumSelectMode = false;
     albumSelected = [];
     if (albumActionBar) albumActionBar.classList.add("hidden");
-    grid.querySelectorAll(".album.is-selected").forEach(b => b.classList.remove("is-selected"));
+    // Clear the highlight on every selectable album tile — the grid plus the
+    // Home carousels — but leave the labels browser's own selection alone.
+    document.querySelectorAll(".album.is-selected:not(.label-tile)").forEach(b => b.classList.remove("is-selected"));
   }
 
   function updateAlbumActionBar() {
