@@ -1221,7 +1221,7 @@ app.get("/api/home/label-of-the-week", (req, res) => {
     }
     const entry = get(keys[fnv1aHash(wk) % keys.length]);
     const albums = entry.albums.slice(0, 24).map(a => ({
-      offset: a.offset, title: a.title || "", subtitle: a.subtitle || "", image_key: a.image_key || null
+      offset: a.offset, title: a.title || "", subtitle: a.subtitle || "", image_key: a.image_key || null, source: a.source || null
     }));
     const data = { label: entry.display, albums };
     lotwCache = { weekKey: wk, at: Date.now(), count, data };
