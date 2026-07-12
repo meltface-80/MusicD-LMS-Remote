@@ -1056,37 +1056,65 @@ app.post("/api/lms/rescan", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Album metadata extras: Pitchfork score/Best-New-Music/review-link lookup.
-// Frontend passes title and artist (album modal, share card, service-album
-// detail view) so we don't need Roon/LMS metadata to look it up.
+// Album metadata extras: release year + record label + Pitchfork score/
+// Best-New-Music/review-link lookup. Frontend passes title and artist (album
+// modal, share card, service-album detail view) so we don't need a live
+// Roon/LMS round-trip to look it up.
 //
-// Only the Pitchfork album-review lookup is ported here — release year
-// (MusicBrainz), artist/album bios (Discogs/Qobuz/Wikipedia scraping), and
-// the label-disk-cache are separate, much bigger subsystems not yet ported;
-// their fields are left null so the frontend degrades gracefully.
+// - Year comes from LMS: the album index carries the year LMS read from the
+//   local file tags (the `y` album tag; lib/search.js keeps rec.year), which
+//   is the authoritative local-file source. We match the requested title/
+//   artist against the in-memory index the same way /api/album/now-playing
+//   does and take that record's year.
+// - Label comes from labels.labelForAlbum() — the same override→file-tag→
+//   disk-cache lookup the labels browser uses, so the modal and the browser
+//   always agree on an album's label (and its grouped display form).
+// - Pitchfork stays exactly as before. COMPLIANCE (UK law): the written
+//   review body is never emitted — only the score, the Best New Music flag,
+//   and a LINK to read the review on pitchfork.com (description stays null).
 // ---------------------------------------------------------------------------
 app.get("/api/album/extras", async (req, res) => {
   const title  = String(req.query.title  || "");
   const artist = String(req.query.artist || "");
   if (!title) return res.status(400).json({ error: "title query parameter required" });
   try {
+    // LMS year: match the index like /api/album/now-playing — normalized
+    // title equality, plus (when an artist is given) a normalized subtitle
+    // that contains the artist. No artist → match on title alone.
+    const nt = search.normalize(title);
+    const na = search.normalize(artist);
+    const rec = index.records.find(r =>
+      search.normalize(r.title) === nt &&
+      (!na || search.normalize(r.subtitle).includes(na))
+    );
+    const year = rec && rec.year != null ? rec.year : null;
+
+    // Label: same override→file-tag→disk-cache lookup the labels browser uses.
+    // Canonicalize it (strip "Records"/country suffixes) to the exact grouped
+    // display form the browser shows, so the modal's label text — and its
+    // tappable "more on this label" link — land on the same label the browser
+    // groups the album under, not a raw variant spelling.
+    const rawLabel = labels.labelForAlbum({ title, subtitle: artist });
+    const label = rawLabel ? labels.canonicalName(rawLabel) : null;
+
     const pitchfork = await fetchPitchfork(title, artist).catch(() => null);
+
+    // Build the album object whenever there is ANY datum to carry (label, year,
+    // or a Pitchfork hit) — otherwise the label/year never reach the modal for
+    // albums Pitchfork doesn't cover.
     let album = null;
-    if (pitchfork) {
+    if (label != null || year != null || pitchfork) {
       album = {
-        // COMPLIANCE (UK law): Pitchfork's written review must not be
-        // displayed — only the score, the Best New Music flag, and a LINK
-        // to read the review on pitchfork.com are emitted.
         description:    null,
-        year:           null,
-        label:          null,
-        url:            pitchfork.url,
-        source:         "Pitchfork",
-        score:          pitchfork.score,
-        isBestNewMusic: pitchfork.isBestNewMusic
+        year,
+        label,
+        url:            pitchfork ? pitchfork.url            : null,
+        source:         pitchfork ? "Pitchfork"              : null,
+        score:          pitchfork ? pitchfork.score          : null,
+        isBestNewMusic: pitchfork ? pitchfork.isBestNewMusic : false
       };
     }
-    res.json({ year: null, album, artist: null });
+    res.json({ year, album, artist: null });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
