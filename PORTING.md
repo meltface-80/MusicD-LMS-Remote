@@ -75,6 +75,27 @@ skipped and labels fall back to the API cascade. album-of-the-day / label-of-the
 reuse the in-memory album index and the JSON plays log for their deterministic
 daily/weekly picks.
 
+### ✅ Ported (phase 2 — Qobuz browse, Pitchfork, wall display)
+
+- **Qobuz browse** (the Qobuz page/tab): `/api/qobuz/new-releases` · `/api/qobuz/featured` ·
+  `/api/qobuz/search` · `/api/qobuz/artist-albums` · `/api/qobuz/favorite` ·
+  `/api/qobuz/unfavorite`, backed by the already-ported `lib/qobuz.js` with the
+  favourite-ids + featured caches and silent-relogin plumbing.
+- **Pitchfork**: `/api/pitchfork/reviews` (Latest / Best New Music listings) and
+  `/api/pitchfork/review` (per-card library match; the written review is never
+  served — UK-law compliance). The listing scraper (preloaded-state walk + RSS
+  fallback) now lives in `lib/pitchfork.js` alongside the single-album lookup.
+- **Global external search**: `/api/search/external` returns Qobuz + Pitchfork
+  sections (Tidal stays `null` — not ported).
+- **Wall display**: `/display`, `/api/settings/display` (GET/POST),
+  `/api/settings/youtube-key` (GET/POST), and `/api/display/content`. The content
+  endpoint drives the rotation from the zone's now-playing track: library
+  recommendations (more by the artist + label-mates, from the in-memory album +
+  label indexes — no API keys) plus a best-effort YouTube video clip when a key
+  is set. Artist photos / album reviews / artist bios depend on the larger
+  FanArt/Wikipedia scraping subsystems that are **not yet ported**, so those
+  fields degrade to empty and the page rotates art + recommendations + video.
+
 ### 🟡 Stubbed — safe empty response (phase 2)
 
 Return neutral shapes so the UI degrades gracefully instead of erroring. Each is
@@ -85,11 +106,10 @@ marked `// PHASE 2` in `index.js`.
 | `/api/home/genre-groups`, `/api/filters/genres` | LMS `genres` query. |
 | `/api/filters/decades` | LMS `years` query (or per-album year already in the index). |
 | `/api/filters/tags` | Map to LMS moods/genres, or drop. |
-| `/api/settings/display`, `/display`, `/api/display/content` | Wall display — backend-agnostic except now-playing; port after core. |
+| Wall-display artist photos / album review / artist bios | FanArt.tv artist images + Qobuz/Wikipedia bio scraping — larger subsystems; `/api/display/content` returns them empty for now. |
 | `/api/update/*` | LMS-repo self-updater (adapt `lib/updater.js` to this repo). |
-| `/api/settings/qobuz`, `/api/qobuz/*`, `/api/settings/tidal`, `/api/tidal/*` | Backend-agnostic (their own APIs) — lift `lib/qobuz.js` / `lib/tidal.js` verbatim. |
-| `/api/pitchfork/*`, `/api/search/external` | Backend-agnostic — lift verbatim. |
-| `/api/settings/discogs-token`, `/api/settings/fanart-key`, `/api/settings/label-folder-depth` | Settings persistence — trivial to port. |
+| `/api/settings/tidal`, `/api/tidal/*` | Needs `lib/tidal.js` + OAuth device-flow port. |
+| `/api/settings/discogs-token`, `/api/settings/fanart-key`, `/api/settings/label-folder-depth` | Settings persistence — done. |
 
 ### ⛔ Not applicable (Roon-only)
 
