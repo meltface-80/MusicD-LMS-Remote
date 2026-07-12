@@ -1,0 +1,48 @@
+# MusicD LMS Remote — docker-compose
+#
+# This app talks to Lyrion Music Server (LMS) over the network only, so it can
+# run on the same machine as LMS or a completely separate one — just point it
+# at the LMS host:port below.
+#
+#   docker compose up -d      # build + start
+#   docker compose logs -f    # follow logs
+#   docker compose down       # stop
+#
+# Then open http://<this-machine-IP>:3390
+
+services:
+  musicd-lms-remote:
+    build: https://github.com/meltface-80/MusicD-LMS-Remote.git#main
+    # Or, if you have cloned the repo, build from the local checkout instead:
+    # build: .
+    image: musicd-lms-remote
+    container_name: musicd-lms-remote
+    restart: unless-stopped
+    ports:
+      - "3390:3390"
+    environment:
+      # --- Point this at your Lyrion Music Server -------------------------
+      # Required when this container runs on a DIFFERENT machine/subnet than
+      # LMS (UDP auto-discovery only works on the same LAN). Set it to your
+      # LMS server's IP or hostname.
+      LMS_HOST: "192.168.1.50"
+      LMS_PORT: "9000"
+      # LMS_USER: ""   # only if your LMS has HTTP auth enabled
+      # LMS_PASS: ""
+      # MUSIC_DIR: "/music"   # in-container path of the optional mount below
+    volumes:
+      # Persistent app data (settings, caches, plays log, label caches).
+      - musicd-lms-remote-data:/app/data
+      # --- Optional: mount your music library READ-ONLY ------------------
+      # Enables file-tag (LABEL / ORGANIZATION) label scanning — the most
+      # accurate label source. Uncomment and set the host path if this
+      # machine can see your music. Leave it out otherwise; labels then come
+      # from the online metadata sources and everything else is unaffected.
+      # - /path/to/your/music:/music:ro
+
+    # If you run this on the SAME machine as LMS and prefer UDP auto-discovery
+    # (no LMS_HOST needed), swap the `ports:` block above for host networking:
+    #   network_mode: host
+
+volumes:
+  musicd-lms-remote-data:
