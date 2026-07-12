@@ -260,31 +260,89 @@ No billing account is needed — the free quota (10,000 units/day) comfortably c
 
 ## Run with Docker
 
+This app talks to Lyrion Music Server purely over the network (HTTP on the LMS
+web port, default `9000`). It does **not** need to run on the same machine as
+LMS — it can run anywhere that can reach the LMS host and port.
+
 No local clone needed — `docker build` can pull the repo straight from GitHub:
-(don't forget to add you LMS IP address)
 
 ```bash
 docker build -t musicd-lms-remote https://github.com/meltface-80/MusicD-LMS-Remote.git#main
+```
+
+### Option A — same machine as LMS
+
+Host networking lets the app auto-discover LMS on the local network, so
+`LMS_HOST` is optional (set it anyway if discovery doesn't find your server):
+
+```bash
 docker run -d \
   --name musicd-lms-remote \
   --restart unless-stopped \
   --network host \
-  -e LMS_HOST=<your.lms.IP> \
-  -e LMS_PORT=9000 \
   -v musicd-lms-remote-data:/app/data \
   musicd-lms-remote
 ```
 
-Then open `http://<your.lms.IP>:3390`
+Then open `http://<this-machine-IP>:3390`.
+
+### Option B — separate machine from LMS
+
+Running the app on a different box (another server, a NAS, a Pi)? Point it at
+your LMS with `LMS_HOST` and publish the app's port. UDP auto-discovery only
+works on the same LAN segment, so **set `LMS_HOST` explicitly** here:
+
+```bash
+docker run -d \
+  --name musicd-lms-remote \
+  --restart unless-stopped \
+  -e LMS_HOST=192.168.1.50 \
+  -e LMS_PORT=9000 \
+  -p 3390:3390 \
+  -v musicd-lms-remote-data:/app/data \
+  musicd-lms-remote
+```
+
+Replace `192.168.1.50` with your LMS server's IP, then open
+`http://<this-machine-IP>:3390`. (You can also set the host/port later from the
+in-app **Settings** screen instead of the env vars.)
+
+### Optional — mount your music for richer label scanning
+
+Labels are normally derived from online metadata sources (iTunes, MusicBrainz,
+etc.). If the machine running this app can see your music files, mount the
+library **read-only** and the label scan will also read the `LABEL` /
+`ORGANIZATION` tags straight from your files — the most accurate source. Add
+this flag to either option above:
+
+```bash
+  -v /path/to/your/music:/music:ro
+```
+
+The mount is entirely optional and **read-only** — the app never writes to it.
+Omit it when the music isn't present on this machine; labels then come from the
+online sources alone and everything else works the same. If your library lives
+somewhere other than `/music` inside the container, set `-e MUSIC_DIR=/that/path`
+to match.
+
+### docker-compose
+
+A [`docker-compose.yml`](docker-compose.yml) is included. Edit `LMS_HOST` (and
+uncomment the `/music` mount if you want file-tag label scanning), then:
+
+```bash
+docker compose up -d
+```
 
 ## Environment variables
 
 | Var | Default | Purpose |
 |-----|---------|---------|
 | `PORT` | `3390` | HTTP port for this app |
-| `LMS_HOST` | *(discover)* | LMS server host/IP |
+| `LMS_HOST` | *(discover)* | LMS server host/IP. Required when the app runs on a different machine/subnet than LMS (UDP discovery only works on the same LAN). |
 | `LMS_PORT` | `9000` | LMS JSON-RPC/web port |
 | `LMS_USER` / `LMS_PASS` | – | LMS HTTP auth, if enabled |
+| `MUSIC_DIR` | `/music` | Where the optional read-only music mount lives inside the container (only used for file-tag label scanning). |
 | `DEBUG` | – | `1` for verbose logging |
 
 ## Layout
