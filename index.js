@@ -51,6 +51,16 @@ function saveSettings(patch) {
   return next;
 }
 
+// Qobuz (UNOFFICIAL API — see lib/qobuz.js). Credentials/token set via Settings.
+// We persist the username, the md5 of the password (for silent re-login), the
+// user_auth_token, and the display name. Never the plaintext password.
+const qobuz = require("./lib/qobuz");
+const _persistedQobuz = loadSettings();
+let qobuzUsername    = _persistedQobuz.qobuzUsername    || "";
+let qobuzPasswordMd5 = _persistedQobuz.qobuzPasswordMd5 || "";
+let qobuzToken       = _persistedQobuz.qobuzToken       || "";
+let qobuzDisplayName = _persistedQobuz.qobuzDisplayName || "";
+
 // ---------------------------------------------------------------------------
 // Connection state
 // ---------------------------------------------------------------------------
@@ -708,8 +718,34 @@ app.get("/api/update/status",        (req, res) => res.json({ available: false, 
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
 });
-app.get("/api/settings/qobuz",       (req, res) => res.json({ connected: false })); // PHASE 2
-app.post("/api/settings/qobuz",      notPorted("Qobuz"));                          // PHASE 2
+// Connection status (never returns credentials).
+app.get("/api/settings/qobuz", (req, res) => {
+  res.json({ connected: !!qobuzToken, username: qobuzUsername || "", displayName: qobuzDisplayName || "" });
+});
+// Connect: log in with email/password, persist token (+ md5 for re-login).
+app.post("/api/settings/qobuz", async (req, res) => {
+  const username = ((req.body && req.body.username) || "").trim();
+  const password = ((req.body && req.body.password) || "");
+  if (!username || !password) return res.status(400).json({ ok: false, error: "username and password required" });
+  try {
+    const r = await qobuz.login(username, password);
+    qobuzUsername    = username;
+    qobuzPasswordMd5 = r.passwordMd5;
+    qobuzToken       = r.token;
+    qobuzDisplayName = r.displayName;
+    saveSettings({ qobuzUsername, qobuzPasswordMd5, qobuzToken, qobuzDisplayName });
+    console.log("[settings] qobuz connected as " + qobuzDisplayName);
+    res.json({ ok: true, displayName: qobuzDisplayName });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+// Disconnect: clear all stored Qobuz credentials/token.
+app.post("/api/settings/qobuz/disconnect", (req, res) => {
+  qobuzUsername = qobuzPasswordMd5 = qobuzToken = qobuzDisplayName = "";
+  saveSettings({ qobuzUsername: "", qobuzPasswordMd5: "", qobuzToken: "", qobuzDisplayName: "" });
+  res.json({ ok: true });
+});
 app.get("/api/settings/tidal",       (req, res) => res.json({ connected: false })); // PHASE 2
 app.post("/api/settings/tidal/start", notPorted("Tidal"));                         // PHASE 2
 
