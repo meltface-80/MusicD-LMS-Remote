@@ -861,6 +861,17 @@ app.post("/api/play-from-here", async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post("/api/queue/remove", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { zone_or_output_id, queue_item_id } = req.body || {};
+  if (!zone_or_output_id || queue_item_id === undefined || queue_item_id === null) {
+    return res.status(400).json({ error: "zone_or_output_id and queue_item_id required" });
+  }
+  // In the LMS queue, queue_item_id is the playlist index (see /api/queue).
+  try { await state.lms.removeFromQueue(zone_or_output_id, Number(queue_item_id)); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---- transport / mini-transport ----
 
 const CONTROL_MAP = {

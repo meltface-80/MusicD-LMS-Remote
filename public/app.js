@@ -1266,6 +1266,34 @@
         li.appendChild(art); li.appendChild(tx); li.appendChild(len);
 
         if (i !== 0) {
+          const rm = document.createElement("button");
+          rm.className = "q-remove";
+          rm.type = "button";
+          rm.setAttribute("aria-label", "Remove from queue");
+          rm.textContent = "✕";
+          rm.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            try {
+              const r = await fetch("/api/queue/remove", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  zone_or_output_id: currentSourceZoneId,
+                  queue_item_id: it.queue_item_id
+                })
+              });
+              if (!r.ok) {
+                const j = await r.json().catch(() => ({}));
+                window.alert("Couldn't remove: " + (j.error || `HTTP ${r.status}`));
+                return;
+              }
+              loadQueue();
+            } catch (e) {
+              window.alert("Couldn't remove: " + e.message);
+            }
+          });
+          li.appendChild(rm);
+
           li.addEventListener("click", async () => {
             const trackName = it.title || "this track";
             if (!window.confirm(`Play from "${trackName}"?`)) return;

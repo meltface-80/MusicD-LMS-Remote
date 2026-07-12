@@ -1205,6 +1205,20 @@ main {
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
 }
+.queue-list .q-remove {
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.queue-list .q-remove:hover  { color: var(--text); background: var(--bg-elev-2); }
+.queue-list .q-remove:active { transform: scale(.9); }
 .queue-empty {
   color: var(--text-faint);
   font-size: 14px;
