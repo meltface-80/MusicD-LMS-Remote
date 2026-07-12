@@ -130,6 +130,44 @@ const index = search.makeIndex();
 let indexBuilding = null;   // Promise while a build is in flight
 let indexProgress = 0;
 
+// ---------------------------------------------------------------------------
+// Record-label index + background scanner (lib/labels.js). LMS has no
+// first-class label facet, so labels are derived per album from file tags and
+// the free metadata APIs and cached to disk — see lib/labels.js. Everything it
+// needs is injected: the album list (the same in-memory search index), the
+// normaliser, and the persisted Discogs/FanArt/folder-depth settings (read via
+// getters so it always sees the current values after a Settings change).
+// ---------------------------------------------------------------------------
+const { makeLabels } = require("./lib/labels");
+const labels = makeLabels({
+  dataDir:             DATA_DIR,
+  getAlbums:           () => index.records,
+  normalize:           search.normalize,
+  getDiscogsToken:     () => discogsToken,
+  getFanartKey:        () => fanartKey,
+  getLabelFolderDepth: () => labelFolderDepth,
+  debug:               DEBUG
+});
+
+// FNV-1a string hash — a stable seed for deterministic daily/weekly picks
+// (album-of-the-day, label-of-the-week). Returns an unsigned 32-bit int;
+// callers do `hash % n` to choose an index.
+function fnv1aHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// ISO-week key (e.g. "2026-W28"), Monday–Sunday — stable seed for the label of
+// the week so the pick holds all week and rotates weekly.
+function isoWeekKey(d = new Date()) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7)); // ISO: Thursday sets the week-year
+  const yStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil(((t - yStart) / 86400000 + 1) / 7);
+  return t.getUTCFullYear() + "-W" + wk;
+}
+
 function lmsConfigFromSettings() {
   const s = loadSettings();
   return {
@@ -230,6 +268,12 @@ async function buildIndex() {
   search.loadRecords(index, rows);
   indexProgress = 1;
   if (DEBUG) console.log("[index] built", index.records.length, "albums");
+  // Labels ride on the album index: re-project cached labels onto the fresh
+  // offsets (fast, no network), then kick the background scan to fill in any
+  // albums we haven't looked up yet. Both are best-effort — a labels failure
+  // must never break the core library index.
+  try { labels.onAlbumIndexRebuilt(); } catch (e) { if (DEBUG) console.error("[labels] reseed:", e.message); }
+  labels.runScan().catch(e => { if (DEBUG) console.error("[labels] scan:", e.message); });
   return index;
 }
 
@@ -395,10 +439,19 @@ app.get("/api/random-albums", async (req, res) => {
 app.get("/api/search", (req, res) => {
   const q = (req.query.q || "").trim();
   const limit = Math.max(1, Math.min(60, parseInt(req.query.limit || "40", 10)));
-  if (!q) return res.json({ albums: [], artists: [] });
+  // The frontend reads `results` (albums), `labels` and `artists` — match the
+  // Roon build's shape exactly. `albums` is kept as an alias for any older
+  // caller. Labels come from the derived label index (empty until it seeds).
+  if (!q) return res.json({ query: q, results: [], albums: [], labels: [], artists: [], indexed: index.records.length });
+  const results = search.searchAlbums(index, q, limit);
   res.json({
-    albums:  search.searchAlbums(index, q, limit),
-    artists: search.searchArtists(index, q, 8)
+    query:   q,
+    indexed: index.records.length,
+    results,
+    albums:  results,
+    labels:  labels.searchLabels(search.normalize(q)),
+    // The frontend renders artist chips from `{ name }` objects (ar.name).
+    artists: search.searchArtists(index, q, 8).map(name => ({ name }))
   });
 });
 
@@ -828,16 +881,149 @@ app.get("/api/home/unplayed", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Home section: "album of the day" — one completely random album, chosen
+// deterministically from today's local date so it's stable all day and changes
+// each day. Once it has been played today (a play row with that title since
+// local midnight) it's withheld ({ album: null, played: true }) until tomorrow.
+// The Roon build reads its SQLite plays table for the "played today" check; we
+// read the JSON plays log's title set instead (lib/plays.js), same idea.
+// ---------------------------------------------------------------------------
+app.get("/api/home/album-of-the-day", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    await ensureIndex();
+    const pool = index.records;
+    if (!pool.length) return res.json({ album: null });
+    // Deterministic index from the local date (YYYY-M-D, no zero padding — the
+    // exact format the sibling app hashes, so picks stay in step).
+    const now = new Date();
+    const dstr = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+    const rec = pool[fnv1aHash(dstr) % pool.length];
+    // Played today? Plays log records album titles lowercased/trimmed.
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const heard = playsLog.getPlayedTitlesSince(midnight.getTime());
+    if (heard.has((rec.title || "").toLowerCase().trim())) return res.json({ album: null, played: true });
+    res.json({ album: { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Home section: "label of the week" — one record label featured for the whole
+// ISO week, chosen deterministically from the week key so it's stable all week
+// and rotates weekly. Only labels with a fuller catalogue (>= 6 albums) are
+// eligible so the single-row carousel fills out. Cached ~1h; recomputed when
+// the week changes or the label index grows (a fresh scan can add labels and
+// would otherwise shift the pick mid-week).
+let lotwCache = { weekKey: "", at: 0, count: -1, data: null };
+app.get("/api/home/label-of-the-week", (req, res) => {
+  try {
+    const wk = isoWeekKey();
+    const { keys, count, get } = labels.weekCandidates(6);
+    if (lotwCache.data && lotwCache.weekKey === wk && lotwCache.count === count &&
+        (Date.now() - lotwCache.at) < 60 * 60 * 1000) {
+      return res.json(lotwCache.data);
+    }
+    if (!keys.length) {
+      const empty = { label: null, albums: [] };
+      lotwCache = { weekKey: wk, at: Date.now(), count, data: empty };
+      return res.json(empty);
+    }
+    const entry = get(keys[fnv1aHash(wk) % keys.length]);
+    const albums = entry.albums.slice(0, 24).map(a => ({
+      offset: a.offset, title: a.title || "", subtitle: a.subtitle || "", image_key: a.image_key || null
+    }));
+    const data = { label: entry.display, albums };
+    lotwCache = { weekKey: wk, at: Date.now(), count, data };
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------------------------------------------------------------------------
+// Labels browser + management. The derived label index (lib/labels.js) is
+// seeded on every index build and refreshed by a background scan; these routes
+// read it and drive the scan/merge/logo tooling in the settings UI.
+// ---------------------------------------------------------------------------
+app.get("/api/filters/labels", (req, res) => {
+  if (!state.connected) return notConnected(res);
+  // Kick a scan if one has never run (or the last is stale). seedFromCache has
+  // already run on the index build, so a fresh restart still returns whatever
+  // was cached to disk immediately.
+  labels.maybeAutoRescan();
+  const st = labels.status();
+  const list = labels.listLabels();
+  // Report scanning until we actually have labels, so the UI shows progress
+  // rather than a permanent "no labels" state during the first scan.
+  const noDataYet = list.length === 0 && (st.scanning || index.records.length === 0);
+  res.json({ labels: list, scanning: st.scanning || noDataYet, progress: st.progress, count: st.count });
+});
+
+// All albums for one label, ordered. ?label=NAME&order=alpha|random
+app.get("/api/label-albums", (req, res) => {
+  const name  = String(req.query.label || "").trim();
+  if (!name) return res.status(400).json({ error: "label query parameter required" });
+  res.json(labels.labelAlbums(name, req.query.order));
+});
+
+// Labels scan status — lets the UI poll while the background scan runs.
+app.get("/api/labels-scan-status", (req, res) => res.json(labels.status()));
+
+// Trigger a rescan (only new albums) / a full rescan (re-query everything).
+app.post("/api/labels/rescan", (req, res) => {
+  if (!state.connected) return notConnected(res);
+  res.json(labels.requestRescan());
+});
+app.post("/api/labels/rescan-force", (req, res) => {
+  if (!state.connected) return notConnected(res);
+  res.json(labels.forceRescan());
+});
+
+// Serve locally cached label logo images (downloaded at save time).
+app.get("/api/labels/logo-image/:filename", (req, res) => {
+  const p = labels.logoImagePath(req.params.filename);
+  if (!p) return res.status(404).end();
+  res.sendFile(p);
+});
+
+// Discogs logo candidates for the logo picker UI.
+app.get("/api/labels/logo-candidates", async (req, res) => {
+  const name = (req.query.label || "").trim();
+  if (!name) return res.status(400).json({ error: "label required" });
+  try { res.json({ candidates: await labels.logoCandidates(name) }); }
+  catch (e) { res.status(/token/i.test(e.message) ? 400 : 500).json({ error: e.message }); }
+});
+
+// Manually set (or override) the logo URL for a label tile. Body: { label, url }
+app.post("/api/labels/logo", async (req, res) => {
+  const { label, url } = req.body || {};
+  try { res.json({ ok: true, storedUrl: await labels.setLogo(label, url) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Merge two or more label tiles into one. Body: { items: [target, ...sources] }
+app.post("/api/labels/merge", (req, res) => {
+  const r = labels.mergeLabels((req.body || {}).items);
+  res.status(r.ok ? 200 : 400).json(r);
+});
+// Remove a single source label from a merge group.
+app.delete("/api/labels/merge/:sourceKey", (req, res) => {
+  res.json(labels.unmerge(req.params.sourceKey));
+});
+
+// Scan log — downloaded / copied from the settings UI.
+app.get("/api/labels-scan-log", (req, res) => {
+  const log = labels.readScanLog();
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  if (log == null) return res.send("No scan log yet — run a scan first.\n");
+  res.setHeader("Content-Disposition", "attachment; filename=\"labels-scan.log\"");
+  res.send(log);
+});
+
+// ---------------------------------------------------------------------------
 // PHASE 2 stubs — advanced features not yet ported. Each returns a safe empty
 // shape so the existing frontend degrades gracefully instead of erroring.
 // ---------------------------------------------------------------------------
-app.get("/api/home/album-of-the-day", (req, res) => res.json({ album: null }));   // PHASE 2
-app.get("/api/home/label-of-the-week", (req, res) => res.json({ label: null, albums: [] })); // PHASE 2
 app.get("/api/home/genre-groups",    (req, res) => res.json({ groups: [] }));     // PHASE 2
 app.get("/api/filters/tags",         (req, res) => res.json({ tags: [] }));       // PHASE 2
-app.get("/api/filters/labels",       (req, res) => res.json({ labels: [] }));     // PHASE 2
 app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));    // PHASE 2 (LMS `years` query)
-app.get("/api/labels-scan-status",   (req, res) => res.json({ scanning: false, done: true, total: 0, scanned: 0 })); // PHASE 2
 app.get("/api/settings/display",     (req, res) => res.json({ enabled: false, seconds: 10 })); // PHASE 2
 app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version, is_docker: true })); // PHASE 2
 const notPorted = (name) => (req, res) => res.status(501).json({
@@ -926,6 +1112,9 @@ app.post("/api/settings/label-folder-depth", (req, res) => {
   const next = saveSettings({ labelFolderDepth: depth });
   const saved = next.labelFolderDepth === depth;
   console.log("[settings] label folder depth set to " + depth + ", persisted=" + saved);
+  // Folder depth changes which folder name becomes the label in the file-tag
+  // pass, so re-run the scan to pick up the new mapping (no-op without /music).
+  if (state.connected) labels.requestRescan();
   res.json({ ok: true, saved });
 });
 
@@ -937,6 +1126,11 @@ app.listen(PORT, () => {
   refreshConnection();
   const timer = setInterval(refreshConnection, 2500);
   if (timer.unref) timer.unref();
+  // 12-hour label auto-rescan. maybeAutoRescan is a cheap no-op until its own
+  // interval elapses (and while a scan is running), so a frequent tick is fine
+  // and means a long-lived instance refreshes labels without a UI visit.
+  const labelTimer = setInterval(() => { if (state.connected) labels.maybeAutoRescan(); }, 60 * 60 * 1000);
+  if (labelTimer.unref) labelTimer.unref();
 });
 
 module.exports = app;

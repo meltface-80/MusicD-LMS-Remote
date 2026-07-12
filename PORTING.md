@@ -52,6 +52,29 @@ New LMS-specific routes (back the settings UI):
 `/api/lms/connection` (GET/POST) · `/api/lms/discover` · `/api/lms/pref/:name`
 (GET/POST) · `/api/lms/player/:id/pref/:name` (GET/POST) · `/api/lms/rescan`
 
+### ✅ Ported (phase 2 — discovery rows + labels)
+
+Home discovery rows and the whole record-label subsystem:
+
+`/api/home/unplayed` · `/api/home/album-of-the-day` · `/api/home/label-of-the-week` ·
+`/api/filters/labels` · `/api/label-albums` · `/api/labels-scan-status` ·
+`/api/labels/rescan` · `/api/labels/rescan-force` · `/api/labels/logo-image/:filename` ·
+`/api/labels/logo-candidates` · `/api/labels/logo` · `/api/labels/merge` (POST/DELETE) ·
+`/api/labels-scan-log`. `/api/search` now also returns matching `labels`.
+
+The label pipeline lives in `lib/labels.js` (`makeLabels(deps)`). It is a faithful
+port of the Roon build's multi-pass scanner — file tags (needs `-v /music:ro`) then
+the free metadata APIs (iTunes → Qobuz → TheAudioDB → MusicBrainz → Discogs), with
+Fan Art TV + Discogs logo fetches, label grouping/merging, and the same rate limits
+and 429/403 circuit breakers. The one deliberate deviation: caches persist as **JSON
+files** under `data/cache/` (`labels-cache.json`, `labels-mbid.json`, `labels-logo.json`,
+`labels-merges.json`) rather than the sibling's better-sqlite3 DB, keeping this repo
+free of native dependencies (see the Dockerfile). `music-metadata` is an
+**optional** dependency loaded via dynamic import; without it the file-tag pass is
+skipped and labels fall back to the API cascade. album-of-the-day / label-of-the-week
+reuse the in-memory album index and the JSON plays log for their deterministic
+daily/weekly picks.
+
 ### 🟡 Stubbed — safe empty response (phase 2)
 
 Return neutral shapes so the UI degrades gracefully instead of erroring. Each is
@@ -59,12 +82,9 @@ marked `// PHASE 2` in `index.js`.
 
 | Route(s) | LMS plan |
 |---|---|
-| `/api/home/unplayed`, `/api/home/album-of-the-day` | Reuse the album index + a local plays table (port the SQLite plays store, or track via LMS `songinfo`/history). |
-| `/api/home/label-of-the-week`, `/api/filters/labels` | LMS has no first-class label facet — derive from track `label`/`publisher` tag (`titles tags:...`), or port the Roon label-scan pipeline. |
 | `/api/home/genre-groups`, `/api/filters/genres` | LMS `genres` query. |
 | `/api/filters/decades` | LMS `years` query (or per-album year already in the index). |
 | `/api/filters/tags` | Map to LMS moods/genres, or drop. |
-| `/api/labels-scan-status`, `/api/labels/*` | Port the label logo/merge pipeline (Discogs/FanArt) — backend-agnostic; can be lifted mostly verbatim. |
 | `/api/settings/display`, `/display`, `/api/display/content` | Wall display — backend-agnostic except now-playing; port after core. |
 | `/api/update/*` | LMS-repo self-updater (adapt `lib/updater.js` to this repo). |
 | `/api/settings/qobuz`, `/api/qobuz/*`, `/api/settings/tidal`, `/api/tidal/*` | Backend-agnostic (their own APIs) — lift `lib/qobuz.js` / `lib/tidal.js` verbatim. |
