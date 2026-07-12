@@ -101,7 +101,7 @@ function scrobbleUpdate(playerId, st) {
 // We persist the username, the md5 of the password (for silent re-login), the
 // user_auth_token, and the display name. Never the plaintext password.
 const qobuz = require("./lib/qobuz");
-const { fetchPitchfork } = require("./lib/pitchfork");
+const { fetchPitchfork, getPitchforkReviews, searchPitchforkReviews } = require("./lib/pitchfork");
 const _persistedQobuz = loadSettings();
 let qobuzUsername    = _persistedQobuz.qobuzUsername    || "";
 let qobuzPasswordMd5 = _persistedQobuz.qobuzPasswordMd5 || "";
@@ -113,6 +113,158 @@ let qobuzDisplayName = _persistedQobuz.qobuzDisplayName || "";
 let discogsToken     = _persistedQobuz.discogsToken     || "";
 let fanartKey        = _persistedQobuz.fanartKey        || "";
 let labelFolderDepth = Number(_persistedQobuz.labelFolderDepth) || 0;
+
+// Wall display (/display): off by default. When off the page fetches nothing
+// and the content endpoint refuses, so flipping the toggle brings a mounted
+// wall tablet to life without a reload. `youtubeKey` (optional) enables the
+// muted video-clip slides; without it, video is simply omitted.
+let displayEnabled = _persistedQobuz.displayEnabled === true;
+let displaySeconds = (() => {
+  const s = parseInt(_persistedQobuz.displaySeconds, 10);
+  return Number.isFinite(s) && s >= 5 && s <= 60 ? s : 10;
+})();
+let youtubeKey = _persistedQobuz.youtubeKey || "";
+
+// ---------------------------------------------------------------------------
+// Shared HTTP JSON helper (global fetch), deadlined. Used by the Qobuz browse
+// routes and the wall-display YouTube lookup. A non-2xx throws with the status
+// in the message so callers can map 429/401 to the right response.
+// ---------------------------------------------------------------------------
+async function httpJson(url, headers, timeoutMs = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers, signal: ctl.signal });
+    if (!res.ok) { const e = new Error("HTTP " + res.status); e.code = res.status; throw e; }
+    return await res.json();
+  } finally { clearTimeout(timer); }
+}
+
+// ---------------------------------------------------------------------------
+// Qobuz browse infrastructure (the Qobuz page/tab + external search). Login is
+// already handled below; these add authenticated-call plumbing and the slow-
+// changing featured/favourite caches, ported from the Roon build.
+// ---------------------------------------------------------------------------
+// Short-lived cache of the user's favourited album ids, shared by every Qobuz
+// browse route so each render doesn't re-fetch the full favourites list (429
+// risk). Best-effort: on failure it serves recent ids (bounded staleness) or an
+// empty Set — the list still renders, just without favourite marks.
+function makeFavIdsCache({ name, fetchIds, cacheMs = 60 * 1000, staleMaxMs = 10 * 60 * 1000 }) {
+  let ids = null, at = 0, pending = null;
+  return {
+    async get() {
+      if (ids && (Date.now() - at) < cacheMs) return ids;
+      if (pending) return pending;
+      pending = (async () => {
+        try { const fresh = await fetchIds(); ids = fresh; at = Date.now(); return fresh; }
+        catch (e) {
+          if (DEBUG) console.error("[" + name + "] favourite-ids lookup failed:", e.message);
+          if (ids && (Date.now() - at) < staleMaxMs) return ids;
+          return new Set();
+        } finally { pending = null; }
+      })();
+      return pending;
+    },
+    add(id)    { if (ids) ids.add(String(id)); },
+    remove(id) { if (ids) ids.delete(String(id)); },
+    clear()    { ids = null; at = 0; }
+  };
+}
+// TTL memo keyed by string. Featured lists change slowly (~daily) but each tab
+// tap would otherwise hit the rate-limit-sensitive unofficial API. Values are
+// cached RAW; favourite flags are applied per request from the fresher fav-ids
+// cache. Errors are not cached — a failed fetch just throws.
+function makeTtlCache(ttlMs) {
+  const map = new Map();
+  return {
+    async get(key, fetchFn) {
+      const hit = map.get(key);
+      if (hit && (Date.now() - hit.at) < ttlMs) return hit.value;
+      const value = await fetchFn();
+      map.set(key, { value, at: Date.now() });
+      return value;
+    },
+    clear() { map.clear(); }
+  };
+}
+let qobuzLoginPending  = null;
+let qobuzLoginFailedAt = 0;
+// Silent re-login from the stored md5 (single-flight; 60s failure backoff).
+function qobuzRelogin() {
+  if (Date.now() - qobuzLoginFailedAt < 60 * 1000) {
+    return Promise.reject(new Error("Qobuz not connected — recent login attempt failed, retrying shortly"));
+  }
+  if (!qobuzLoginPending) {
+    qobuzLoginPending = (async () => {
+      try {
+        const r = await qobuz.login(qobuzUsername, qobuzPasswordMd5, true);
+        qobuzToken = r.token; qobuzDisplayName = r.displayName; qobuzLoginFailedAt = 0;
+        saveSettings({ qobuzToken, qobuzDisplayName });
+      } catch (e) { qobuzLoginFailedAt = Date.now(); throw e; }
+      finally { qobuzLoginPending = null; }
+    })();
+  }
+  return qobuzLoginPending;
+}
+// Run an authenticated Qobuz call; on a 401 (expired token) re-login once and
+// retry. Throws a "not connected" error when no credentials are stored.
+async function qobuzWithToken(fn) {
+  if (!qobuzToken && qobuzUsername && qobuzPasswordMd5) await qobuzRelogin();
+  if (!qobuzToken) throw new Error("Qobuz not connected — add your Qobuz login in Settings");
+  try { return await fn(qobuzToken); }
+  catch (e) {
+    if (e && e.code === 401 && qobuzUsername && qobuzPasswordMd5) { await qobuzRelogin(); return await fn(qobuzToken); }
+    throw e;
+  }
+}
+const qobuzFavIds = makeFavIdsCache({ name: "qobuz", fetchIds: () => qobuzWithToken(t => qobuz.getFavoriteAlbumIds(t)) });
+const qobuzFeaturedCache = makeTtlCache(10 * 60 * 1000); // type → raw items[]
+function getFeaturedItemsCached(type) {
+  return qobuzFeaturedCache.get(type, () => qobuzWithToken(t => qobuz.getFeaturedAlbums(t, type, 150)));
+}
+// Best-effort release timestamp (ms) from a Qobuz album object.
+function qobuzReleaseTs(a) {
+  if (a.released_at && Number.isFinite(a.released_at)) return a.released_at * 1000;
+  const d = a.release_date_original || a.release_date_stream || a.release_date_download;
+  if (d) { const t = Date.parse(d); if (Number.isFinite(t)) return t; }
+  return null;
+}
+// Shared album→JSON normalizer for every album-returning Qobuz route.
+function normalizeQobuzAlbum(a, favIds) {
+  return {
+    id:           String(a.id),
+    title:        a.title || "",
+    version:      a.version || null,
+    artist:       (a.artist && a.artist.name) || (a.performer && a.performer.name) || "",
+    artist_id:    (a.artist && a.artist.id != null) ? String(a.artist.id) : null,
+    image:        qobuz.pickImage(a),
+    released_at:  qobuzReleaseTs(a),
+    release_date: a.release_date_original || null,
+    favourited:   favIds.has(String(a.id))
+  };
+}
+function normalizeQobuzAlbums(items, favIds) {
+  const albums = [];
+  for (const a of items || []) { if (a && a.id) albums.push(normalizeQobuzAlbum(a, favIds)); }
+  return albums;
+}
+// Streaming-service HTTP status mapping: 429 passes through, "not connected" is
+// the caller's fault (400), everything else is upstream (502).
+function serviceErrorStatus(e) {
+  return e && e.code === 429 ? 429 : (/not connected/i.test(e.message) ? 400 : 502);
+}
+function parseOffsetParam(req) {
+  const offset = parseInt(req.query.offset, 10);
+  return (Number.isFinite(offset) && offset > 0) ? offset : 0;
+}
+// Per-source deadline so one slow source can't hold a combined response. The
+// timer is cleared once the race settles so a resolved-fast source doesn't
+// leave a 10s timer pinning the event loop until it fires.
+function withDeadline(promise, ms) {
+  let timer;
+  const guard = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("source deadline")), ms); });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
 
 // ---------------------------------------------------------------------------
 // Connection state
@@ -166,6 +318,99 @@ function isoWeekKey(d = new Date()) {
   const yStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   const wk = Math.ceil(((t - yStart) / 86400000 + 1) / 7);
   return t.getUTCFullYear() + "-W" + wk;
+}
+
+// Confident library match for a review's album/artist, or null. Uses the same
+// in-memory search as the search box, but only accepts the top hit when the
+// title matches closely (normalized equality or a prefix) so a "Play" button
+// never points at the wrong album.
+function matchLibraryAlbum(album, artist) {
+  if (!album || !index.records.length) return null;
+  const want = search.normalize(album);
+  if (!want) return null;
+  const hits = search.searchAlbums(index, (artist ? artist + " " : "") + album, 3);
+  for (const h of hits) {
+    const got = search.normalize(h.title);
+    if (!got) continue;
+    if (got === want || got.startsWith(want) || want.startsWith(got)) {
+      return { offset: h.offset, title: h.title, subtitle: h.subtitle, image_key: h.image_key };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Wall-display muted video clip via the YouTube Data API — only when the user
+// supplied a key in Settings. PRECISION-FIRST: show the artist's official music
+// video or an official live performance, or NOTHING — never chat-show clips,
+// fan uploads, or " - Topic" auto-uploads (static art with audio: worthless on
+// a muted screen). Candidates are scored on channel ownership + title keywords,
+// must clear a threshold, then verified via videos.list (embeddable, public,
+// not age-restricted). Cached per artist+track incl. negatives (search costs
+// 100 quota units of the 10k/day default).
+const displayVideoCache = new Map();
+function scoreDisplayVideo(item, artistN, trackTokens) {
+  const title    = (item.snippet && item.snippet.title        || "");
+  const channel  = (item.snippet && item.snippet.channelTitle || "");
+  const titleN   = search.normalize(title);
+  const channelN = search.normalize(channel);
+  if (/ - topic$/i.test(channel)) return -1;
+  if (/\b(audio|lyric|lyrics|visuali[sz]er|cover|reaction|remix|sped|slowed|8d|karaoke|instrumental|full album|teaser|trailer|interview|behind the scenes|epk|shorts?)\b/i.test(title)) return -1;
+  for (const t of trackTokens) if (titleN.indexOf(t) === -1) return -1;
+  let score = 0;
+  const channelIsArtist = channelN === artistN || channelN === artistN + " vevo" ||
+                          channelN === artistN + " music" || channelN === artistN + " official" ||
+                          channelN.replace(/\s+/g, "") === artistN.replace(/\s+/g, "") + "vevo";
+  if (channelIsArtist) score += 70;
+  else if (channelN.indexOf(artistN) !== -1) score += 40;
+  else return -1;
+  if (/\bofficial (music )?video\b/i.test(title)) score += 30;
+  else if (/\(official\b/i.test(title)) score += 20;
+  if (/\blive\b/i.test(title)) { if (score >= 70) score += 20; else return -1; }
+  return score;
+}
+async function fetchDisplayVideo(artistName, trackName) {
+  if (!youtubeKey || !artistName || !trackName) return null;
+  const key = search.normalize(artistName) + "||" + search.normalize(trackName);
+  const hit = displayVideoCache.get(key);
+  if (hit) {
+    // Positive verdicts hold for the session; a "no video" verdict expires
+    // after 30 min so transient API failures don't blank a track for good.
+    if (hit.video || (Date.now() - hit.at) < 30 * 60 * 1000) return hit.video;
+    displayVideoCache.delete(key);
+  }
+  let video = null;
+  try {
+    const q = `${artistName} ${trackName}`;
+    const searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video" +
+      "&videoEmbeddable=true&videoSyndicated=true&maxResults=10" +
+      "&q=" + encodeURIComponent(q) + "&key=" + encodeURIComponent(youtubeKey);
+    const json = await httpJson(searchUrl);
+    const artistN = search.normalize(artistName);
+    const trackTokens = search.normalize(trackName).split(" ").filter(t => t.length > 2);
+    const scored = ((json && json.items) || [])
+      .filter(it => it && it.id && it.id.videoId && it.snippet)
+      .map(it => ({ id: it.id.videoId, score: scoreDisplayVideo(it, artistN, trackTokens) }))
+      .filter(c => c.score >= 70)
+      .sort((a, b) => b.score - a.score);
+    if (scored.length) {
+      const statusUrl = "https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails,statistics" +
+        "&id=" + encodeURIComponent(scored.map(c => c.id).join(",")) + "&key=" + encodeURIComponent(youtubeKey);
+      const st = await httpJson(statusUrl);
+      const playable = new Map(((st && st.items) || [])
+        .filter(v => v && v.status && v.status.embeddable && v.status.privacyStatus === "public" &&
+                     !(v.contentDetails && v.contentDetails.contentRating && v.contentDetails.contentRating.ytRating === "ytAgeRestricted"))
+        .map(v => [v.id, parseInt((v.statistics && v.statistics.viewCount) || "0", 10)]));
+      const best = scored.filter(c => playable.has(c.id))
+        .sort((a, b) => (b.score - a.score) || (playable.get(b.id) - playable.get(a.id)))[0];
+      if (best) {
+        video = { videoId: best.id, embedUrl: "https://www.youtube-nocookie.com/embed/" + best.id +
+          "?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&loop=1&playlist=" + best.id + "&enablejsapi=1" };
+      }
+    }
+  } catch (e) { if (DEBUG) console.error("[display:youtube]", e.message); }
+  displayVideoCache.set(key, { at: Date.now(), video });
+  return video;
 }
 
 function lmsConfigFromSettings() {
@@ -1024,7 +1269,109 @@ app.get("/api/labels-scan-log", (req, res) => {
 app.get("/api/home/genre-groups",    (req, res) => res.json({ groups: [] }));     // PHASE 2
 app.get("/api/filters/tags",         (req, res) => res.json({ tags: [] }));       // PHASE 2
 app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));    // PHASE 2 (LMS `years` query)
-app.get("/api/settings/display",     (req, res) => res.json({ enabled: false, seconds: 10 })); // PHASE 2
+// ---------------------------------------------------------------------------
+// Wall display (/display). The page polls /api/settings/display to honour the
+// toggle live; /api/display/content assembles the per-album rotation extras.
+// ---------------------------------------------------------------------------
+app.get("/api/settings/display", (req, res) => res.json({ enabled: displayEnabled, seconds: displaySeconds }));
+app.post("/api/settings/display", (req, res) => {
+  const b = req.body || {};
+  if (typeof b.enabled === "boolean") displayEnabled = b.enabled;
+  if (b.seconds != null) {
+    const s = parseInt(b.seconds, 10);
+    if (Number.isFinite(s) && s >= 5 && s <= 60) displaySeconds = s;
+  }
+  const next = saveSettings({ displayEnabled, displaySeconds });
+  res.json({ ok: next.displayEnabled === displayEnabled, enabled: displayEnabled, seconds: displaySeconds });
+});
+// Optional YouTube Data API key (masked on read, like the fanart key).
+app.get("/api/settings/youtube-key", (req, res) => {
+  res.json({ set: !!youtubeKey, masked: youtubeKey ? youtubeKey.slice(0, 4) + "…" : "" });
+});
+app.post("/api/settings/youtube-key", (req, res) => {
+  youtubeKey = String((req.body && req.body.key) || "").trim();
+  displayVideoCache.clear(); // a new key may find videos the old one couldn't
+  const next = saveSettings({ youtubeKey });
+  res.json({ ok: next.youtubeKey === youtubeKey, set: !!youtubeKey });
+});
+// The wall page itself. Served regardless of the toggle — the page shows a
+// "turned off" note (and fetches nothing) when disabled, so flipping the
+// Settings toggle brings a mounted wall tablet to life without a reload.
+app.get("/display", (req, res) => res.sendFile(path.join(__dirname, "public", "display.html")));
+
+// Assembled rotation content for the now-playing album on a zone: library
+// recommendations (other albums by the artist + label-mates, both from the
+// in-memory indexes — instant, no keys) plus a best-effort YouTube video clip
+// when a key is set. Artist photos / album review / artist bios depend on
+// larger scraping subsystems not yet ported, so they degrade to empty (the
+// page rotates art + recommendations + video regardless). Cached 6h per album.
+const displayContentCache = new Map();
+const DISPLAY_CONTENT_TTL_MS = 6 * 60 * 60 * 1000;
+app.get("/api/display/content", async (req, res) => {
+  if (!displayEnabled) return res.status(403).json({ error: "Wall display is turned off in Settings" });
+  if (!state.connected) return notConnected(res);
+  const zoneId = String(req.query.zone || "");
+  let st = state.statuses.get(zoneId);
+  try { st = await state.lms.playerStatus(zoneId); state.statuses.set(zoneId, st); }
+  catch (e) { /* fall back to cached status */ }
+  const t = (st && st.track) || null;
+  const empty = { artistPhotos: [], review: null, bio: null, bios: [], video: null, moreAlbums: { artist: null, label: null } };
+  if (!t) return res.json(empty);
+  const track  = t.title || "";
+  const artist = t.artist || "";
+  const album  = t.album || "";
+  const primaryArtist = artist.split(" / ")[0].trim();
+
+  const cacheKey = search.normalize(artist) + "||" + search.normalize(album) + "||" + search.normalize(track);
+  const hit = displayContentCache.get(cacheKey);
+  if (hit && (Date.now() - hit.at) < DISPLAY_CONTENT_TTL_MS) return res.json(hit.data);
+
+  try {
+    const video = await fetchDisplayVideo(primaryArtist, track).catch(() => null);
+    // More by this artist — from the in-memory album index (no API keys).
+    const npTitleN = search.normalize(album);
+    const artistN  = search.normalize(primaryArtist);
+    const moreArtist = [];
+    if (artistN) {
+      for (const al of index.records) {
+        if (moreArtist.length >= 12) break;
+        if (search.normalize(al.title) === npTitleN) continue;
+        const subN = search.normalize(al.subtitle || "");
+        if (subN === artistN || subN.split(" / ").indexOf(artistN) !== -1 ||
+            subN.startsWith(artistN + " /") || subN.indexOf(" / " + artistN) !== -1) {
+          moreArtist.push({ offset: al.offset, title: al.title || "", subtitle: al.subtitle || "", image_key: al.image_key || null });
+        }
+      }
+    }
+    // More on this label — project the live album index onto the now-playing
+    // album's label via the labels module (offsets stay valid this way).
+    let moreLabel = null;
+    const labelName = labels.labelForAlbum({ title: album, subtitle: artist });
+    const targetKey = labelName ? labels.groupKey(labelName) : null;
+    if (targetKey) {
+      const picks = [];
+      for (const al of index.records) {
+        if (picks.length >= 12) break;
+        if (search.normalize(al.title) === npTitleN) continue;
+        const alLabel = labels.labelForAlbum(al);
+        if (!alLabel || labels.groupKey(alLabel) !== targetKey) continue;
+        picks.push({ offset: al.offset, title: al.title || "", subtitle: al.subtitle || "", image_key: al.image_key || null });
+      }
+      if (picks.length >= 3) moreLabel = { name: labels.canonicalName(labelName), albums: picks };
+    }
+    const data = {
+      artistPhotos: [], review: null, bio: null, bios: [], video,
+      moreAlbums: {
+        artist: moreArtist.length >= 3 ? { name: primaryArtist, albums: moreArtist } : null,
+        label:  moreLabel
+      }
+    };
+    displayContentCache.delete(cacheKey);
+    displayContentCache.set(cacheKey, { at: Date.now(), data });
+    if (displayContentCache.size > 200) displayContentCache.delete(displayContentCache.keys().next().value);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get("/api/update/status",        (req, res) => res.json({ available: false, latest: pkg.version, current: pkg.version, is_docker: true })); // PHASE 2
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
@@ -1045,6 +1392,8 @@ app.post("/api/settings/qobuz", async (req, res) => {
     qobuzToken       = r.token;
     qobuzDisplayName = r.displayName;
     saveSettings({ qobuzUsername, qobuzPasswordMd5, qobuzToken, qobuzDisplayName });
+    qobuzFavIds.clear();        // account may have changed — drop cached favourite ids
+    qobuzFeaturedCache.clear();
     console.log("[settings] qobuz connected as " + qobuzDisplayName);
     res.json({ ok: true, displayName: qobuzDisplayName });
   } catch (e) {
@@ -1054,11 +1403,128 @@ app.post("/api/settings/qobuz", async (req, res) => {
 // Disconnect: clear all stored Qobuz credentials/token.
 app.post("/api/settings/qobuz/disconnect", (req, res) => {
   qobuzUsername = qobuzPasswordMd5 = qobuzToken = qobuzDisplayName = "";
+  qobuzFavIds.clear();
+  qobuzFeaturedCache.clear();
   saveSettings({ qobuzUsername: "", qobuzPasswordMd5: "", qobuzToken: "", qobuzDisplayName: "" });
   res.json({ ok: true });
 });
+
+// ---- Qobuz browse (the Qobuz page/tab) ----
+// New releases from the last N days (default 30), newest first.
+app.get("/api/qobuz/new-releases", async (req, res) => {
+  let days = parseInt(req.query.days, 10);
+  if (!Number.isFinite(days) || days <= 0 || days > 365) days = 30;
+  try {
+    const [items, favIds] = await Promise.all([getFeaturedItemsCached("new-releases-full"), qobuzFavIds.get()]);
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const future = Date.now() + 2 * 24 * 60 * 60 * 1000; // tolerate a couple days' skew
+    const albums = [];
+    for (const a of items) {
+      if (!a || !a.id) continue;
+      const ts = qobuzReleaseTs(a);
+      if (ts !== null && (ts < cutoff || ts > future)) continue;
+      albums.push(normalizeQobuzAlbum(a, favIds));
+    }
+    albums.sort((x, y) => (y.released_at || 0) - (x.released_at || 0));
+    res.json({ albums, days });
+  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
+});
+app.post("/api/qobuz/favorite", async (req, res) => {
+  const albumId = ((req.body && req.body.album_id) || "").toString().trim();
+  if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
+  try { await qobuzWithToken(t => qobuz.favoriteAlbum(t, albumId)); qobuzFavIds.add(albumId); res.json({ ok: true }); }
+  catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
+});
+app.post("/api/qobuz/unfavorite", async (req, res) => {
+  const albumId = ((req.body && req.body.album_id) || "").toString().trim();
+  if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
+  try { await qobuzWithToken(t => qobuz.unfavoriteAlbum(t, albumId)); qobuzFavIds.remove(albumId); res.json({ ok: true }); }
+  catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
+});
+// Full Qobuz catalog search (albums + artists), paged by offset.
+app.get("/api/qobuz/search", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.status(400).json({ error: "q required" });
+  const offset = parseOffsetParam(req);
+  try {
+    const [r, favIds] = await Promise.all([qobuzWithToken(t => qobuz.searchCatalog(t, q, 50, offset)), qobuzFavIds.get()]);
+    const albums = normalizeQobuzAlbums(r.albums.items, favIds);
+    const artists = [];
+    if (offset === 0) {
+      for (const x of r.artists.items.slice(0, 8)) {
+        if (!x || !x.id) continue;
+        artists.push({ id: String(x.id), name: x.name || "", image: qobuz.pickImage(x), albums_count: x.albums_count || 0 });
+      }
+    }
+    // has_more from the RAW page length (normalization can drop malformed items).
+    const hasMore = offset + r.albums.items.length < r.albums.total;
+    res.json({ query: q, offset, limit: 50, total: r.albums.total, has_more: hasMore, albums, artists });
+  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
+});
+// A Qobuz artist's discography, paged by offset (kept in Qobuz's own order).
+app.get("/api/qobuz/artist-albums", async (req, res) => {
+  const artistId = String(req.query.artist_id || "").trim();
+  if (!artistId) return res.status(400).json({ error: "artist_id required" });
+  const offset = parseOffsetParam(req);
+  try {
+    const [r, favIds] = await Promise.all([qobuzWithToken(t => qobuz.getArtist(t, artistId, 50, offset)), qobuzFavIds.get()]);
+    const albums = normalizeQobuzAlbums(r.albums.items, favIds);
+    const hasMore = offset + r.albums.items.length < r.albums.total;
+    res.json({ artist: r.artist, offset, limit: 50, total: r.albums.total, has_more: hasMore, albums });
+  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
+});
+// Qobuz featured/browse categories (albums stay in Qobuz's own order).
+const QOBUZ_FEATURED_TYPES = new Set([
+  "new-releases-full", "best-sellers", "most-streamed", "press-awards",
+  "editor-picks", "qobuzissims", "ideal-discography", "recent-releases"
+]);
+app.get("/api/qobuz/featured", async (req, res) => {
+  const type = String(req.query.type || "").trim();
+  if (!QOBUZ_FEATURED_TYPES.has(type)) return res.status(400).json({ error: "invalid type" });
+  try {
+    const [items, favIds] = await Promise.all([getFeaturedItemsCached(type), qobuzFavIds.get()]);
+    res.json({ type, albums: normalizeQobuzAlbums(items, favIds) });
+  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
+});
+
 app.get("/api/settings/tidal",       (req, res) => res.json({ connected: false })); // PHASE 2
 app.post("/api/settings/tidal/start", notPorted("Tidal"));                         // PHASE 2
+
+// ---- Global search across external sources (Qobuz + Pitchfork; Tidal N/A) ----
+app.get("/api/search/external", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  const LIM = 6, DEADLINE_MS = 10000;
+  if (!q) return res.json({ query: q, qobuz: null, tidal: null, pitchfork: [] });
+  const [qb, pf] = await Promise.all([
+    (async () => {
+      try {
+        const r = await withDeadline(qobuzWithToken(t => qobuz.searchCatalog(t, q, LIM, 0)), DEADLINE_MS);
+        return normalizeQobuzAlbums(r.albums.items.slice(0, LIM), new Set());
+      } catch (e) { return null; /* not connected / blocked / slow — section absent */ }
+    })(),
+    withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => [])
+  ]);
+  res.json({ query: q, qobuz: qb, tidal: null, pitchfork: pf });
+});
+
+// ---- Pitchfork magazine (browse + per-card library match) ----
+// Browsable listing of recent album reviews or Best New Music (?type=latest|best).
+app.get("/api/pitchfork/reviews", async (req, res) => {
+  const type = req.query.type === "best" ? "best" : "latest";
+  try { res.json({ type, items: await getPitchforkReviews(type) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Library match for one listing card so its detail view can offer to play the
+// album if it's in the library. COMPLIANCE (UK law): the written review is
+// never served — `review` is always null; the client links to pitchfork.com.
+app.get("/api/pitchfork/review", (req, res) => {
+  let u;
+  try { u = new URL(String(req.query.url || "")); } catch (e) { return res.status(400).json({ error: "Invalid url" }); }
+  if (u.hostname !== "pitchfork.com" || !u.pathname.startsWith("/reviews/albums/")) {
+    return res.status(400).json({ error: "Not a Pitchfork album-review URL" });
+  }
+  res.json({ review: null, match: matchLibraryAlbum(String(req.query.album || ""), String(req.query.artist || "")) });
+});
 
 // Discogs personal access token — get status (masked) or save. (Only the
 // setting is ported here; the label-logo-matching pipeline that would use
