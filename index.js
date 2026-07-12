@@ -26,6 +26,7 @@ const compression = require("compression");
 
 const { createLms, discover } = require("./lib/lms");
 const search = require("./lib/search");
+const { makePlaysLog } = require("./lib/plays");
 
 const pkg = require("./package.json");
 const DEBUG = process.env.DEBUG === "1";
@@ -51,15 +52,67 @@ function saveSettings(patch) {
   return next;
 }
 
+// ---------------------------------------------------------------------------
+// Plays log — feeds /api/home/unplayed ("albums not played in N months").
+// See lib/plays.js for why this is a JSON file rather than the sibling Roon
+// app's SQLite table (no native deps in this repo).
+// ---------------------------------------------------------------------------
+const playsLog = makePlaysLog(path.join(DATA_DIR, "plays.json"));
+
+// Per-player "what's currently playing, and did it already qualify as a play"
+// state, keyed by player id. Mirrors the sibling's scrobbleUpdate(), but
+// simpler: LMS's `time` is already true elapsed playback position (unlike
+// Roon, no seek-position-delta accumulation is needed), and we only need a
+// single qualifying-play record, not the sibling's two-phase insert/complete
+// scrobble-stats tracking.
+const scrobbleState = new Map(); // playerId -> { key, recorded, track, artist, album, duration }
+
+function scrobbleTrackKey(t) {
+  return (t.title || "") + "|" + (t.artist || "") + "|" + (t.album || "");
+}
+
+// Called on every status poll (~2.5s) for every player. Records exactly one
+// play per track-listen, once it crosses the qualifying threshold: elapsed
+// >= 30s AND (elapsed >= 50% of duration OR elapsed >= 240s) — same threshold
+// the sibling app uses for its scrobble-stats feature.
+function scrobbleUpdate(playerId, st) {
+  const t = st && st.track;
+  if (!st || !st.playing || !t || !t.title) {
+    scrobbleState.delete(playerId); // stopped/paused/idle — nothing to track
+    return;
+  }
+  const key = scrobbleTrackKey(t);
+  let prev = scrobbleState.get(playerId);
+  if (!prev || prev.key !== key) {
+    // New track (or first sighting) — start tracking it fresh.
+    prev = { key, recorded: false, track: t.title, artist: t.artist, album: t.album, duration: st.duration || t.duration || 0 };
+    scrobbleState.set(playerId, prev);
+  }
+  if (prev.recorded) return; // already logged this listen
+  const elapsed  = st.time || 0;
+  const duration = st.duration || prev.duration || 0;
+  if (elapsed >= 30 && (elapsed >= duration * 0.5 || elapsed >= 240)) {
+    prev.recorded = true;
+    playsLog.recordPlay({ album: prev.album, artist: prev.artist, track: prev.track, duration });
+  }
+}
+
 // Qobuz (UNOFFICIAL API — see lib/qobuz.js). Credentials/token set via Settings.
 // We persist the username, the md5 of the password (for silent re-login), the
 // user_auth_token, and the display name. Never the plaintext password.
 const qobuz = require("./lib/qobuz");
+const { fetchPitchfork } = require("./lib/pitchfork");
 const _persistedQobuz = loadSettings();
 let qobuzUsername    = _persistedQobuz.qobuzUsername    || "";
 let qobuzPasswordMd5 = _persistedQobuz.qobuzPasswordMd5 || "";
 let qobuzToken       = _persistedQobuz.qobuzToken       || "";
 let qobuzDisplayName = _persistedQobuz.qobuzDisplayName || "";
+
+// Discogs / FanArt.tv / label-folder-depth — persisted settings, no connection
+// required. Never expose the raw token/key back to the client, only masked.
+let discogsToken     = _persistedQobuz.discogsToken     || "";
+let fanartKey        = _persistedQobuz.fanartKey        || "";
+let labelFolderDepth = Number(_persistedQobuz.labelFolderDepth) || 0;
 
 // ---------------------------------------------------------------------------
 // Connection state
@@ -135,7 +188,11 @@ async function refreshConnectionInner() {
     state.players = ss.players;
     // Refresh per-player status (cheap for a handful of players).
     for (const p of ss.players) {
-      try { state.statuses.set(p.id, await state.lms.playerStatus(p.id)); }
+      try {
+        const st = await state.lms.playerStatus(p.id);
+        state.statuses.set(p.id, st);
+        scrobbleUpdate(p.id, st);
+      }
       catch (e) { /* a single player being unreachable is non-fatal */ }
     }
     if (!wasConnected) {
@@ -701,11 +758,79 @@ app.post("/api/lms/rescan", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Album metadata extras: Pitchfork score/Best-New-Music/review-link lookup.
+// Frontend passes title and artist (album modal, share card, service-album
+// detail view) so we don't need Roon/LMS metadata to look it up.
+//
+// Only the Pitchfork album-review lookup is ported here — release year
+// (MusicBrainz), artist/album bios (Discogs/Qobuz/Wikipedia scraping), and
+// the label-disk-cache are separate, much bigger subsystems not yet ported;
+// their fields are left null so the frontend degrades gracefully.
+// ---------------------------------------------------------------------------
+app.get("/api/album/extras", async (req, res) => {
+  const title  = String(req.query.title  || "");
+  const artist = String(req.query.artist || "");
+  if (!title) return res.status(400).json({ error: "title query parameter required" });
+  try {
+    const pitchfork = await fetchPitchfork(title, artist).catch(() => null);
+    let album = null;
+    if (pitchfork) {
+      album = {
+        // COMPLIANCE (UK law): Pitchfork's written review must not be
+        // displayed — only the score, the Best New Music flag, and a LINK
+        // to read the review on pitchfork.com are emitted.
+        description:    null,
+        year:           null,
+        label:          null,
+        url:            pitchfork.url,
+        source:         "Pitchfork",
+        score:          pitchfork.score,
+        isBestNewMusic: pitchfork.isBestNewMusic
+      };
+    }
+    res.json({ year: null, album, artist: null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Home section: random albums NOT played in the last N months (default 6).
+// Uses the in-memory album search index (no LMS round-trip) filtered against
+// the plays log, so it's fast. Returns the same album shape as
+// /api/random-albums so the tiles open via the existing modal/play path.
+// Matching is by album title (lowercased/trimmed) — the plays log only
+// records the title, same imprecision as the sibling Roon build's version.
+app.get("/api/home/unplayed", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  let months = parseInt(req.query.months, 10);
+  if (!Number.isFinite(months) || months <= 0 || months > 60) months = 6;
+  let count = parseInt(req.query.count, 10);
+  if (!Number.isFinite(count) || count <= 0 || count > 96) count = 12;
+  try {
+    await ensureIndex();
+    const pool = index.records;
+    if (!pool.length) return res.json({ albums: [], total: 0, months });
+    const cutoff = Date.now() - months * 30 * 24 * 60 * 60 * 1000;
+    const heard = playsLog.getPlayedTitlesSince(cutoff);
+    const candidates = pool.filter(rec => {
+      const t = (rec.title || "").toLowerCase().trim();
+      return !(t && heard.has(t)); // played within the window — skip
+    });
+    if (!candidates.length) return res.json({ albums: [], total: 0, months });
+    const want = Math.min(count, candidates.length);
+    const picked = new Set();
+    while (picked.size < want) picked.add(Math.floor(Math.random() * candidates.length));
+    const albums = [...picked].map(i => albumOut(candidates[i]));
+    res.json({ albums, total: candidates.length, months });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // PHASE 2 stubs — advanced features not yet ported. Each returns a safe empty
 // shape so the existing frontend degrades gracefully instead of erroring.
 // ---------------------------------------------------------------------------
-const emptyRow = (req, res) => res.json({ albums: [], total: 0 });
-app.get("/api/home/unplayed",        emptyRow);                                   // PHASE 2
 app.get("/api/home/album-of-the-day", (req, res) => res.json({ album: null }));   // PHASE 2
 app.get("/api/home/label-of-the-week", (req, res) => res.json({ label: null, albums: [] })); // PHASE 2
 app.get("/api/home/genre-groups",    (req, res) => res.json({ groups: [] }));     // PHASE 2
@@ -748,6 +873,61 @@ app.post("/api/settings/qobuz/disconnect", (req, res) => {
 });
 app.get("/api/settings/tidal",       (req, res) => res.json({ connected: false })); // PHASE 2
 app.post("/api/settings/tidal/start", notPorted("Tidal"));                         // PHASE 2
+
+// Discogs personal access token — get status (masked) or save. (Only the
+// setting is ported here; the label-logo-matching pipeline that would use
+// this token is a separate, much larger subsystem not yet ported.)
+app.get("/api/settings/discogs-token", (req, res) => {
+  res.json({
+    set: !!discogsToken,
+    masked: discogsToken ? "••••••••" + discogsToken.slice(-4) : ""
+  });
+});
+app.post("/api/settings/discogs-token", (req, res) => {
+  const token = ((req.body && req.body.token) || "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "token is empty" });
+  discogsToken = token;
+  const next = saveSettings({ discogsToken: token });
+  const saved = next.discogsToken === token;
+  console.log("[settings] discogs token set (" + token.length + " chars), persisted=" + saved);
+  res.json({ ok: true, saved });
+});
+
+// FanArt.tv API key — get status (masked) or save. (Same caveat as above: the
+// fetch pipeline that would use this key isn't ported yet.)
+app.get("/api/settings/fanart-key", (req, res) => {
+  res.json({
+    set: !!fanartKey,
+    masked: fanartKey ? "••••••••" + fanartKey.slice(-4) : ""
+  });
+});
+app.post("/api/settings/fanart-key", (req, res) => {
+  const key = ((req.body && req.body.key) || "").trim();
+  if (!key) return res.status(400).json({ ok: false, error: "key is empty" });
+  fanartKey = key;
+  const next = saveSettings({ fanartKey: key });
+  const saved = next.fanartKey === key;
+  console.log("[settings] fanart key set (" + key.length + " chars), persisted=" + saved);
+  res.json({ ok: true, saved });
+});
+
+// Label-folder depth — for libraries organised in label folders. 0 = off (use
+// the file's label tag). (The rescan side effect isn't ported yet — saving
+// just persists the number for when that pipeline lands.)
+app.get("/api/settings/label-folder-depth", (req, res) => {
+  res.json({ depth: labelFolderDepth });
+});
+app.post("/api/settings/label-folder-depth", (req, res) => {
+  const depth = parseInt((req.body && req.body.depth), 10);
+  if (!Number.isFinite(depth) || depth < 0 || depth > 6) {
+    return res.status(400).json({ ok: false, error: "depth must be 0–6" });
+  }
+  labelFolderDepth = depth;
+  const next = saveSettings({ labelFolderDepth: depth });
+  const saved = next.labelFolderDepth === depth;
+  console.log("[settings] label folder depth set to " + depth + ", persisted=" + saved);
+  res.json({ ok: true, saved });
+});
 
 // ---------------------------------------------------------------------------
 // Boot
