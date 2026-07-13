@@ -1088,30 +1088,46 @@
   // ambient glow on the same album.
   window.__setModalAmbient = setModalAmbient;
 
-  function setModalArtist(subtitle) {
-    modalSub.innerHTML = "";
-    if (!subtitle) return;
-    // Split on common multi-artist separators so each name becomes its own link.
-    // " / " is Roon's standard separator; feat/featuring/ft handle featured artists.
-    // " & " is intentionally NOT split — it is often part of a band name (e.g. "Simon & Garfunkel").
-    const parts = subtitle.split(/ \/ | feat\.? | featuring | ft\.? /i).map(s => s.trim()).filter(Boolean);
-    parts.forEach((part, i) => {
+  // Split on common multi-artist separators so each name becomes its own link.
+  // " / " is Roon's/LMS's standard separator; "; " is the common file-tag
+  // multi-value form; feat/featuring/ft handle featured artists.
+  // " & " is intentionally NOT split — it is often part of a band name (e.g. "Simon & Garfunkel").
+  const ARTIST_SPLIT_RE = / \/ |; | feat\.? | featuring | ft\.? /i;
+  function splitArtistParts(subtitle) {
+    return String(subtitle || "").split(ARTIST_SPLIT_RE).map(s => s.trim()).filter(Boolean);
+  }
+
+  // A fragment of per-artist link buttons for any artist string. Every name is
+  // clickable and opens that artist's page (their own albums first, then the
+  // albums they appear on).
+  function artistLinkNodes(subtitle, linkClass) {
+    const frag = document.createDocumentFragment();
+    splitArtistParts(subtitle).forEach((part, i) => {
       if (i > 0) {
         const sep = document.createElement("span");
         sep.className = "modal-subtitle-year";
         sep.textContent = " / ";
-        modalSub.appendChild(sep);
+        frag.appendChild(sep);
       }
       const btn = document.createElement("button");
-      btn.className = "modal-artist-link";
+      btn.type = "button";
+      btn.className = linkClass || "modal-artist-link";
       btn.textContent = part;
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();   // track rows have their own tap action
         closeModal();
         if (window.__exitLabels) window.__exitLabels();   // leave the labels browser if active
         window.__showArtistAlbums && window.__showArtistAlbums(part);
       });
-      modalSub.appendChild(btn);
+      frag.appendChild(btn);
     });
+    return frag;
+  }
+
+  function setModalArtist(subtitle) {
+    modalSub.innerHTML = "";
+    if (!subtitle) return;
+    modalSub.appendChild(artistLinkNodes(subtitle));
   }
 
   function openAlbum(album, opts) {
@@ -1225,7 +1241,8 @@
         const ti = document.createElement("span"); ti.className = "t-title";
         ti.textContent = t.title || "";
         const su = document.createElement("span"); su.className = "t-sub";
-        su.textContent = t.subtitle || "";
+        // Every credited artist is its own tappable link to their artist page.
+        su.appendChild(artistLinkNodes(t.subtitle, "t-artist-link"));
         li.appendChild(ti); li.appendChild(su);
         modalTracks.appendChild(li);
       }
@@ -1251,9 +1268,19 @@
         empty.classList.remove("hidden");
         return;
       }
+      // The server returns only the current + upcoming tracks (played ones
+      // are dropped), so the totals here reflect just the remaining queue.
       let totalSec = 0;
-      for (const it of items) if (it.length) totalSec += it.length;
-      summary.textContent = `${items.length} track${items.length === 1 ? "" : "s"} · ${fmtDuration(totalSec)} remaining`;
+      const quals = new Set();
+      for (const it of items) {
+        if (it.length) totalSec += it.length;
+        const q = trackQualityLabel(it);
+        if (q) quals.add(q);
+      }
+      const qualText = quals.size === 1 ? [...quals][0] : (quals.size > 1 ? "Mixed quality" : "");
+      summary.textContent =
+        `${items.length} track${items.length === 1 ? "" : "s"} · ${fmtDuration(totalSec)} remaining` +
+        (qualText ? ` · ${qualText}` : "");
 
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
@@ -1353,6 +1380,20 @@
     return `${m}:${String(s).padStart(2,"0")}`;
   }
 
+  // Human quality label for a queue item: "FLAC 16/44.1", "MP3 320kbps", …
+  const TYPE_LABELS = { flc: "FLAC", flac: "FLAC", alc: "ALAC", alac: "ALAC",
+                        aif: "AIFF", mp3: "MP3", mp4: "AAC", aac: "AAC",
+                        ogg: "OGG", ops: "Opus", wma: "WMA", dsf: "DSD", dff: "DSD", wav: "WAV" };
+  function trackQualityLabel(it) {
+    const type = it.type ? (TYPE_LABELS[String(it.type).toLowerCase()] || String(it.type).toUpperCase()) : "";
+    if (it.samplesize && it.samplerate) {
+      const khz = (it.samplerate / 1000).toFixed(it.samplerate % 1000 ? 1 : 0);
+      return (type ? type + " " : "") + `${it.samplesize}/${khz}`;
+    }
+    if (it.bitrate) return (type ? type + " " : "") + String(it.bitrate).replace(/\s+/g, "");
+    return type || "";
+  }
+
   function closeModal() {
     modal.classList.add("hidden");
     modal.classList.remove("np-mode", "tab-album", "tab-queue");
@@ -1446,7 +1487,9 @@
         const ti = document.createElement("span"); ti.className = "t-title";
         ti.textContent = t.title || "";
         const su = document.createElement("span"); su.className = "t-sub";
-        su.textContent = t.subtitle || "";
+        // Every credited artist is its own tappable link to their artist page
+        // (stopPropagation inside keeps the row's play/queue toggle intact).
+        su.appendChild(artistLinkNodes(t.subtitle, "t-artist-link"));
         li.appendChild(ti); li.appendChild(su);
         li.addEventListener("click", (e) => {
           if (e.target.closest(".t-actions")) return;   // taps on the buttons themselves
@@ -1585,6 +1628,20 @@
 
       text.textContent = extras.album.description || "";
       text.style.display = extras.album.description ? "" : "none";
+
+      // Attribution for the review TEXT (LMS Music & Artist Information
+      // plugin or Qobuz) — separate from the Pitchfork link below, which is
+      // always link-only.
+      let attrib = document.getElementById("album-bio-attrib");
+      if (!attrib) {
+        attrib = document.createElement("div");
+        attrib.id = "album-bio-attrib";
+        attrib.className = "album-bio-attrib";
+        text.insertAdjacentElement("afterend", attrib);
+      }
+      const showAttrib = !!(extras.album.description && extras.album.descriptionSource);
+      attrib.textContent = showAttrib ? "Review: " + extras.album.descriptionSource : "";
+      attrib.style.display = showAttrib ? "" : "none";
 
       if (extras.album.url && extras.album.source) {
         srcLink.href = extras.album.url;
