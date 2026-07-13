@@ -4336,10 +4336,114 @@
   if (sheet) {
     sheet.addEventListener("click", (e) => {
       const nav = e.target.closest(".settings-nav-item");
-      if (nav) { showView(nav.getAttribute("data-pane")); return; }
+      if (nav) {
+        const pane = nav.getAttribute("data-pane");
+        showView(pane);
+        if (pane === "lms") loadLmsPane();
+        return;
+      }
       if (e.target.closest("[data-settings-back]")) { showView("home"); return; }
     });
   }
+
+  /* ---- LMS server pane: embedded server settings + rescan actions ------- */
+  const lmsPane = {
+    status:  document.getElementById("lms-conn-status"),
+    note:    document.getElementById("lms-settings-note"),
+    open:    document.getElementById("lms-open-settings"),
+    rescanNew:    document.getElementById("lms-rescan-new"),
+    rescanOnline: document.getElementById("lms-rescan-online"),
+    rescanStatus: document.getElementById("lms-rescan-status"),
+    overlay: document.getElementById("lmsset-overlay"),
+    frame:   document.getElementById("lmsset-frame"),
+    close:   document.getElementById("lmsset-close"),
+    newtab:  document.getElementById("lmsset-newtab")
+  };
+  let lmsSettingsUrl = null;
+
+  async function loadLmsPane() {
+    if (!lmsPane.status) return;
+    lmsPane.status.textContent = "…";
+    try {
+      const r = await fetch("/api/lms/settings-info");
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      // The server may know LMS as 127.0.0.1 (same-machine install) — the
+      // BROWSER must use an address it can reach, i.e. this app's hostname.
+      const browserHost = /^(127\.0\.0\.1|localhost|0\.0\.0\.0)$/i.test(j.host)
+        ? location.hostname : j.host;
+      lmsSettingsUrl = "http://" + browserHost + ":" + j.port + j.settings_path;
+      lmsPane.status.textContent = j.host + ":" + j.port + (j.scanning ? " · scanning…" : " · connected");
+      lmsPane.note.textContent = j.material
+        ? "Material Skin detected — opens Material's styled settings pages."
+        : "Opens Lyrion's classic settings pages. Install the Material Skin plugin on LMS for its styled version.";
+      if (location.protocol === "https:") {
+        // Mixed content: an https page can't frame the http LMS — fall back
+        // to opening in a new tab instead of a broken grey box.
+        lmsPane.note.textContent += " (Opens in a new tab — this page is served over HTTPS and LMS isn't.)";
+      }
+      lmsPane.open.disabled = false;
+    } catch (e) {
+      lmsPane.status.textContent = "Not connected";
+      lmsPane.note.textContent = e.message;
+      lmsPane.open.disabled = true;
+    }
+  }
+
+  function closeLmsFrame() {
+    if (!lmsPane.overlay) return;
+    lmsPane.overlay.classList.add("hidden");
+    lmsPane.frame.src = "about:blank";   // stop the page, drop its polling
+    document.body.style.overflow = "";
+  }
+  if (lmsPane.open) lmsPane.open.addEventListener("click", () => {
+    if (!lmsSettingsUrl) return;
+    if (location.protocol === "https:") { window.open(lmsSettingsUrl, "_blank", "noopener"); return; }
+    lmsPane.newtab.href = lmsSettingsUrl;
+    lmsPane.frame.src = lmsSettingsUrl;
+    lmsPane.overlay.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+  });
+  if (lmsPane.close) lmsPane.close.addEventListener("click", closeLmsFrame);
+
+  // Rescan actions. After LMS finishes, /api/reindex refreshes this app's own
+  // album index so new music shows up without waiting for the 12h staleness.
+  let lmsScanPoll = null;
+  function watchLmsScan() {
+    if (lmsScanPoll) clearInterval(lmsScanPoll);
+    let polls = 0;
+    lmsScanPoll = setInterval(async () => {
+      if (++polls > 150) { clearInterval(lmsScanPoll); lmsScanPoll = null; return; }
+      try {
+        const j = await (await fetch("/api/lms/settings-info")).json();
+        if (!j.scanning && polls >= 2) {
+          clearInterval(lmsScanPoll); lmsScanPoll = null;
+          await fetch("/api/reindex", { method: "POST" }).catch(() => {});
+          if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = "Scan finished — library refreshed.";
+        }
+      } catch (e) { /* keep polling */ }
+    }, 4000);
+  }
+  function wireRescan(btn, mode, label) {
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = label + " started…";
+      try {
+        const r = await fetch("/api/lms/rescan", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(mode ? { mode } : {})
+        });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
+        watchLmsScan();
+      } catch (e) {
+        if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = "Couldn't start: " + e.message;
+      }
+      setTimeout(() => { btn.disabled = false; }, 3000);
+    });
+  }
+  wireRescan(lmsPane.rescanNew, null, "Library rescan");
+  wireRescan(lmsPane.rescanOnline, "onlinelibrary", "Online-services import");
 
   const open = () => { showView("home"); loadRadio(); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
   const close = () => {
@@ -4595,9 +4699,12 @@ function initServiceBrowser(cfg) {
       const j = await r.json();
       if (j.ok) {
         btns.forEach(b => setFavState(b, !wasAdded));
+        // rescan_scheduled: the server kicks an LMS online-library import
+        // ~30s after the LAST favourite change, so bursts collapse into one.
+        const rescanNote = j.rescan_scheduled ? " — LMS will import it shortly" : "";
         toast(wasAdded
           ? ("Removed from " + cfg.serviceName + " favourites")
-          : ("Added to " + cfg.serviceName + " favourites"), "ok");
+          : ("Added to " + cfg.serviceName + " favourites" + rescanNote), "ok");
       } else {
         btns.forEach((b, i) => { b.textContent = prev[i]; });
         toast(j.error || "Couldn't update favourite", "error");
