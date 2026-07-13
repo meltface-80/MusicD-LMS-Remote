@@ -302,12 +302,20 @@ const labels = makeLabels({
 });
 
 // ---------------------------------------------------------------------------
-// Update notifier — checks GitHub for a newer release and nudges the user to
-// rebuild their container. NOT a self-updater (Docker filesystem is ephemeral;
-// see lib/updater.js). Backs the /api/update/* routes.
+// In-app self-updater — checks GitHub for a newer release and, on request,
+// downloads + applies it and restarts into the new code (no `docker build`).
+// The restart is coordinated by launcher.js (PID 1), which sets
+// RRA_VIA_LAUNCHER=1; see lib/updater.js. Backs the /api/update/* routes.
 // ---------------------------------------------------------------------------
 const { makeUpdater } = require("./lib/updater");
-const updater = makeUpdater({ owner: "meltface-80", repo: "MusicD-LMS-Remote", currentVersion: pkg.version, debug: DEBUG });
+const updater = makeUpdater({
+  owner: "meltface-80",
+  repo: "MusicD-LMS-Remote",
+  currentVersion: pkg.version,
+  dir: __dirname,
+  viaLauncher: process.env.RRA_VIA_LAUNCHER === "1",
+  debug: DEBUG
+});
 
 // FNV-1a string hash — a stable seed for deterministic daily/weekly picks
 // (album-of-the-day, label-of-the-week). Returns an unsigned 32-bit int;
@@ -1419,8 +1427,8 @@ app.get("/api/display/content", async (req, res) => {
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// Update notifier routes. This is a Docker install, so we NOTIFY (rebuild the
-// container) rather than self-apply — see lib/updater.js for the why.
+// Self-update routes. getStatus() carries `apply` (live download/extract/restart
+// progress) and `viaLauncher`, which the frontend poll reads to drive the UI.
 app.get("/api/update/status", (req, res) => {
   updater.maybeCheck(); // fire-and-forget background refresh (throttled to hourly)
   res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
@@ -1429,9 +1437,17 @@ app.post("/api/update/check", async (req, res) => {
   await updater.checkNow();
   res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
 });
-app.post("/api/update/apply", (req, res) => {
-  // Kept so any stray self-update call gets a clear, actionable message.
-  res.status(400).json({ ok: false, error: "This is a Docker install — update by rebuilding the image and recreating the container (see the README). In-app self-update isn't available inside the container." });
+app.post("/api/update/apply", async (req, res) => {
+  // Respond BEFORE apply() runs — a successful apply exits the process (code 75)
+  // so the launcher can restart into the new build, and we'd never get to send a
+  // reply after that. The frontend then polls /api/update/status for progress.
+  let st = updater.getStatus();
+  if (!st.available) {
+    st = await updater.checkNow();
+    if (!st.available) return res.status(409).json({ error: "No update available", status: st });
+  }
+  res.json({ ok: true, status: updater.getStatus() });
+  updater.apply().catch(() => {});
 });
 const notPorted = (name) => (req, res) => res.status(501).json({
   ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"

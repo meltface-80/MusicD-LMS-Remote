@@ -25,4 +25,8 @@ ENV DOCKER=1
 # ENV LMS_HOST=192.168.1.50
 # ENV LMS_PORT=9000
 
-CMD ["npm","start"]
+# Run the launcher directly (not via `npm start`) so it is PID 1: it supervises
+# index.js and applies in-app updates (index.js exits 75 → launcher overlays the
+# staged build and respawns). As PID 1 it also receives `docker stop`'s SIGTERM
+# directly and forwards it to index.js for a clean shutdown, which npm does not.
+CMD ["node","launcher.js"]
