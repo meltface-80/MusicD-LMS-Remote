@@ -4342,10 +4342,251 @@
         const pane = nav.getAttribute("data-pane");
         showView(pane);
         if (pane === "lms") loadLmsPane();
+        if (pane === "player") loadPlayerPane();
         return;
       }
       if (e.target.closest("[data-settings-back]")) { showView("home"); return; }
     });
+  }
+
+  /* ---- Player settings pane (native per-player LMS settings) ------------ */
+  const psPlayer = document.getElementById("ps-player");
+  const psModel  = document.getElementById("ps-model");
+  const psBody   = document.getElementById("ps-body");
+  const psStat   = document.getElementById("ps-status");
+  let psCurrent  = null;
+  let psStatTimer = null;
+
+  function psStatus(msg, isError) {
+    if (!psStat) return;
+    psStat.textContent = msg;
+    psStat.style.color = isError ? "var(--danger)" : "";
+    clearTimeout(psStatTimer);
+    if (!isError) psStatTimer = setTimeout(() => { psStat.textContent = ""; }, 2500);
+  }
+  async function psPost(url, body, okMsg) {
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
+      psStatus(okMsg || "Saved ✓");
+      return true;
+    } catch (e) { psStatus("Couldn't save: " + e.message, true); return false; }
+  }
+  const psSavePref = (name, value) =>
+    psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/pref/${encodeURIComponent(name)}`, { value });
+
+  // Row builders following the pane's existing markup patterns.
+  function psRowToggle(label, info, checked, onChange) {
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    row.innerHTML =
+      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
+      `<label class="switch"><input type="checkbox"><span class="switch-track"><span class="switch-thumb"></span></span></label>`;
+    const input = row.querySelector("input");
+    input.checked = !!checked;
+    input.addEventListener("change", () => onChange(input.checked, input));
+    return row;
+  }
+  function psRowSelect(label, info, options, value, onChange) {
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    row.innerHTML =
+      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
+      `<div class="settings-select-wrap"><select class="settings-select"></select>` +
+      `<svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></div>`;
+    const sel = row.querySelector("select");
+    for (const [v, text] of options) {
+      const o = document.createElement("option");
+      o.value = String(v); o.textContent = text;
+      sel.appendChild(o);
+    }
+    sel.value = String(value);
+    if (sel.value !== String(value)) { // current value outside the list — show it raw
+      const o = document.createElement("option");
+      o.value = String(value); o.textContent = String(value);
+      sel.appendChild(o); sel.value = String(value);
+    }
+    sel.addEventListener("change", () => onChange(sel.value, sel));
+    return row;
+  }
+  function psRowNumber(label, info, value, min, max, step, onChange) {
+    const row = document.createElement("div");
+    row.className = "settings-row";
+    row.innerHTML =
+      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
+      `<input type="number" class="settings-token-input ps-num" min="${min}" max="${max}" step="${step}">`;
+    const input = row.querySelector("input");
+    input.value = value != null ? String(value) : "";
+    input.addEventListener("change", () => onChange(input.value, input));
+    return row;
+  }
+  function psBlock(...rows) {
+    const b = document.createElement("div");
+    b.className = "settings-block";
+    for (const r of rows) if (r) b.appendChild(r);
+    return b.children.length ? b : null;
+  }
+
+  async function loadPlayerPane() {
+    if (!psPlayer) return;
+    try {
+      const r = await fetch("/api/zones");
+      const j = await r.json();
+      const zones = (j.zones || []);
+      psPlayer.innerHTML = "";
+      for (const z of zones) {
+        const o = document.createElement("option");
+        o.value = z.zone_id; o.textContent = z.display_name;
+        psPlayer.appendChild(o);
+      }
+      if (!zones.length) {
+        psBody.innerHTML = '<div class="settings-sub">No players found.</div>';
+        return;
+      }
+      const keep = psCurrent && zones.some(z => z.zone_id === psCurrent) ? psCurrent : zones[0].zone_id;
+      psPlayer.value = keep;
+      await loadPlayerSettings(keep);
+    } catch (e) {
+      psBody.innerHTML = '<div class="settings-sub"></div>';
+      psBody.firstChild.textContent = "Couldn't load players: " + e.message;
+    }
+  }
+  if (psPlayer) psPlayer.addEventListener("change", () => loadPlayerSettings(psPlayer.value));
+
+  async function loadPlayerSettings(id) {
+    psCurrent = id;
+    psModel.textContent = "";
+    psBody.innerHTML = '<div class="settings-sub">Loading…</div>';
+    try {
+      const r = await fetch(`/api/lms/player/${encodeURIComponent(id)}/settings`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      if (psCurrent !== id) return;   // switched players while loading
+      renderPlayerSettings(j);
+    } catch (e) {
+      if (psCurrent === id) {
+        psBody.innerHTML = '<div class="settings-sub"></div>';
+        psBody.firstChild.textContent = "Couldn't load settings: " + e.message;
+      }
+    }
+  }
+
+  function renderPlayerSettings(j) {
+    const p = j.prefs || {};
+    const has = (k) => p[k] !== null && p[k] !== undefined;
+    psModel.textContent = j.model ? j.model : "";
+    psBody.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    const divider = () => { const d = document.createElement("div"); d.className = "settings-divider"; return d; };
+    const append = (block) => { if (block) { if (frag.children.length) frag.appendChild(divider()); frag.appendChild(block); } };
+
+    // Identity: rename + power
+    {
+      const b = document.createElement("div");
+      b.className = "settings-block";
+      b.innerHTML =
+        `<div class="settings-row"><span class="settings-label">Player name <button class="settings-info-btn" data-info="The name this player shows everywhere — here, in LMS and to other controllers." aria-label="Info">ⓘ</button></span></div>` +
+        `<div class="settings-token-row"><input id="ps-name" type="text" class="settings-token-input" autocomplete="off" spellcheck="false">` +
+        `<button id="ps-name-save" class="settings-update-btn" type="button">Save</button></div>`;
+      b.querySelector("#ps-name").value = j.name || "";
+      b.querySelector("#ps-name-save").addEventListener("click", async () => {
+        const name = b.querySelector("#ps-name").value.trim();
+        if (!name) return;
+        if (await psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/name`, { name }, "Renamed ✓")) {
+          const opt = psPlayer.querySelector(`option[value="${CSS.escape(psCurrent)}"]`);
+          if (opt) opt.textContent = name;
+        }
+      });
+      b.appendChild(psRowToggle("Power", "Soft power for this player.", j.power, (on) =>
+        psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/power`, { on }, on ? "Powered on" : "Powered off")));
+      append(b);
+    }
+
+    // Playback modes
+    append(psBlock(
+      j.modes && j.modes.shuffle != null ? psRowSelect("Shuffle", "Shuffle mode for this player's queue.",
+        [[0, "Off"], [1, "By song"], [2, "By album"]], j.modes.shuffle,
+        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { shuffle: v })) : null,
+      j.modes && j.modes.repeat != null ? psRowSelect("Repeat", "Repeat mode for this player's queue.",
+        [[0, "Off"], [1, "One song"], [2, "All"]], j.modes.repeat,
+        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { repeat: v })) : null
+    ));
+
+    // Audio
+    append(psBlock(
+      has("transitionType") ? psRowSelect("Crossfade", "How one track blends into the next.",
+        [[0, "None"], [1, "Crossfade"], [2, "Fade in"], [3, "Fade out"], [4, "Fade in & out"]],
+        p.transitionType, (v) => psSavePref("transitionType", v)) : null,
+      has("transitionDuration") ? psRowNumber("Crossfade seconds", "Length of the crossfade/fade (0–10 s).",
+        p.transitionDuration, 0, 10, 1, (v) => psSavePref("transitionDuration", v)) : null,
+      has("transitionSmart") ? psRowToggle("Smart crossfade", "Skip the crossfade between consecutive tracks of the same album (gapless stays gapless).",
+        p.transitionSmart === "1" || p.transitionSmart === 1, (on) => psSavePref("transitionSmart", on ? "1" : "0")) : null,
+      has("replayGainMode") ? psRowSelect("Volume levelling", "Use ReplayGain tags to even out loudness between tracks/albums.",
+        [[0, "Off"], [1, "Track gain"], [2, "Album gain"], [3, "Smart gain"]],
+        p.replayGainMode, (v) => psSavePref("replayGainMode", v)) : null,
+      has("remoteReplayGain") ? psRowNumber("Remote stream gain (dB)", "Fixed gain applied to remote/streamed tracks that have no ReplayGain tags.",
+        p.remoteReplayGain, -20, 20, 1, (v) => psSavePref("remoteReplayGain", v)) : null,
+      has("digitalVolumeControl") ? psRowToggle("Software volume control", "Off = fixed 100% digital output for an external amp/DAC volume.",
+        p.digitalVolumeControl === "1" || p.digitalVolumeControl === 1, (on) => psSavePref("digitalVolumeControl", on ? "1" : "0")) : null,
+      has("bass") ? psRowNumber("Bass", "Tone control (hardware players only). 50 = flat.",
+        p.bass, 0, 100, 1, (v) => psSavePref("bass", v)) : null,
+      has("treble") ? psRowNumber("Treble", "Tone control (hardware players only). 50 = flat.",
+        p.treble, 0, 100, 1, (v) => psSavePref("treble", v)) : null
+    ));
+
+    // Power behaviour
+    append(psBlock(
+      has("powerOnResume") ? psRowSelect("On power on", "What playback does when the player is switched off and back on.",
+        [["PauseOff-PlayOn",     "Pause when off · resume when on"],
+         ["PauseOff-NoneOn",     "Pause when off · stay paused"],
+         ["StopOff-PlayOn",      "Stop when off · play when on"],
+         ["StopOff-NoneOn",      "Stop when off · do nothing"],
+         ["StopOff-ResetPlayOn", "Stop & reset · play when on"],
+         ["StopOff-ResetOn",     "Stop & reset · do nothing"]],
+        p.powerOnResume, (v) => psSavePref("powerOnResume", v)) : null,
+      has("fadeInDuration") ? psRowNumber("Fade in on play (s)", "Volume ramp when playback starts or resumes.",
+        p.fadeInDuration, 0, 30, 1, (v) => psSavePref("fadeInDuration", v)) : null
+    ));
+
+    // Alarms
+    append(psBlock(
+      has("alarmsEnabled") ? psRowToggle("Alarms enabled", "Master switch for all of this player's alarms (set the alarms themselves in LMS).",
+        p.alarmsEnabled === "1" || p.alarmsEnabled === 1, (on) => psSavePref("alarmsEnabled", on ? "1" : "0")) : null,
+      has("alarmDefaultVolume") ? psRowNumber("Alarm volume", "Default volume for alarms (0–100).",
+        p.alarmDefaultVolume, 0, 100, 1, (v) => psSavePref("alarmDefaultVolume", v)) : null
+    ));
+
+    // Sync group
+    {
+      const sync = j.sync || { members: [], others: [] };
+      const rows = [];
+      if (sync.others.length) {
+        rows.push(psRowSelect("Sync with", "Group this player with another for synchronous playback everywhere.",
+          [["", "Not synced"], ...sync.others.map(o => [o.id, o.name])],
+          sync.members[0] || "",
+          async (v) => {
+            if (await psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/sync`, { with: v || null }, v ? "Synced ✓" : "Unsynced ✓")) {
+              loadPlayerSettings(psCurrent);   // group membership changed — refresh
+            }
+          }));
+      }
+      if (has("syncVolume")) rows.push(psRowToggle("Sync volume", "Volume changes apply to the whole sync group.",
+        p.syncVolume === "1" || p.syncVolume === 1, (on) => psSavePref("syncVolume", on ? "1" : "0")));
+      if (has("syncPower")) rows.push(psRowToggle("Sync power", "Power state follows the sync group.",
+        p.syncPower === "1" || p.syncPower === 1, (on) => psSavePref("syncPower", on ? "1" : "0")));
+      if (has("maintainSync")) rows.push(psRowToggle("Maintain sync", "Continuously correct timing drift within the group.",
+        p.maintainSync === "1" || p.maintainSync === 1, (on) => psSavePref("maintainSync", on ? "1" : "0")));
+      append(psBlock(...rows));
+    }
+
+    // Network / streaming
+    append(psBlock(
+      has("maxBitrate") ? psRowSelect("Bitrate limit", "Cap this player's stream bitrate (transcodes on the fly). Useful for remote/slow links.",
+        [[0, "No limit"], [64, "64 kbps"], [96, "96 kbps"], [128, "128 kbps"], [160, "160 kbps"], [192, "192 kbps"], [256, "256 kbps"], [320, "320 kbps"]],
+        p.maxBitrate, (v) => psSavePref("maxBitrate", v)) : null
+    ));
+
+    psBody.appendChild(frag);
   }
 
   /* ---- LMS server pane: embedded server settings + rescan actions ------- */

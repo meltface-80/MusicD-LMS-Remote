@@ -1872,6 +1872,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   margin-top: 6px;
 }
 
+/* Player settings pane: compact number inputs on the row's right edge */
+.ps-num { max-width: 96px; flex: 0 0 auto; text-align: right; }
+
 /* Full-screen embedded LMS server-settings frame */
 .lmsset-overlay {
   position: fixed; inset: 0; z-index: 1200;

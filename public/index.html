@@ -724,6 +724,17 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
+          <button class="settings-nav-item" type="button" data-pane="player">
+            <span class="settings-nav-ico" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            </span>
+            <span class="settings-nav-txt">
+              <span class="settings-nav-title">Player settings</span>
+              <span class="settings-nav-desc">Rename, crossfade, replay gain &amp; sync</span>
+            </span>
+            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+
           <button class="settings-nav-item" type="button" data-pane="labels">
             <span class="settings-nav-ico" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.59a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -848,6 +859,37 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             </label>
           </div>
         </div>
+      </div>
+
+      <!-- Player settings (native per-player LMS settings) -->
+      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="player">
+        <div class="settings-pane-head">
+          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2>Player settings</h2>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Player</span>
+            <div class="settings-select-wrap">
+              <select id="ps-player" class="settings-select" aria-label="Player"></select>
+              <svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          </div>
+          <div class="settings-sub" id="ps-model" style="padding-top:2px"></div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Rows are built per player: controls whose pref the player doesn't
+             support are simply not rendered (Material-skin behaviour). -->
+        <div id="ps-body"></div>
+        <div id="ps-status" class="settings-token-status"></div>
       </div>
 
       <!-- Labels -->
