@@ -2,14 +2,17 @@
 
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/fc1dd26e-db7f-4e27-8f66-b0ab74db89e3" />
 
+## 🐳 [Install with the Docker configurator →](https://meltface-80.github.io/MusicD-LMS-Remote/#install)
+
+**[meltface-80.github.io/MusicD-LMS-Remote](https://meltface-80.github.io/MusicD-LMS-Remote/)**
+
+Pick same-machine / separate-machine / macOS, toggle the read-only music mount,
+and copy a ready-made `docker run` or `docker compose` command — plus
+step-by-step FanArt.tv, YouTube and Discogs API key setup.
+
 </div>
 
 # MusicD LMS Remote
-
-> 📖 **[Docs & Docker install configurator](https://meltface-80.github.io/MusicD-LMS-Remote/)** — pick
-> same-machine / separate-machine / macOS and copy a ready-made `docker run` or
-> `docker compose` command, plus step-by-step API key setup.
-> (Served from [`docs/`](docs/) via GitHub Pages.)
 
 ## Features
 
