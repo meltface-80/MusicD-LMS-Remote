@@ -6,6 +6,11 @@
 
 # MusicD LMS Remote
 
+> 📖 **[Docs & Docker install configurator](https://meltface-80.github.io/MusicD-LMS-Remote/)** — pick
+> same-machine / separate-machine / macOS and copy a ready-made `docker run` or
+> `docker compose` command, plus step-by-step API key setup.
+> (Served from [`docs/`](docs/) via GitHub Pages.)
+
 ## Features
 
 🎵 Album Discovery

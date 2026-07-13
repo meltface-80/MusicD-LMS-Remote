@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MusicD LMS Remote — install &amp; docs</title>
+<meta name="description" content="MusicD LMS Remote — a music-discovery PWA and wall display for Lyrion Music Server. Docker install configurator, API key setup and docs.">
+<style>
+  :root {
+    --bg:        #1b1d1f;   /* charcoal */
+    --bg-deep:   #141618;
+    --panel:     #232628;
+    --panel-2:   #2a2d30;
+    --line:      #35393d;
+    --text:      #e8e6e3;
+    --muted:     #a8a49e;
+    --copper:    #c47f4a;   /* subtle copper accent */
+    --copper-hi: #d99a66;
+    --copper-dim:#8a5a35;
+    --good:      #7fb47f;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--copper-hi); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---------- top nav ---------- */
+  nav.topnav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(20,22,24,.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  nav.topnav .wrap {
+    display: flex; align-items: center; gap: 18px;
+    height: 52px; overflow-x: auto; white-space: nowrap;
+  }
+  nav.topnav a {
+    color: var(--muted); font-size: 14px; font-weight: 500;
+  }
+  nav.topnav a:hover { color: var(--copper-hi); text-decoration: none; }
+  nav.topnav .brand { color: var(--text); font-weight: 700; letter-spacing: .02em; }
+  nav.topnav .brand span { color: var(--copper); }
+  nav.topnav .gh { margin-left: auto; }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    text-align: center;
+    padding: 48px 20px 40px;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% -10%, rgba(196,127,74,.14), transparent 65%),
+      var(--bg-deep);
+    border-bottom: 1px solid var(--line);
+  }
+  header.hero img.logo {
+    max-width: min(560px, 88vw);
+    width: 100%; height: auto;
+    border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+  }
+  header.hero .wordmark { display: none; font-size: 44px; font-weight: 800; letter-spacing: .03em; }
+  header.hero .wordmark span { color: var(--copper); }
+  header.hero.noimg img.logo { display: none; }
+  header.hero.noimg .wordmark { display: block; }
+  header.hero h1 { font-size: 30px; margin-top: 26px; font-weight: 700; }
+  header.hero p.tag { color: var(--muted); max-width: 640px; margin: 10px auto 0; font-size: 16px; }
+  .badges { margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; font-size: 12.5px; font-weight: 600;
+    padding: 4px 12px; border-radius: 999px;
+    border: 1px solid var(--copper-dim); color: var(--copper-hi);
+    background: rgba(196,127,74,.08);
+  }
+  .badge.plain { border-color: var(--line); color: var(--muted); background: transparent; }
+
+  /* ---------- sections ---------- */
+  section { padding: 52px 0 8px; scroll-margin-top: 56px; }
+  section > .wrap > h2 {
+    font-size: 24px; font-weight: 700; margin-bottom: 6px;
+    padding-left: 14px; border-left: 3px solid var(--copper);
+  }
+  section > .wrap > p.lead { color: var(--muted); margin-bottom: 26px; max-width: 720px; }
+
+  /* ---------- feature grid ---------- */
+  .grid {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .card h3 { font-size: 15.5px; font-weight: 650; margin-bottom: 6px; }
+  .card h3 .em { margin-right: 8px; }
+  .card p { font-size: 13.5px; color: var(--muted); }
+
+  /* ---------- configurator ---------- */
+  .cfg {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .cfg-body { padding: 22px; display: grid; gap: 22px; }
+  @media (min-width: 860px) {
+    .cfg-body { grid-template-columns: 340px 1fr; align-items: start; }
+  }
+
+  .modes { display: grid; gap: 10px; }
+  .mode {
+    display: block; cursor: pointer;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    transition: border-color .15s, background .15s;
+  }
+  .mode:hover { border-color: var(--copper-dim); }
+  .mode input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode .m-title { font-weight: 650; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+  .mode .m-title::before {
+    content: ""; width: 14px; height: 14px; flex: 0 0 14px;
+    border-radius: 50%; border: 2px solid var(--muted);
+  }
+  .mode .m-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; padding-left: 22px; }
+  .mode.sel { border-color: var(--copper); background: rgba(196,127,74,.07); }
+  .mode.sel .m-title::before { border-color: var(--copper); background: radial-gradient(circle at center, var(--copper) 0 45%, transparent 50%); }
+
+  .fields { display: grid; gap: 14px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; letter-spacing: .02em; }
+  .field label .req { color: var(--copper-hi); }
+  .field input[type=text] {
+    width: 100%; padding: 9px 12px; font-size: 14px;
+    font-family: var(--mono);
+    color: var(--text); background: var(--bg-deep);
+    border: 1px solid var(--line); border-radius: 8px;
+    outline: none;
+  }
+  .field input[type=text]:focus { border-color: var(--copper); }
+  .field .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .field.hidden { display: none; }
+
+  .toggle-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; cursor: pointer;
+  }
+  .toggle-row input { accent-color: var(--copper); margin-top: 3px; width: 16px; height: 16px; cursor: pointer; }
+  .toggle-row .t-title { font-weight: 650; font-size: 14px; }
+  .toggle-row .t-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+  .subfields { display: grid; gap: 12px; padding-left: 4px; border-left: 2px solid var(--copper-dim); margin-left: 6px; padding: 10px 0 2px 14px; }
+  .subfields.hidden { display: none; }
+
+  .note {
+    font-size: 13px; color: var(--muted);
+    background: rgba(196,127,74,.06);
+    border: 1px solid var(--copper-dim);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .note b { color: var(--copper-hi); }
+  .note.hidden { display: none; }
+
+  /* output panel */
+  .out { display: grid; gap: 12px; min-width: 0; }
+  .out-tabs { display: flex; gap: 8px; }
+  .out-tabs button {
+    font: 600 13px var(--sans); cursor: pointer;
+    color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 7px 14px;
+  }
+  .out-tabs button.sel { color: var(--copper-hi); border-color: var(--copper); background: rgba(196,127,74,.08); }
+  .codebox { position: relative; }
+  .codebox pre {
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px; padding-top: 40px;
+    overflow-x: auto;
+    font: 13px/1.55 var(--mono);
+    color: #d8d4cf;
+    white-space: pre;
+  }
+  .codebox pre .k { color: var(--copper-hi); }     /* flags / keys */
+  .codebox pre .v { color: #9fc3a0; }              /* values */
+  .codebox pre .c { color: #77726c; }              /* comments */
+  .copy-btn {
+    position: absolute; top: 10px; right: 10px;
+    font: 600 12px var(--sans); cursor: pointer;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 7px;
+    padding: 6px 12px;
+  }
+  .copy-btn:hover { border-color: var(--copper); color: var(--copper-hi); }
+  .copy-btn.done { color: var(--good); border-color: var(--good); }
+  .after-note { font-size: 13.5px; color: var(--muted); }
+  .after-note code, p code, li code, td code {
+    font: 12.5px var(--mono);
+    background: var(--bg-deep);
+    border: 1px solid var(--line);
+    border-radius: 5px; padding: 1.5px 6px;
+    color: var(--copper-hi);
+  }
+
+  /* ---------- API key steps ---------- */
+  .api-cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+  .api-card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px;
+  }
+  .api-card h3 { font-size: 17px; margin-bottom: 4px; }
+  .api-card .free { font-size: 12px; font-weight: 700; color: var(--copper-hi); letter-spacing: .06em; text-transform: uppercase; }
+  .api-card p.what { font-size: 13.5px; color: var(--muted); margin: 8px 0 12px; }
+  .api-card ol { padding-left: 20px; font-size: 13.5px; display: grid; gap: 7px; }
+  .api-card ol li::marker { color: var(--copper); font-weight: 700; }
+  .api-card .fine { font-size: 12.5px; color: var(--muted); margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+
+  /* ---------- env table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  th { background: var(--panel-2); color: var(--copper-hi); font-size: 12.5px; letter-spacing: .04em; text-transform: uppercase; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-family: var(--mono); white-space: nowrap; }
+  td { color: var(--muted); }
+  td:first-child { color: var(--text); }
+
+  footer {
+    margin-top: 64px; padding: 28px 20px 40px;
+    border-top: 1px solid var(--line);
+    text-align: center; font-size: 13px; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="wrap">
+    <a class="brand" href="#top">Music<span>D</span> LMS Remote</a>
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="#apikeys">API keys</a>
+    <a href="#env">Environment</a>
+    <a class="gh" href="https://github.com/meltface-80/MusicD-LMS-Remote">GitHub&nbsp;→</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <img class="logo" src="https://github.com/user-attachments/assets/fc1dd26e-db7f-4e27-8f66-b0ab74db89e3"
+       alt="MusicD logo" onerror="this.closest('.hero').classList.add('noimg')">
+  <div class="wordmark">Music<span>D</span></div>
+  <h1>MusicD LMS Remote</h1>
+  <p class="tag">A music-discovery PWA and full-screen wall display for
+     <a href="https://lyrion.org">Lyrion Music Server</a> — random-album browsing,
+     instant whole-library search, rich label &amp; artist pages, and effortless playback.</p>
+  <div class="badges">
+    <span class="badge">v1.0.2</span>
+    <span class="badge plain">Docker</span>
+    <span class="badge plain">MIT licence</span>
+    <span class="badge plain">Works over the network — no LMS plugin needed</span>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <p class="lead">Everything runs against your existing LMS over HTTP — the app never touches
+       your library files (except an optional read-only mount for label-tag scanning).</p>
+    <div class="grid">
+      <div class="card"><h3><span class="em">🎵</span>Album discovery</h3>
+        <p>Random album selection with filtering, Album of the day, Label of the week, Play Unheard, and recently-unplayed recommendations. The database learns what you've heard and resurfaces forgotten albums.</p></div>
+      <div class="card"><h3><span class="em">📚</span>Rich library browsing</h3>
+        <p>Browse by album, artist, genre, record label, decade or tag — and jump between related artists, albums and labels from anywhere.</p></div>
+      <div class="card"><h3><span class="em">🔍</span>Powerful search</h3>
+        <p>Instant whole-library search by album, artist or record label, with optional extension to Qobuz and TIDAL.</p></div>
+      <div class="card"><h3><span class="em">💿</span>Detailed album pages</h3>
+        <p>High-resolution artwork, track listing, release year, label, duration, multiple-artist support and Pitchfork reviews where available.</p></div>
+      <div class="card"><h3><span class="em">📺</span>Full-screen wall display</h3>
+        <p>Turn a TV or tablet into a now-playing display: big artwork, artist photography, biographies, reviews, related albums and YouTube music videos with automatic rotation.</p></div>
+      <div class="card"><h3><span class="em">🏷</span>Record label explorer</h3>
+        <p>Label of the week, label artwork via Discogs and FanArt.tv, label merging with undo, and every release from a selected label.</p></div>
+      <div class="card"><h3><span class="em">📻</span>Random Album Radio</h3>
+        <p>When the queue finishes, the app picks another album (avoiding recent plays) and keeps the music flowing indefinitely.</p></div>
+      <div class="card"><h3><span class="em">▶</span>Playback integration</h3>
+        <p>Play or queue albums and tracks, multi-select, zone switching, and automatic continue-playback when the queue ends.</p></div>
+      <div class="card"><h3><span class="em">🔄</span>Automatic updates</h3>
+        <p>Built-in update checker with one-click updates straight from GitHub releases.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install with Docker</h2>
+    <p class="lead">Pick where you're running the app, fill in the details, and copy the generated
+       command. The app talks to LMS purely over the network (HTTP on the LMS web port,
+       default <code>9000</code>) — it does <b>not</b> need to run on the same machine as LMS.</p>
+
+    <div class="cfg">
+      <div class="cfg-body">
+        <div>
+          <div class="modes" id="modes">
+            <label class="mode sel" data-mode="same">
+              <input type="radio" name="mode" value="same" checked>
+              <div class="m-title">Same machine as LMS</div>
+              <div class="m-sub">Linux host running LMS. Uses host networking so LMS can be auto-discovered.</div>
+            </label>
+            <label class="mode" data-mode="separate">
+              <input type="radio" name="mode" value="separate">
+              <div class="m-title">Separate machine from LMS</div>
+              <div class="m-sub">Another server, NAS or Pi. Point it at your LMS with its IP address.</div>
+            </label>
+            <label class="mode" data-mode="macos">
+              <input type="radio" name="mode" value="macos">
+              <div class="m-title">macOS (Docker Desktop / OrbStack)</div>
+              <div class="m-sub">Host networking isn't available on macOS, so ports are published and the LMS address is set explicitly.</div>
+            </label>
+          </div>
+
+          <div class="fields" style="margin-top:18px">
+            <div class="field" id="f-lmshost">
+              <label for="lmshost">LMS server IP / hostname <span class="req" id="lmshost-req">*</span></label>
+              <input type="text" id="lmshost" value="192.168.1.50" spellcheck="false">
+              <div class="hint" id="lmshost-hint">The address of the machine running Lyrion Music Server.</div>
+            </div>
+            <div class="field" id="f-lmsport">
+              <label for="lmsport">LMS web port</label>
+              <input type="text" id="lmsport" value="9000" spellcheck="false">
+            </div>
+            <div class="field" id="f-appport">
+              <label for="appport">App port on this machine</label>
+              <input type="text" id="appport" value="3390" spellcheck="false">
+              <div class="hint">The port you'll open in your browser.</div>
+            </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" id="mount">
+              <div>
+                <div class="t-title">Mount local music library (read-only)</div>
+                <div class="t-sub">Optional. If this machine can see your music files, the label
+                     scan also reads <code>LABEL</code>/<code>ORGANIZATION</code> tags straight from
+                     them — the most accurate source. Mounted read-only; the app never writes to it.</div>
+              </div>
+            </label>
+            <div class="subfields hidden" id="mount-fields">
+              <div class="field">
+                <label for="musicpath">Path to your music on this machine</label>
+                <input type="text" id="musicpath" value="/path/to/your/music" spellcheck="false">
+              </div>
+            </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" id="auth">
+              <div>
+                <div class="t-title">LMS has a username &amp; password</div>
+                <div class="t-sub">Only needed if you've enabled HTTP authentication in LMS.</div>
+              </div>
+            </label>
+            <div class="subfields hidden" id="auth-fields">
+              <div class="field">
+                <label for="lmsuser">LMS username</label>
+                <input type="text" id="lmsuser" value="" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="lmspass">LMS password</label>
+                <input type="text" id="lmspass" value="" spellcheck="false">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="out">
+          <div class="note" id="mode-note"></div>
+          <div class="out-tabs">
+            <button id="tab-run" class="sel" type="button">docker run</button>
+            <button id="tab-compose" type="button">docker compose</button>
+          </div>
+          <div class="codebox">
+            <button class="copy-btn" id="copy" type="button">Copy</button>
+            <pre id="cmd"></pre>
+          </div>
+          <p class="after-note" id="after-note"></p>
+          <p class="after-note">No local clone needed — <code>docker build</code> pulls the repo
+             straight from GitHub. You can also change the LMS host/port later from the in-app
+             <b>Settings</b> screen instead of the environment variables.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="apikeys">
+  <div class="wrap">
+    <h2>API keys</h2>
+    <p class="lead">All free, all optional — but they significantly improve artwork and label
+       coverage. Paste each one into the app under the <b>gear icon → Settings</b>, then Save.</p>
+    <div class="api-cards">
+
+      <div class="api-card">
+        <div class="free">Free</div>
+        <h3>FanArt.tv</h3>
+        <p class="what">High-quality record-label logos for labels that have a MusicBrainz MBID.</p>
+        <ol>
+          <li>Register (or sign in) at <a href="https://fanart.tv/get-an-api-key/#personal">fanart.tv/get-an-api-key</a> and request a <b>personal API key</b></li>
+          <li>Follow the on-screen prompts — the key is shown on that page once you're logged in</li>
+          <li>Copy the key</li>
+          <li>In the app: gear icon → paste into <b>FanArt.tv key</b> → <b>Save</b></li>
+        </ol>
+      </div>
+
+      <div class="api-card">
+        <div class="free">Free</div>
+        <h3>YouTube Data API v3</h3>
+        <p class="what">Music videos on the wall display. No billing account needed.</p>
+        <ol>
+          <li>Go to <a href="https://console.cloud.google.com">console.cloud.google.com</a> and sign in with any Google account</li>
+          <li>Project dropdown (top bar) → <b>New project</b> → name it anything (e.g. "MusicD Display") → <b>Create</b>, and make sure it's selected</li>
+          <li>Menu → <b>APIs &amp; Services → Library</b> → search "YouTube Data API v3" → <b>Enable</b></li>
+          <li><b>APIs &amp; Services → Credentials → + Create credentials → API key</b> — copy the key</li>
+          <li><i>Recommended:</i> Edit the key → <b>API restrictions → Restrict key</b> → tick only <b>YouTube Data API v3</b> → Save</li>
+          <li>In the app: gear icon → paste into <b>YouTube API key</b> → <b>Save</b></li>
+        </ol>
+        <p class="fine">The free quota (10,000 units/day) comfortably covers a home display —
+           roughly 90+ fresh tracks a day, and results are cached. If it's ever exhausted it
+           simply pauses until midnight Pacific, when the quota resets.</p>
+      </div>
+
+      <div class="api-card">
+        <div class="free">Free</div>
+        <h3>Discogs</h3>
+        <p class="what">Finds label names that iTunes and MusicBrainz miss, and fetches label logos.</p>
+        <ol>
+          <li>Sign in (or register) at <a href="https://www.discogs.com">discogs.com</a></li>
+          <li><b>Settings → Developers</b> → <b>Generate new token</b></li>
+          <li>Copy the token</li>
+          <li>In the app: gear icon → paste into <b>Discogs token</b> → <b>Save</b></li>
+        </ol>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="env">
+  <div class="wrap">
+    <h2>Environment variables</h2>
+    <p class="lead">Everything the container understands — the configurator above sets the ones you need.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>PORT</td><td><code>3390</code></td><td>HTTP port for this app</td></tr>
+          <tr><td>LMS_HOST</td><td><i>(discover)</i></td><td>LMS server host/IP. Required when the app runs on a different machine/subnet than LMS (UDP discovery only works on the same LAN).</td></tr>
+          <tr><td>LMS_PORT</td><td><code>9000</code></td><td>LMS JSON-RPC/web port</td></tr>
+          <tr><td>LMS_USER / LMS_PASS</td><td>–</td><td>LMS HTTP auth, if enabled</td></tr>
+          <tr><td>MUSIC_DIR</td><td><code>/music</code></td><td>Where the optional read-only music mount lives inside the container (only used for file-tag label scanning)</td></tr>
+          <tr><td>DEBUG</td><td>–</td><td><code>1</code> for verbose logging</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>MusicD LMS Remote · MIT licence ·
+     <a href="https://github.com/meltface-80/MusicD-LMS-Remote">github.com/meltface-80/MusicD-LMS-Remote</a></p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var IMAGE = "musicd-lms-remote";
+  var REPO  = "https://github.com/meltface-80/MusicD-LMS-Remote.git#main";
+
+  var els = {
+    modes:      document.getElementById("modes"),
+    lmshost:    document.getElementById("lmshost"),
+    lmshostReq: document.getElementById("lmshost-req"),
+    lmshostHint:document.getElementById("lmshost-hint"),
+    lmsport:    document.getElementById("lmsport"),
+    appport:    document.getElementById("appport"),
+    fAppport:   document.getElementById("f-appport"),
+    mount:      document.getElementById("mount"),
+    mountFields:document.getElementById("mount-fields"),
+    musicpath:  document.getElementById("musicpath"),
+    auth:       document.getElementById("auth"),
+    authFields: document.getElementById("auth-fields"),
+    lmsuser:    document.getElementById("lmsuser"),
+    lmspass:    document.getElementById("lmspass"),
+    cmd:        document.getElementById("cmd"),
+    copy:       document.getElementById("copy"),
+    tabRun:     document.getElementById("tab-run"),
+    tabCompose: document.getElementById("tab-compose"),
+    modeNote:   document.getElementById("mode-note"),
+    afterNote:  document.getElementById("after-note")
+  };
+
+  var state = { mode: "same", tab: "run" };
+  var plainCmd = "";
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function val(el, fallback) {
+    var v = el.value.trim();
+    return v === "" ? fallback : v;
+  }
+
+  var NOTES = {
+    same:     "Host networking lets the app <b>auto-discover LMS</b> on the local network, so the LMS address is optional — set it anyway if discovery doesn't find your server.",
+    separate: "UDP auto-discovery only works on the same LAN segment, so <b>set the LMS address explicitly</b> here.",
+    macos:    "Docker Desktop on macOS can't use host networking. If LMS runs <b>on this same Mac</b>, use <code>host.docker.internal</code> as the LMS address; otherwise enter the LMS machine's IP."
+  };
+
+  // ---- command builders --------------------------------------------------
+  function buildRun() {
+    var mode = state.mode;
+    var lines = [];   // [text, cls] pairs per token line
+    var appport = val(els.appport, "3390");
+    var lmsport = val(els.lmsport, "9000");
+    var lmshost = els.lmshost.value.trim();
+
+    var out = [];
+    out.push({ t: "# Build the image (pulls the repo straight from GitHub)", c: "c" });
+    out.push({ t: "docker build -t " + IMAGE + " \\\n  " + REPO, c: "" });
+    out.push({ t: "", c: "" });
+    out.push({ t: "# Run it", c: "c" });
+
+    var cmd = ["docker run -d \\"];
+    cmd.push("  --name " + IMAGE + " \\");
+    cmd.push("  --restart unless-stopped \\");
+
+    if (mode === "same") {
+      cmd.push("  --network host \\");
+      if (lmshost && lmshost !== "192.168.1.50") {
+        cmd.push("  -e LMS_HOST=" + lmshost + " \\");
+        if (lmsport !== "9000") cmd.push("  -e LMS_PORT=" + lmsport + " \\");
+      }
+    } else {
+      cmd.push("  -e LMS_HOST=" + (lmshost || "192.168.1.50") + " \\");
+      cmd.push("  -e LMS_PORT=" + lmsport + " \\");
+      cmd.push("  -p " + appport + ":3390 \\");
+    }
+    if (els.auth.checked) {
+      if (els.lmsuser.value.trim()) cmd.push("  -e LMS_USER=" + els.lmsuser.value.trim() + " \\");
+      if (els.lmspass.value.trim()) cmd.push("  -e LMS_PASS=" + els.lmspass.value.trim() + " \\");
+    }
+    cmd.push("  -v musicd-lms-remote-data:/app/data \\");
+    if (els.mount.checked) {
+      cmd.push("  -v " + val(els.musicpath, "/path/to/your/music") + ":/music:ro \\");
+    }
+    cmd.push("  " + IMAGE);
+
+    out.push({ t: cmd.join("\n"), c: "" });
+    return out;
+  }
+
+  function buildCompose() {
+    var mode = state.mode;
+    var appport = val(els.appport, "3390");
+    var lmsport = val(els.lmsport, "9000");
+    var lmshost = els.lmshost.value.trim() || "192.168.1.50";
+
+    var y = [];
+    y.push("# docker-compose.yml — then:  docker compose up -d");
+    y.push("services:");
+    y.push("  musicd-lms-remote:");
+    y.push("    build: " + REPO);
+    y.push("    image: " + IMAGE);
+    y.push("    container_name: " + IMAGE);
+    y.push("    restart: unless-stopped");
+    if (mode === "same") {
+      y.push("    network_mode: host   # LMS auto-discovery on the local network");
+    } else {
+      y.push("    ports:");
+      y.push("      - \"" + appport + ":3390\"");
+    }
+    var envs = [];
+    if (mode !== "same" || (els.lmshost.value.trim() && els.lmshost.value.trim() !== "192.168.1.50")) {
+      envs.push("      LMS_HOST: \"" + lmshost + "\"");
+      envs.push("      LMS_PORT: \"" + lmsport + "\"");
+    }
+    if (els.auth.checked) {
+      if (els.lmsuser.value.trim()) envs.push("      LMS_USER: \"" + els.lmsuser.value.trim() + "\"");
+      if (els.lmspass.value.trim()) envs.push("      LMS_PASS: \"" + els.lmspass.value.trim() + "\"");
+    }
+    if (envs.length) {
+      y.push("    environment:");
+      y = y.concat(envs);
+    }
+    y.push("    volumes:");
+    y.push("      - musicd-lms-remote-data:/app/data");
+    if (els.mount.checked) {
+      y.push("      - " + val(els.musicpath, "/path/to/your/music") + ":/music:ro   # read-only music mount");
+    }
+    y.push("");
+    y.push("volumes:");
+    y.push("  musicd-lms-remote-data:");
+    return [{ t: y.join("\n"), c: "" }];
+  }
+
+  // very light highlighter for the pre block
+  function highlight(text) {
+    return esc(text)
+      .replace(/^(#.*)$/gm, '<span class="c">$1</span>')
+      .replace(/(--?[a-zA-Z-]+)/g, '<span class="k">$1</span>')
+      .replace(/((?:LMS_HOST|LMS_PORT|LMS_USER|LMS_PASS|MUSIC_DIR|PORT)[=:])/g, '<span class="k">$1</span>');
+  }
+
+  function render() {
+    var parts = state.tab === "run" ? buildRun() : buildCompose();
+    plainCmd = parts.map(function (p) { return p.t; }).join("\n");
+    els.cmd.innerHTML = parts.map(function (p) {
+      return p.c === "c" ? '<span class="c">' + esc(p.t) + "</span>" : highlight(p.t);
+    }).join("\n");
+
+    els.modeNote.innerHTML = NOTES[state.mode];
+
+    var appport = val(els.appport, "3390");
+    var openPort = state.mode === "same" ? "3390" : appport;
+    els.afterNote.innerHTML = "Then open <code>http://&lt;this-machine-IP&gt;:" + esc(openPort) +
+      "</code>" + (state.mode === "macos" ? " (or <code>http://localhost:" + esc(appport) + "</code> on the Mac itself)" : "") + ".";
+
+    syncUrl();
+  }
+
+  // keep the URL shareable: re-encode form state into the query string
+  function syncUrl() {
+    var p = new URLSearchParams();
+    if (state.mode !== "same") p.set("mode", state.mode);
+    var host = els.lmshost.value.trim();
+    if (host && host !== "192.168.1.50" && host !== "host.docker.internal") p.set("lmshost", host);
+    if (val(els.lmsport, "9000") !== "9000") p.set("lmsport", val(els.lmsport, "9000"));
+    if (val(els.appport, "3390") !== "3390") p.set("port", val(els.appport, "3390"));
+    if (els.mount.checked && val(els.musicpath, "") !== "/path/to/your/music") p.set("music", val(els.musicpath, ""));
+    var qs = p.toString();
+    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "") + location.hash);
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    var labels = els.modes.querySelectorAll(".mode");
+    for (var i = 0; i < labels.length; i++) {
+      var sel = labels[i].getAttribute("data-mode") === mode;
+      labels[i].classList.toggle("sel", sel);
+      labels[i].querySelector("input").checked = sel;
+    }
+    // field visibility / hints per mode
+    if (mode === "macos") {
+      els.lmshost.value = els.lmshost.value.trim() === "192.168.1.50" || els.lmshost.value.trim() === ""
+        ? "host.docker.internal" : els.lmshost.value;
+      els.lmshostHint.textContent = "Use host.docker.internal if LMS runs on this same Mac, otherwise the LMS machine's IP.";
+    } else {
+      if (els.lmshost.value.trim() === "host.docker.internal") els.lmshost.value = "192.168.1.50";
+      els.lmshostHint.textContent = mode === "same"
+        ? "Optional with host networking — auto-discovery usually finds LMS. Set it if discovery fails."
+        : "The address of the machine running Lyrion Music Server.";
+    }
+    els.lmshostReq.style.display = mode === "same" ? "none" : "inline";
+    els.fAppport.classList.toggle("hidden", mode === "same");
+    render();
+  }
+
+  function setTab(tab) {
+    state.tab = tab;
+    els.tabRun.classList.toggle("sel", tab === "run");
+    els.tabCompose.classList.toggle("sel", tab === "compose");
+    render();
+  }
+
+  // ---- wiring --------------------------------------------------------------
+  els.modes.addEventListener("change", function (e) {
+    if (e.target.name === "mode") setMode(e.target.value);
+  });
+  els.tabRun.addEventListener("click", function () { setTab("run"); });
+  els.tabCompose.addEventListener("click", function () { setTab("compose"); });
+
+  els.mount.addEventListener("change", function () {
+    els.mountFields.classList.toggle("hidden", !els.mount.checked);
+    render();
+  });
+  els.auth.addEventListener("change", function () {
+    els.authFields.classList.toggle("hidden", !els.auth.checked);
+    render();
+  });
+
+  ["lmshost", "lmsport", "appport", "musicpath", "lmsuser", "lmspass"].forEach(function (id) {
+    els[id === "lmshost" ? "lmshost" : id].addEventListener("input", render);
+  });
+
+  els.copy.addEventListener("click", function () {
+    function done() {
+      els.copy.textContent = "Copied ✓";
+      els.copy.classList.add("done");
+      setTimeout(function () {
+        els.copy.textContent = "Copy";
+        els.copy.classList.remove("done");
+      }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(plainCmd).then(done, fallbackCopy);
+    } else fallbackCopy();
+    function fallbackCopy() {
+      var ta = document.createElement("textarea");
+      ta.value = plainCmd;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  });
+
+  // ---- URL query prefill (e.g. ?mode=separate&lmshost=192.168.1.20&port=8080&music=/srv/music)
+  var q = new URLSearchParams(location.search);
+  if (q.get("lmshost")) els.lmshost.value = q.get("lmshost");
+  if (q.get("lmsport")) els.lmsport.value = q.get("lmsport");
+  if (q.get("port"))    els.appport.value = q.get("port");
+  if (q.get("music"))   { els.mount.checked = true; els.mountFields.classList.remove("hidden"); els.musicpath.value = q.get("music"); }
+  var qm = q.get("mode");
+  setMode(qm === "separate" || qm === "macos" ? qm : "same");
+})();
+</script>
+</body>
+</html>
