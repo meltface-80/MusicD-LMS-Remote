@@ -302,6 +302,24 @@ const labels = makeLabels({
 });
 
 // ---------------------------------------------------------------------------
+// Album reviews + artist bios (lib/albuminfo.js): the LMS "Music and Artist
+// Information" plugin first (id-based, so the plugin can use the MusicBrainz
+// ids LMS stores for tagged local files), then Qobuz's wiki-style album
+// descriptions / artist biographies as the no-plugin fallback (also covers
+// TIDAL albums, which rarely carry reviews, by matching them on Qobuz).
+// ---------------------------------------------------------------------------
+const { makeAlbumInfo } = require("./lib/albuminfo");
+const albumInfo = makeAlbumInfo({
+  getLms:    () => (state.connected ? state.lms : null),
+  qobuzCall: (fn) => qobuzWithToken(fn),
+  qobuz,
+  dataDir:   DATA_DIR,
+  normalize: search.normalize,
+  artistKey: search.artistKey,
+  debug:     DEBUG
+});
+
+// ---------------------------------------------------------------------------
 // In-app self-updater — checks GitHub for a newer release and, on request,
 // downloads + applies it and restarts into the new code (no `docker build`).
 // The restart is coordinated by launcher.js (PID 1), which sets
@@ -720,21 +738,77 @@ app.get("/api/search-status", (req, res) => {
   res.json({ ready: index.records.length > 0, building: !!indexBuilding, count: index.records.length, progress: indexProgress });
 });
 
-app.get("/api/artist-albums", (req, res) => {
+// The artist page: the artist's OWN albums (solo or co-billed, e.g.
+// "Artist A / Artist B") under `primary`, and albums they only APPEAR on
+// (feat. credits, track-level contributions, compilations) under `featured`.
+//
+// Matching is by the stylization-folded identity key (search.artistKey), so
+// "P!nk" and "Pink" are ONE artist — never disambiguated into two pages.
+//
+// Two passes:
+//   1. String pass over the in-memory index: co-billed main artists →
+//      primary; feat./anywhere-in-subtitle credits → featured.
+//   2. LMS contributor pass (best-effort): `artists search:` → every
+//      matching contributor id (all stylized spellings) → `albums
+//      artist_id:` — this is LMS's own contributor table, so it also finds
+//      track-level appearances (compilations) the subtitle string can't
+//      show. Extra albums land in `featured` unless the artist is co-billed.
+app.get("/api/artist-albums", async (req, res) => {
   const artist = (req.query.artist || "").trim();
   if (!artist) return res.status(400).json({ error: "artist required" });
   if (!index.records.length) return res.json({ artist, primary: [], featured: [] });
+  const key = search.artistKey(artist) || search.normalize(artist);
   const norm = search.normalize(artist);
-  const primary = [], featured = [];
+
+  const isMain = (al) => (al.mainArtists || []).some(a => (a.k || a.n) === key);
+  const isCredited = (al) =>
+    (al.artistNames || []).some(a => (a.k || a.n) === key) ||
+    (norm && search.normalize(al.subtitle || "").includes(norm));
+
+  const primary = new Map(), featured = new Map();   // offset → record
   for (const al of index.records) {
-    const sub = search.normalize(al.subtitle || "");
-    if (!sub) continue;
-    if (sub === norm) primary.push(albumOut(al));
-    else if (sub.includes(norm)) featured.push(albumOut(al));
+    if (isMain(al)) primary.set(al.offset, al);
+    else if (isCredited(al)) featured.set(al.offset, al);
   }
-  primary.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-  featured.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-  res.json({ artist, primary, featured });
+
+  // LMS contributor augmentation — additive only; any failure (older server,
+  // mid-reconnect) leaves the string-pass result intact. LMS's own search is
+  // literal, so it must be run for EVERY stylized spelling of this identity
+  // present in the library ("Pink" won't find "P!nk"); the index knows them.
+  if (state.connected) {
+    try {
+      const spellings = new Set([artist]);
+      for (const al of index.records) {
+        for (const a of (al.artistNames || [])) {
+          if ((a.k || a.n) === key) spellings.add(a.name);
+          if (spellings.size >= 6) break;
+        }
+      }
+      const seen = new Set();
+      const contributors = [];
+      for (const sp of spellings) {
+        for (const c of await state.lms.searchArtists(sp, 20)) {
+          if (search.artistKey(c.name) === key && !seen.has(c.id)) { seen.add(c.id); contributors.push(c); }
+        }
+      }
+      for (const c of contributors) {
+        const { albums } = await state.lms.listAlbums({ start: 0, count: 500, artistId: c.id });
+        for (const row of albums) {
+          const rec = index.byId.get(String(row.id));
+          if (!rec || primary.has(rec.offset)) continue;
+          if (isMain(rec)) { featured.delete(rec.offset); primary.set(rec.offset, rec); }
+          else featured.set(rec.offset, rec);
+        }
+      }
+    } catch (e) { if (DEBUG) console.error("[artist-albums] LMS contributor pass failed:", e.message); }
+  }
+
+  const byTitle = (a, b) => (a.title || "").localeCompare(b.title || "");
+  res.json({
+    artist,
+    primary:  [...primary.values()].map(albumOut).sort(byTitle),
+    featured: [...featured.values()].map(albumOut).sort(byTitle)
+  });
 });
 
 app.get("/api/library-stats", (req, res) => {
@@ -1002,17 +1076,29 @@ app.get("/api/album/now-playing", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Queue for a zone.
+// Queue for a zone. Only the CURRENT track and what's still to come are
+// returned — already-played entries are dropped server-side, so the Queue tab
+// (and its total-time/quality summary) reflects just the remaining queue.
+// queue_item_id stays the REAL LMS playlist index, so play-from-here and
+// remove keep working on the sliced list.
 app.get("/api/queue", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const zoneId = req.query.zone;
   if (!zoneId) return res.status(400).json({ error: "zone required" });
   try {
-    const q = await state.lms.queue(zoneId);
-    res.json({ items: q.map(t => ({
-      queue_item_id: t.index, title: t.title || "", subtitle: t.artist || "",
-      image_key: t.coverId || null, length: t.duration || null
-    })) });
+    const { tracks, curIndex } = await state.lms.queue(zoneId);
+    const from = curIndex != null ? curIndex : 0;
+    const remaining = tracks.filter(t => t.index == null || t.index >= from);
+    res.json({
+      cur_index: curIndex,
+      items: remaining.map(t => ({
+        queue_item_id: t.index, title: t.title || "", subtitle: t.artist || "",
+        image_key: t.coverId || null, length: t.duration || null,
+        // Quality info for the summary line ("FLAC 16/44.1" etc.).
+        type: t.type || null, bitrate: t.bitrate || null,
+        samplerate: t.samplerate || null, samplesize: t.samplesize || null
+      }))
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1124,15 +1210,28 @@ app.get("/api/album/extras", async (req, res) => {
     const rawLabel = labels.labelForAlbum({ title, subtitle: artist });
     const label = rawLabel ? labels.canonicalName(rawLabel) : null;
 
-    const pitchfork = await fetchPitchfork(title, artist).catch(() => null);
+    // Review TEXT comes from the LMS Music & Artist Information plugin or
+    // Qobuz (see lib/albuminfo.js) — never from Pitchfork. Pitchfork stays a
+    // score + link. Deadlined so a cold multi-source lookup can't hold the
+    // modal's year/label; the result is cached, so the next open has it.
+    const [pitchfork, review] = await Promise.all([
+      fetchPitchfork(title, artist).catch(() => null),
+      withDeadline(albumInfo.albumReview({
+        albumId: rec ? rec.id : null,
+        title, artist,
+        extid:  rec ? rec.extid  : null,
+        source: rec ? rec.source : null
+      }), 15000).catch(() => null)
+    ]);
 
     // Build the album object whenever there is ANY datum to carry (label, year,
-    // or a Pitchfork hit) — otherwise the label/year never reach the modal for
-    // albums Pitchfork doesn't cover.
+    // a review, or a Pitchfork hit) — otherwise the label/year never reach the
+    // modal for albums the sources don't cover.
     let album = null;
-    if (label != null || year != null || pitchfork) {
+    if (label != null || year != null || pitchfork || review) {
       album = {
-        description:    null,
+        description:        review ? review.text        : null,
+        descriptionSource:  review ? review.attribution : null,
         year,
         label,
         url:            pitchfork ? pitchfork.url            : null,
@@ -1356,10 +1455,11 @@ app.get("/display", (req, res) => res.sendFile(path.join(__dirname, "public", "d
 
 // Assembled rotation content for the now-playing album on a zone: library
 // recommendations (other albums by the artist + label-mates, both from the
-// in-memory indexes — instant, no keys) plus a best-effort YouTube video clip
-// when a key is set. Artist photos / album review / artist bios depend on
-// larger scraping subsystems not yet ported, so they degrade to empty (the
-// page rotates art + recommendations + video regardless). Cached 6h per album.
+// in-memory indexes — instant, no keys), the album review + credited-artist
+// bios (LMS Music & Artist Information plugin → Qobuz fallback, see
+// lib/albuminfo.js), plus a best-effort YouTube video clip when a key is set.
+// Artist photos still degrade to empty (no source ported). Every part is
+// best-effort — the page rotates whatever arrived. Cached 6h per album.
 const displayContentCache = new Map();
 const DISPLAY_CONTENT_TTL_MS = 6 * 60 * 60 * 1000;
 app.get("/api/display/content", async (req, res) => {
@@ -1382,9 +1482,30 @@ app.get("/api/display/content", async (req, res) => {
   if (hit && (Date.now() - hit.at) < DISPLAY_CONTENT_TTL_MS) return res.json(hit.data);
 
   try {
-    const video = await fetchDisplayVideo(primaryArtist, track).catch(() => null);
-    // More by this artist — from the in-memory album index (no API keys).
+    // Review + bios (LMS Music & Artist Information plugin → Qobuz fallback,
+    // lib/albuminfo.js) and the video clip, fetched in parallel. Bios cover
+    // every credited artist (capped) — the display cycles through them. The
+    // library album record supplies the LMS album id / extid so the plugin
+    // can identify by id (and stored MusicBrainz ids) rather than by name.
     const npTitleN = search.normalize(album);
+    const npRec = index.records.find(r => search.normalize(r.title) === npTitleN &&
+      search.normalize(r.subtitle || "").includes(search.normalize(primaryArtist))) || null;
+    const creditedArtists = search.splitArtistNames(artist).map(a => a.name).slice(0, 3);
+    const [video, review, ...bioResults] = await Promise.all([
+      fetchDisplayVideo(primaryArtist, track).catch(() => null),
+      withDeadline(albumInfo.albumReview({
+        albumId: npRec ? npRec.id : null,
+        title:   album,
+        artist,
+        extid:   npRec ? npRec.extid  : null,
+        source:  npRec ? npRec.source : null
+      }), 20000).catch(() => null),
+      ...creditedArtists.map(name =>
+        withDeadline(albumInfo.artistBio(name), 20000).catch(() => null))
+    ]);
+    const bios = bioResults.filter(Boolean)
+      .map(b => ({ name: b.name, text: b.text, attribution: b.attribution }));
+    // More by this artist — from the in-memory album index (no API keys).
     const artistN  = search.normalize(primaryArtist);
     const moreArtist = [];
     if (artistN) {
@@ -1415,7 +1536,11 @@ app.get("/api/display/content", async (req, res) => {
       if (picks.length >= 3) moreLabel = { name: labels.canonicalName(labelName), albums: picks };
     }
     const data = {
-      artistPhotos: [], review: null, bio: null, bios: [], video,
+      artistPhotos: [],
+      review: review ? { text: review.text, attribution: review.attribution } : null,
+      bio:    bios.length ? bios[0] : null,   // legacy single-bio field
+      bios,
+      video,
       moreAlbums: {
         artist: moreArtist.length >= 3 ? { name: primaryArtist, albums: moreArtist } : null,
         label:  moreLabel
