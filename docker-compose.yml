@@ -4,7 +4,7 @@
 # run on the same machine as LMS or a completely separate one — just point it
 # at the LMS host:port below.
 #
-#   docker compose up -d      # build + start
+#   docker compose up -d --build  # build (straight from GitHub) + start
 #   docker compose logs -f    # follow logs
 #   docker compose down       # stop
 #

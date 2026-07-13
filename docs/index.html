@@ -593,7 +593,15 @@
     var lmshost = els.lmshost.value.trim() || "192.168.1.50";
 
     var y = [];
-    y.push("# docker-compose.yml — then:  docker compose up -d");
+    // The whole block is a runnable shell command: the heredoc writes
+    // docker-compose.yml, then `docker compose up -d` builds the image
+    // straight from GitHub (no container registry involved) and starts it.
+    // Emitting only the YAML contents used to strand users: nothing created
+    // the file, and `docker compose up -d` then failed trying to PULL the
+    // (registry-less) image instead of building it.
+    y.push("# Paste this whole block into a terminal — it writes docker-compose.yml,");
+    y.push("# then builds the image straight from GitHub and starts the container.");
+    y.push("cat > docker-compose.yml <<'EOF'");
     y.push("services:");
     y.push("  musicd-lms-remote:");
     y.push("    build: " + REPO);
@@ -627,6 +635,12 @@
     y.push("");
     y.push("volumes:");
     y.push("  musicd-lms-remote-data:");
+    y.push("EOF");
+    y.push("");
+    // --build: never try to PULL the (registry-less) image — always build it
+    // from the GitHub URL. Some Compose versions/pull-policies otherwise die
+    // with "pull access denied" on a build+image service.
+    y.push("docker compose up -d --build");
     return [{ t: y.join("\n"), c: "" }];
   }
 
