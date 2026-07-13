@@ -27,6 +27,7 @@ const compression = require("compression");
 const { createLms, discover } = require("./lib/lms");
 const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
+const displayvideo = require("./lib/displayvideo");
 
 const pkg = require("./package.json");
 const DEBUG = process.env.DEBUG === "1";
@@ -365,66 +366,36 @@ function matchLibraryAlbum(album, artist) {
 // not age-restricted). Cached per artist+track incl. negatives (search costs
 // 100 quota units of the 10k/day default).
 const displayVideoCache = new Map();
-function scoreDisplayVideo(item, artistN, trackTokens) {
-  const title    = (item.snippet && item.snippet.title        || "");
-  const channel  = (item.snippet && item.snippet.channelTitle || "");
-  const titleN   = search.normalize(title);
-  const channelN = search.normalize(channel);
-  if (/ - topic$/i.test(channel)) return -1;
-  if (/\b(audio|lyric|lyrics|visuali[sz]er|cover|reaction|remix|sped|slowed|8d|karaoke|instrumental|full album|teaser|trailer|interview|behind the scenes|epk|shorts?)\b/i.test(title)) return -1;
-  for (const t of trackTokens) if (titleN.indexOf(t) === -1) return -1;
-  let score = 0;
-  const channelIsArtist = channelN === artistN || channelN === artistN + " vevo" ||
-                          channelN === artistN + " music" || channelN === artistN + " official" ||
-                          channelN.replace(/\s+/g, "") === artistN.replace(/\s+/g, "") + "vevo";
-  if (channelIsArtist) score += 70;
-  else if (channelN.indexOf(artistN) !== -1) score += 40;
-  else return -1;
-  if (/\bofficial (music )?video\b/i.test(title)) score += 30;
-  else if (/\(official\b/i.test(title)) score += 20;
-  if (/\blive\b/i.test(title)) { if (score >= 70) score += 20; else return -1; }
-  return score;
+
+// Fetch a URL as a Buffer (global fetch), deadlined. Used only for the free,
+// no-quota i.ytimg.com storyboard frames that drive the motion gate. Returns
+// null on any failure — the motion gate treats an unfetchable frame as unknown.
+async function httpBuffer(url, timeoutMs = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctl.signal });
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch (_) { return null; }
+  finally { clearTimeout(timer); }
 }
+
+// Cached wrapper around the displayvideo module. Positive verdicts hold for the
+// session; a "no video" verdict expires after 30 min so transient API/network
+// failures don't blank a track for good. All the scoring, video verification
+// and the moving-vs-static motion gate live in lib/displayvideo.js.
 async function fetchDisplayVideo(artistName, trackName) {
   if (!youtubeKey || !artistName || !trackName) return null;
   const key = search.normalize(artistName) + "||" + search.normalize(trackName);
   const hit = displayVideoCache.get(key);
   if (hit) {
-    // Positive verdicts hold for the session; a "no video" verdict expires
-    // after 30 min so transient API failures don't blank a track for good.
     if (hit.video || (Date.now() - hit.at) < 30 * 60 * 1000) return hit.video;
     displayVideoCache.delete(key);
   }
-  let video = null;
-  try {
-    const q = `${artistName} ${trackName}`;
-    const searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video" +
-      "&videoEmbeddable=true&videoSyndicated=true&maxResults=10" +
-      "&q=" + encodeURIComponent(q) + "&key=" + encodeURIComponent(youtubeKey);
-    const json = await httpJson(searchUrl);
-    const artistN = search.normalize(artistName);
-    const trackTokens = search.normalize(trackName).split(" ").filter(t => t.length > 2);
-    const scored = ((json && json.items) || [])
-      .filter(it => it && it.id && it.id.videoId && it.snippet)
-      .map(it => ({ id: it.id.videoId, score: scoreDisplayVideo(it, artistN, trackTokens) }))
-      .filter(c => c.score >= 70)
-      .sort((a, b) => b.score - a.score);
-    if (scored.length) {
-      const statusUrl = "https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails,statistics" +
-        "&id=" + encodeURIComponent(scored.map(c => c.id).join(",")) + "&key=" + encodeURIComponent(youtubeKey);
-      const st = await httpJson(statusUrl);
-      const playable = new Map(((st && st.items) || [])
-        .filter(v => v && v.status && v.status.embeddable && v.status.privacyStatus === "public" &&
-                     !(v.contentDetails && v.contentDetails.contentRating && v.contentDetails.contentRating.ytRating === "ytAgeRestricted"))
-        .map(v => [v.id, parseInt((v.statistics && v.statistics.viewCount) || "0", 10)]));
-      const best = scored.filter(c => playable.has(c.id))
-        .sort((a, b) => (b.score - a.score) || (playable.get(b.id) - playable.get(a.id)))[0];
-      if (best) {
-        video = { videoId: best.id, embedUrl: "https://www.youtube-nocookie.com/embed/" + best.id +
-          "?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&loop=1&playlist=" + best.id + "&enablejsapi=1" };
-      }
-    }
-  } catch (e) { if (DEBUG) console.error("[display:youtube]", e.message); }
+  const video = await displayvideo.selectDisplayVideo({
+    artist: artistName, track: trackName, youtubeKey, httpJson, httpBuffer, debug: DEBUG
+  }).catch(() => null);
   displayVideoCache.set(key, { at: Date.now(), video });
   return video;
 }
