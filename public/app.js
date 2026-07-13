@@ -1088,11 +1088,13 @@
   // ambient glow on the same album.
   window.__setModalAmbient = setModalAmbient;
 
-  // Split on common multi-artist separators so each name becomes its own link.
-  // " / " is Roon's/LMS's standard separator; "; " is the common file-tag
-  // multi-value form; feat/featuring/ft handle featured artists.
-  // " & " is intentionally NOT split — it is often part of a band name (e.g. "Simon & Garfunkel").
-  const ARTIST_SPLIT_RE = / \/ |; | feat\.? | featuring | ft\.? /i;
+  // Split on multi-artist separators so each name becomes its own link:
+  // " / " (Roon/LMS joiner), "; " and ", " (file-tag forms), " & " and " + "
+  // (duo billing — "Panda Bear & Sonic Boom"), feat/featuring/ft. Owner
+  // decision (v1.0.5): " & " IS split, band names included — each part's
+  // artist page still lists the band's albums. Spaces required around the
+  // symbol separators so "AC/DC" stays whole. Mirrors lib/search.js.
+  const ARTIST_SPLIT_RE = / \/ |; |, | & | \+ | feat\.? | featuring | ft\.? /i;
   function splitArtistParts(subtitle) {
     return String(subtitle || "").split(ARTIST_SPLIT_RE).map(s => s.trim()).filter(Boolean);
   }
@@ -4368,20 +4370,14 @@
       const r = await fetch("/api/lms/settings-info");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      // The server may know LMS as 127.0.0.1 (same-machine install) — the
-      // BROWSER must use an address it can reach, i.e. this app's hostname.
-      const browserHost = /^(127\.0\.0\.1|localhost|0\.0\.0\.0)$/i.test(j.host)
-        ? location.hostname : j.host;
-      lmsSettingsUrl = "http://" + browserHost + ":" + j.port + j.settings_path;
+      // Same-origin path: the app reverse-proxies the LMS settings pages
+      // (and patches their theme CSS variables), so this works regardless of
+      // how the browser can reach LMS, and over HTTPS too.
+      lmsSettingsUrl = j.settings_path;
       lmsPane.status.textContent = j.host + ":" + j.port + (j.scanning ? " · scanning…" : " · connected");
       lmsPane.note.textContent = j.material
         ? "Material Skin detected — opens Material's styled settings pages."
         : "Opens Lyrion's classic settings pages. Install the Material Skin plugin on LMS for its styled version.";
-      if (location.protocol === "https:") {
-        // Mixed content: an https page can't frame the http LMS — fall back
-        // to opening in a new tab instead of a broken grey box.
-        lmsPane.note.textContent += " (Opens in a new tab — this page is served over HTTPS and LMS isn't.)";
-      }
       lmsPane.open.disabled = false;
     } catch (e) {
       lmsPane.status.textContent = "Not connected";
@@ -4398,7 +4394,6 @@
   }
   if (lmsPane.open) lmsPane.open.addEventListener("click", () => {
     if (!lmsSettingsUrl) return;
-    if (location.protocol === "https:") { window.open(lmsSettingsUrl, "_blank", "noopener"); return; }
     lmsPane.newtab.href = lmsSettingsUrl;
     lmsPane.frame.src = lmsSettingsUrl;
     lmsPane.overlay.classList.remove("hidden");

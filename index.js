@@ -1273,13 +1273,78 @@ app.post("/api/lms/rescan", async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------------------------------------------------------------------------
+// Same-origin proxy for LMS's settings pages. The settings frame used to
+// point the browser straight at the LMS origin, but Material's settings
+// pages get their theme CSS VARIABLES injected by the Material app when it
+// frames them itself — standalone, --popup-background-color & co are
+// undefined, so its section-chooser dropdown rendered TRANSPARENT (mods.css:
+// `.custom-select-panel { background-color: var(--popup-background-color) }`
+// with only --std-popup-background-color defined in :root). A cross-origin
+// iframe can't be patched, so the pages are proxied through this app and the
+// missing variables (plus a belt-and-braces solid background for the menus)
+// are injected into every HTML response. Same-origin framing also fixes the
+// loopback-host case (LMS known as 127.0.0.1) and HTTPS mixed content.
+// Trust-wise this exposes nothing new: /api already offers full LMS control.
+// ---------------------------------------------------------------------------
+const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/music"];
+const LMS_EMBED_CSS =
+  '<style id="musicd-embed-fix">\n' +
+  ':root {\n' +
+  '  --popup-background-color: var(--std-popup-background-color, #303030);\n' +
+  '  --list-hover-color: rgba(128,128,128,.25);\n' +
+  '  --menu-dlg-shadow: 0 4px 24px rgba(0,0,0,.6);\n' +
+  '}\n' +
+  '.custom-select-panel, .x-menu, .x-menu-list { background-color: var(--popup-background-color, #303030) !important; }\n' +
+  '</style>';
+function lmsProxy(req, res) {
+  if (!state.connected || !state.lms) return res.status(503).send("Not connected to LMS");
+  const cfg = state.lms.cfg;
+  const headers = { ...req.headers };
+  delete headers.host;
+  delete headers["accept-encoding"];   // plain bodies so HTML can be patched
+  if (cfg.username) {
+    headers.authorization = "Basic " + Buffer.from(`${cfg.username}:${cfg.password || ""}`).toString("base64");
+  }
+  const preq = http.request(
+    { host: cfg.host, port: cfg.port, path: req.originalUrl, method: req.method, headers },
+    (pres) => {
+      const type = String(pres.headers["content-type"] || "");
+      if (/text\/html/i.test(type)) {
+        const chunks = [];
+        pres.on("data", (c) => chunks.push(c));
+        pres.on("end", () => {
+          let body = Buffer.concat(chunks).toString("utf8");
+          if (/<\/head>/i.test(body)) body = body.replace(/<\/head>/i, LMS_EMBED_CSS + "</head>");
+          else body = LMS_EMBED_CSS + body;
+          const out = { ...pres.headers };
+          delete out["content-encoding"];
+          delete out["transfer-encoding"];   // body is re-emitted whole — chunked + content-length is invalid
+          out["content-length"] = Buffer.byteLength(body);
+          res.writeHead(pres.statusCode, out);
+          res.end(body);
+        });
+      } else {
+        res.writeHead(pres.statusCode, pres.headers);
+        pres.pipe(res);
+      }
+    }
+  );
+  preq.on("error", (e) => {
+    if (!res.headersSent) res.status(502).send("LMS proxy error: " + e.message);
+    else res.destroy();
+  });
+  preq.setTimeout(30000, () => preq.destroy(new Error("LMS proxy timeout")));
+  req.pipe(preq);
+}
+for (const p of LMS_PROXY_PREFIXES) app.use(p, lmsProxy);
+
 // Info for the embedded LMS server-settings frame: LMS's address, whether a
-// scan is running, and which settings page to frame. LMS sends no
-// X-Frame-Options/CSP, so its settings pages embed cleanly cross-origin —
-// the same approach Material Skin itself uses (it iframes the server
-// settings). When the Material plugin is installed we frame ITS styled page
-// (/material/settings/server/basic.html); otherwise Lyrion's classic
-// settings (/settings/index.html). The probe result is cached 10 min.
+// scan is running, and which settings page to frame — served SAME-ORIGIN via
+// the proxy above (the same approach Material Skin itself uses: it iframes
+// the server settings). When the Material plugin is installed we frame ITS
+// styled page (/material/settings/server/basic.html); otherwise Lyrion's
+// classic settings (/settings/index.html). The probe result is cached 10 min.
 let lmsSettingsProbe = null;   // { at, material }
 app.get("/api/lms/settings-info", async (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -1304,9 +1369,8 @@ app.get("/api/lms/settings-info", async (req, res) => {
     port: cfg.port,
     material: lmsSettingsProbe.material,
     scanning,
-    // Paths only — the CLIENT joins them to a host it can reach (when the
-    // app and LMS share a machine, cfg.host may be 127.0.0.1, which would
-    // point the user's phone at itself).
+    // A path on THIS app's origin — served by the LMS proxy above, so the
+    // browser never needs direct reachability to the LMS host.
     settings_path: lmsSettingsProbe.material ? "/material/settings/server/basic.html" : "/settings/index.html"
   });
 });
@@ -1618,7 +1682,11 @@ app.get("/api/display/content", async (req, res) => {
   const track  = t.title || "";
   const artist = t.artist || "";
   const album  = t.album || "";
-  const primaryArtist = artist.split(" / ")[0].trim();
+  // First credited artist via the shared splitter (handles " & ", ", ",
+  // " + ", "; ", " / " and feat.) — drives the video search and the
+  // "More from <artist>" grid.
+  const artistParts = search.splitArtistNames(artist);
+  const primaryArtist = (artistParts[0] && artistParts[0].name) || artist;
 
   const cacheKey = search.normalize(artist) + "||" + search.normalize(album) + "||" + search.normalize(track);
   const hit = displayContentCache.get(cacheKey);
@@ -1649,15 +1717,16 @@ app.get("/api/display/content", async (req, res) => {
     const bios = bioResults.filter(Boolean)
       .map(b => ({ name: b.name, text: b.text, attribution: b.attribution }));
     // More by this artist — from the in-memory album index (no API keys).
-    const artistN  = search.normalize(primaryArtist);
+    // Matches on the per-record artistNames identity keys, so any credited
+    // position ("Panda Bear & Sonic Boom", "X feat. Y") counts and stylized
+    // spellings collapse (P!nk == Pink).
+    const artistK = search.artistKey(primaryArtist);
     const moreArtist = [];
-    if (artistN) {
+    if (artistK) {
       for (const al of index.records) {
         if (moreArtist.length >= 12) break;
         if (search.normalize(al.title) === npTitleN) continue;
-        const subN = search.normalize(al.subtitle || "");
-        if (subN === artistN || subN.split(" / ").indexOf(artistN) !== -1 ||
-            subN.startsWith(artistN + " /") || subN.indexOf(" / " + artistN) !== -1) {
+        if ((al.artistNames || []).some(a => (a.k || a.n) === artistK)) {
           moreArtist.push({ offset: al.offset, title: al.title || "", subtitle: al.subtitle || "", image_key: al.image_key || null });
         }
       }
