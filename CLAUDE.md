@@ -39,10 +39,13 @@ Layout section of README.md.
 
 ## Gotchas worth remembering
 
-- LMS artist strings use " / " as the multi-artist separator; " & " is part
-  of band names — never split on it. Artist identity comparisons go through
-  `search.artistKey()` (stylization-folded: P!nk == Pink), display strings
-  never do.
+- Artist strings split into separate clickable artists on ALL of " / ",
+  "; ", ", ", " & ", " + " and feat./featuring/ft. (owner decision, v1.0.5 —
+  band names containing " & " split too, knowingly; each part's artist page
+  still lists the band's albums). Keep `lib/search.js` MAIN/ANY_SPLIT_RE and
+  `public/app.js` ARTIST_SPLIT_RE in step. Artist identity comparisons go
+  through `search.artistKey()` (stylization-folded: P!nk == Pink), display
+  strings never do.
 - Pitchfork review TEXT must never reach a client (UK-law compliance):
   score / Best-New-Music flag / link only. Review text comes from the LMS
   Music & Artist Information plugin or Qobuz (`lib/albuminfo.js`).
