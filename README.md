@@ -335,12 +335,18 @@ to match.
 
 ### docker-compose
 
-A [`docker-compose.yml`](docker-compose.yml) is included. Edit `LMS_HOST` (and
-uncomment the `/music` mount if you want file-tag label scanning), then:
+A [`docker-compose.yml`](docker-compose.yml) is included — or generate one
+tailored to your setup with the
+[install configurator](https://meltface-80.github.io/MusicD-LMS-Remote/#install).
+Edit `LMS_HOST` (and uncomment the `/music` mount if you want file-tag label
+scanning), then:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
+
+(`--build` makes Compose build the image straight from GitHub rather than ever
+trying to pull it from a registry — there is no registry image.)
 
 ## Environment variables
 
