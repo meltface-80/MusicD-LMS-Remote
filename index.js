@@ -383,28 +383,151 @@ function matchLibraryAlbum(album, artist) {
 // not age-restricted). Cached per artist+track incl. negatives (search costs
 // 100 quota units of the 10k/day default).
 const displayVideoCache = new Map();
-function scoreDisplayVideo(item, artistN, trackTokens) {
+// Channels that host real live performances/sessions — acceptable sources for
+// a "live version" even though the channel name isn't the artist's.
+const LIVE_SESSION_CHANNELS = /\b(kexp|npr music|tiny desk|colors|a colors show|bbc|later with jools|glastonbury|austin city limits|acl|mtv|abbey road|vevo|triple j|like a version|radio 1|cardinal sessions|la blogotheque|paste (magazine|studio)|jimmy (kimmel|fallon)|the tonight show|saturday night live|snl|jools holland)\b/i;
+function scoreDisplayVideo(item, artistN, artistK, trackTokens) {
   const title    = (item.snippet && item.snippet.title        || "");
   const channel  = (item.snippet && item.snippet.channelTitle || "");
   const titleN   = search.normalize(title);
   const channelN = search.normalize(channel);
-  if (/ - topic$/i.test(channel)) return -1;
-  if (/\b(audio|lyric|lyrics|visuali[sz]er|cover|reaction|remix|sped|slowed|8d|karaoke|instrumental|full album|teaser|trailer|interview|behind the scenes|epk|shorts?)\b/i.test(title)) return -1;
+  const channelK = search.artistKey(channel);   // stylization-folded ("PinkVEVO" → "pinkvevo")
+  if (/ - topic$/i.test(channel)) return -1;    // auto-generated static album-art uploads
+  if (/\b(audio|lyric|lyrics|visuali[sz]er|cover art|art track|reaction|remix|sped|slowed|8d|karaoke|instrumental|full album|full ep|teaser|trailer|interview|behind the scenes|epk|shorts?)\b/i.test(title)) return -1;
+  if (/\bcover\b/i.test(title) && !/\bcover(ed)? by\b/i.test(channel)) {
+    // "cover" in a title is a fan cover unless the ARTIST is covering someone.
+    if (channelK.indexOf(artistK) === -1) return -1;
+  }
   for (const t of trackTokens) if (titleN.indexOf(t) === -1) return -1;
   let score = 0;
-  const channelIsArtist = channelN === artistN || channelN === artistN + " vevo" ||
-                          channelN === artistN + " music" || channelN === artistN + " official" ||
-                          channelN.replace(/\s+/g, "") === artistN.replace(/\s+/g, "") + "vevo";
+  // Channel identity via the stylization-folded key, so "P!nk"/"PinkVEVO"/
+  // "P!NK Official" all count as the artist's own channel.
+  const channelIsArtist = !!artistK && (
+    channelK === artistK || channelK === artistK + "vevo" ||
+    channelK === artistK + "music" || channelK === artistK + "official" ||
+    channelK === artistK + "tv");
+  const isLive = /\b(live|session|acoustic|unplugged|performance)\b/i.test(title);
   if (channelIsArtist) score += 70;
-  else if (channelN.indexOf(artistN) !== -1) score += 40;
+  else if (artistK && channelK.indexOf(artistK) !== -1) score += 40;
+  else if (isLive && LIVE_SESSION_CHANNELS.test(channel) && artistK && titleN.replace(/[^a-z0-9]+/g, "").indexOf(artistK) !== -1) {
+    score += 70;   // known performance channel + artist named in the title
+  }
   else return -1;
   if (/\bofficial (music )?video\b/i.test(title)) score += 30;
   else if (/\(official\b/i.test(title)) score += 20;
-  if (/\blive\b/i.test(title)) { if (score >= 70) score += 20; else return -1; }
+  if (isLive) { if (score >= 70) score += 20; else return -1; }
   return score;
 }
-async function fetchDisplayVideo(artistName, trackName) {
-  if (!youtubeKey || !artistName || !trackName) return null;
+// ISO-8601 YouTube duration ("PT3M52S") → seconds, null when unparsable.
+function ytDurationSecs(iso) {
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(String(iso || ""));
+  if (!m) return null;
+  return (Number(m[1]) || 0) * 3600 + (Number(m[2]) || 0) * 60 + (Number(m[3]) || 0);
+}
+// A music video / live take should be in the same ballpark as the track:
+// full-album statics and hour-long concerts are out, as are sub-45s teasers.
+// Live versions run long, so the ceiling is generous.
+function videoDurationOk(videoSecs, trackSecs) {
+  if (videoSecs == null) return true;               // no data — don't reject
+  if (videoSecs < 45) return false;
+  if (!trackSecs) return videoSecs <= 15 * 60;      // no track length: cap at 15 min
+  return videoSecs <= Math.max(trackSecs * 2.5, trackSecs + 8 * 60);
+}
+async function fetchYouTubeVideo(artistName, trackName, trackSecs) {
+  if (!youtubeKey) return null;
+  let video = null;
+  // "official video OR live" nudges relevance toward real videos; category 10
+  // (Music) drops reactions/vlogs before scoring even sees them.
+  const q = `${artistName} ${trackName}`;
+  const searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video" +
+    "&videoEmbeddable=true&videoSyndicated=true&videoCategoryId=10&maxResults=15" +
+    "&q=" + encodeURIComponent(q) + "&key=" + encodeURIComponent(youtubeKey);
+  const json = await httpJson(searchUrl);
+  const artistN = search.normalize(artistName);
+  const artistK = search.artistKey(artistName);
+  const trackTokens = search.normalize(trackName).split(" ").filter(t => t.length > 2);
+  const scored = ((json && json.items) || [])
+    .filter(it => it && it.id && it.id.videoId && it.snippet)
+    .map(it => ({ id: it.id.videoId, score: scoreDisplayVideo(it, artistN, artistK, trackTokens) }))
+    .filter(c => c.score >= 70)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length) {
+    const statusUrl = "https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails,statistics" +
+      "&id=" + encodeURIComponent(scored.map(c => c.id).join(",")) + "&key=" + encodeURIComponent(youtubeKey);
+    const st = await httpJson(statusUrl);
+    const playable = new Map(((st && st.items) || [])
+      .filter(v => v && v.status && v.status.embeddable && v.status.privacyStatus === "public" &&
+                   !(v.contentDetails && v.contentDetails.contentRating && v.contentDetails.contentRating.ytRating === "ytAgeRestricted") &&
+                   // Duration sanity: kills full-album statics and teasers that
+                   // sneak past the title filters.
+                   videoDurationOk(ytDurationSecs(v.contentDetails && v.contentDetails.duration), trackSecs))
+      .map(v => [v.id, parseInt((v.statistics && v.statistics.viewCount) || "0", 10)]));
+    const best = scored.filter(c => playable.has(c.id))
+      .sort((a, b) => (b.score - a.score) || (playable.get(b.id) - playable.get(a.id)))[0];
+    if (best) {
+      video = { provider: "youtube", videoId: best.id,
+        embedUrl: "https://www.youtube-nocookie.com/embed/" + best.id +
+        "?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&loop=1&playlist=" + best.id + "&enablejsapi=1" };
+    }
+  }
+  return video;
+}
+// Dailymotion fallback — its data API is public (NO key needed). Same
+// hygiene as the YouTube scorer: track tokens must appear in the title, art/
+// audio/reaction junk is rejected, the artist must be named in the title or
+// own the channel, embedding must be allowed, and the duration must be
+// plausible for the track.
+const DM_BAD_TITLE_RE = /\b(audio|lyric|lyrics|visuali[sz]er|cover|reaction|remix|sped|slowed|8d|karaoke|instrumental|full album|teaser|trailer|interview)\b/i;
+async function fetchDailymotionVideo(artistName, trackName, trackSecs) {
+  const q = `${artistName} ${trackName}`;
+  const url = "https://api.dailymotion.com/videos?search=" + encodeURIComponent(q) +
+    "&fields=id,title,duration,owner.screenname,allow_embed&limit=10&sort=relevance";
+  const json = await httpJson(url);
+  const artistK = search.artistKey(artistName);
+  const trackTokens = search.normalize(trackName).split(" ").filter(t => t.length > 2);
+  for (const v of ((json && json.list) || [])) {
+    if (!v || !v.id || v.allow_embed === false) continue;
+    const titleN = search.normalize(v.title || "");
+    const titleK = titleN.replace(/[^a-z0-9]+/g, "");
+    const ownerK = search.artistKey(v["owner.screenname"] || "");
+    if (DM_BAD_TITLE_RE.test(v.title || "")) continue;
+    if (trackTokens.some(t => titleN.indexOf(t) === -1)) continue;
+    if (!(artistK && (titleK.indexOf(artistK) !== -1 || ownerK.indexOf(artistK) !== -1))) continue;
+    if (!videoDurationOk(Number(v.duration) || null, trackSecs)) continue;
+    return { provider: "dailymotion", videoId: "dm:" + v.id,
+      embedUrl: "https://www.dailymotion.com/embed/video/" + encodeURIComponent(v.id) +
+        "?autoplay=1&mute=1&controls=0&queue-enable=false&api=postMessage" };
+  }
+  return null;
+}
+
+// iTunes Search API fallback — public, NO key. Returns real music-video
+// PREVIEWS (~30s .m4v) as direct media files, so no embed roulette: the
+// display loops the clip in a plain <video>. Better than album art, clearly
+// labelled a preview by its length.
+async function fetchITunesPreview(artistName, trackName) {
+  const q = `${artistName} ${trackName}`;
+  const url = "https://itunes.apple.com/search?term=" + encodeURIComponent(q) +
+    "&entity=musicVideo&limit=10";
+  const json = await httpJson(url);
+  const artistK = search.artistKey(artistName);
+  const trackN = search.normalize(trackName);
+  for (const r of ((json && json.results) || [])) {
+    if (!r || !r.previewUrl) continue;
+    const tn = search.normalize(r.trackName || "");
+    const ak = search.artistKey(r.artistName || "");
+    if (!(tn === trackN || tn.startsWith(trackN) || trackN.startsWith(tn))) continue;
+    if (!(artistK && ak && (ak === artistK || ak.indexOf(artistK) !== -1 || artistK.indexOf(ak) !== -1))) continue;
+    return { provider: "itunes", videoId: "it:" + (r.trackId || r.previewUrl), videoUrl: r.previewUrl };
+  }
+  return null;
+}
+
+// Source order: YouTube (needs the user's Data API key; full videos, best
+// coverage) → Dailymotion (no key; full videos, thinner catalog) → iTunes
+// previews (no key; ~30s clips). Each step is best-effort.
+async function fetchDisplayVideo(artistName, trackName, trackSecs) {
+  if (!artistName || !trackName) return null;
   const key = search.normalize(artistName) + "||" + search.normalize(trackName);
   const hit = displayVideoCache.get(key);
   if (hit) {
@@ -415,34 +538,16 @@ async function fetchDisplayVideo(artistName, trackName) {
   }
   let video = null;
   try {
-    const q = `${artistName} ${trackName}`;
-    const searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet&type=video" +
-      "&videoEmbeddable=true&videoSyndicated=true&maxResults=10" +
-      "&q=" + encodeURIComponent(q) + "&key=" + encodeURIComponent(youtubeKey);
-    const json = await httpJson(searchUrl);
-    const artistN = search.normalize(artistName);
-    const trackTokens = search.normalize(trackName).split(" ").filter(t => t.length > 2);
-    const scored = ((json && json.items) || [])
-      .filter(it => it && it.id && it.id.videoId && it.snippet)
-      .map(it => ({ id: it.id.videoId, score: scoreDisplayVideo(it, artistN, trackTokens) }))
-      .filter(c => c.score >= 70)
-      .sort((a, b) => b.score - a.score);
-    if (scored.length) {
-      const statusUrl = "https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails,statistics" +
-        "&id=" + encodeURIComponent(scored.map(c => c.id).join(",")) + "&key=" + encodeURIComponent(youtubeKey);
-      const st = await httpJson(statusUrl);
-      const playable = new Map(((st && st.items) || [])
-        .filter(v => v && v.status && v.status.embeddable && v.status.privacyStatus === "public" &&
-                     !(v.contentDetails && v.contentDetails.contentRating && v.contentDetails.contentRating.ytRating === "ytAgeRestricted"))
-        .map(v => [v.id, parseInt((v.statistics && v.statistics.viewCount) || "0", 10)]));
-      const best = scored.filter(c => playable.has(c.id))
-        .sort((a, b) => (b.score - a.score) || (playable.get(b.id) - playable.get(a.id)))[0];
-      if (best) {
-        video = { videoId: best.id, embedUrl: "https://www.youtube-nocookie.com/embed/" + best.id +
-          "?autoplay=1&mute=1&controls=0&modestbranding=1&playsinline=1&rel=0&loop=1&playlist=" + best.id + "&enablejsapi=1" };
-      }
-    }
+    video = await fetchYouTubeVideo(artistName, trackName, trackSecs);
   } catch (e) { if (DEBUG) console.error("[display:youtube]", e.message); }
+  if (!video) {
+    try { video = await fetchDailymotionVideo(artistName, trackName, trackSecs); }
+    catch (e) { if (DEBUG) console.error("[display:dailymotion]", e.message); }
+  }
+  if (!video) {
+    try { video = await fetchITunesPreview(artistName, trackName); }
+    catch (e) { if (DEBUG) console.error("[display:itunes]", e.message); }
+  }
   displayVideoCache.set(key, { at: Date.now(), video });
   return video;
 }
@@ -1168,6 +1273,44 @@ app.post("/api/lms/rescan", async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Info for the embedded LMS server-settings frame: LMS's address, whether a
+// scan is running, and which settings page to frame. LMS sends no
+// X-Frame-Options/CSP, so its settings pages embed cleanly cross-origin —
+// the same approach Material Skin itself uses (it iframes the server
+// settings). When the Material plugin is installed we frame ITS styled page
+// (/material/settings/server/basic.html); otherwise Lyrion's classic
+// settings (/settings/index.html). The probe result is cached 10 min.
+let lmsSettingsProbe = null;   // { at, material }
+app.get("/api/lms/settings-info", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const cfg = state.lms.cfg;
+  if (!lmsSettingsProbe || (Date.now() - lmsSettingsProbe.at) > 10 * 60 * 1000) {
+    let material = false;
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 4000);
+      try {
+        const r = await fetch(`http://${cfg.host}:${cfg.port}/material/settings/server/basic.html`,
+          { signal: ctl.signal, redirect: "manual" });
+        material = r.status === 200;
+      } finally { clearTimeout(timer); }
+    } catch (e) { /* Material not installed / unreachable — classic it is */ }
+    lmsSettingsProbe = { at: Date.now(), material };
+  }
+  let scanning = false;
+  try { scanning = (await state.lms.serverStatus()).scanning; } catch (e) { /* best-effort */ }
+  res.json({
+    host: cfg.host,
+    port: cfg.port,
+    material: lmsSettingsProbe.material,
+    scanning,
+    // Paths only — the CLIENT joins them to a host it can reach (when the
+    // app and LMS share a machine, cfg.host may be 127.0.0.1, which would
+    // point the user's phone at itself).
+    settings_path: lmsSettingsProbe.material ? "/material/settings/server/basic.html" : "/settings/index.html"
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Album metadata extras: release year + record label + Pitchfork score/
 // Best-New-Music/review-link lookup. Frontend passes title and artist (album
@@ -1492,7 +1635,7 @@ app.get("/api/display/content", async (req, res) => {
       search.normalize(r.subtitle || "").includes(search.normalize(primaryArtist))) || null;
     const creditedArtists = search.splitArtistNames(artist).map(a => a.name).slice(0, 3);
     const [video, review, ...bioResults] = await Promise.all([
-      fetchDisplayVideo(primaryArtist, track).catch(() => null),
+      fetchDisplayVideo(primaryArtist, track, (st && st.duration) || (t && t.duration) || null).catch(() => null),
       withDeadline(albumInfo.albumReview({
         albumId: npRec ? npRec.id : null,
         title:   album,
@@ -1630,16 +1773,74 @@ app.get("/api/qobuz/new-releases", async (req, res) => {
     res.json({ albums, days });
   } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
 });
+// ---------------------------------------------------------------------------
+// Auto-rescan after Qobuz favourite changes. Favouriting an album puts it in
+// the user's Qobuz library, but LMS only sees it after its online-library
+// import runs — which used to mean a manual Material Skin → server settings →
+// rescan. Instead: 30s after the LAST favourite change (adds in a burst
+// collapse into one scan), trigger LMS's online-services-only import
+// (["rescan","onlinelibrary"] — not a full library rescan), then watch
+// serverstatus until the scan finishes and rebuild this app's own album
+// index so the new album shows up everywhere without a reload.
+// ---------------------------------------------------------------------------
+const QOBUZ_RESCAN_DEBOUNCE_MS = Number(process.env.QOBUZ_RESCAN_DEBOUNCE_MS) || 30 * 1000;
+let qobuzRescanTimer = null;
+let qobuzRescanWatch = null;
+function scheduleQobuzRescan() {
+  if (qobuzRescanTimer) clearTimeout(qobuzRescanTimer);
+  qobuzRescanTimer = setTimeout(async () => {
+    qobuzRescanTimer = null;
+    if (!state.connected) return;   // reconnect rebuilds the index anyway
+    try {
+      await state.lms.rescan("onlinelibrary");
+      console.log("[qobuz] favourites changed — LMS online-library import started");
+      watchScanThenReindex();
+    } catch (e) { console.error("[qobuz] auto-rescan failed:", e.message); }
+  }, QOBUZ_RESCAN_DEBOUNCE_MS);
+  if (qobuzRescanTimer.unref) qobuzRescanTimer.unref();
+}
+function watchScanThenReindex() {
+  if (qobuzRescanWatch) return;   // one watcher is enough for any burst
+  let polls = 0;
+  qobuzRescanWatch = setInterval(async () => {
+    polls++;
+    const stop = () => { clearInterval(qobuzRescanWatch); qobuzRescanWatch = null; };
+    if (polls > 120 || !state.connected) return stop();   // give up after ~10 min
+    try {
+      const ss = await state.lms.serverStatus();
+      // Skip the very first poll when idle — the import may not have flagged
+      // `rescan` yet; from the second poll on, idle means it's done.
+      if (!ss.scanning && polls >= 2) {
+        stop();
+        index.builtAt = 0;
+        ensureIndex();
+        console.log("[qobuz] LMS import finished — album index rebuilding");
+      }
+    } catch (e) { /* poll blip — next tick retries */ }
+  }, 5000);
+  if (qobuzRescanWatch.unref) qobuzRescanWatch.unref();
+}
+
 app.post("/api/qobuz/favorite", async (req, res) => {
   const albumId = ((req.body && req.body.album_id) || "").toString().trim();
   if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
-  try { await qobuzWithToken(t => qobuz.favoriteAlbum(t, albumId)); qobuzFavIds.add(albumId); res.json({ ok: true }); }
+  try {
+    await qobuzWithToken(t => qobuz.favoriteAlbum(t, albumId));
+    qobuzFavIds.add(albumId);
+    scheduleQobuzRescan();
+    res.json({ ok: true, rescan_scheduled: true });
+  }
   catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
 });
 app.post("/api/qobuz/unfavorite", async (req, res) => {
   const albumId = ((req.body && req.body.album_id) || "").toString().trim();
   if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
-  try { await qobuzWithToken(t => qobuz.unfavoriteAlbum(t, albumId)); qobuzFavIds.remove(albumId); res.json({ ok: true }); }
+  try {
+    await qobuzWithToken(t => qobuz.unfavoriteAlbum(t, albumId));
+    qobuzFavIds.remove(albumId);
+    scheduleQobuzRescan();
+    res.json({ ok: true, rescan_scheduled: true });
+  }
   catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
 });
 // Full Qobuz catalog search (albums + artists), paged by offset.

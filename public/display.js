@@ -314,9 +314,32 @@
     if (s.kind === "video") {
       const wrap = document.createElement("div");
       wrap.className = "video-wrap";
-      // The IFrame Player API (not a bare iframe) so embed failures are
-      // DETECTED: the server verifies status.embeddable, but region blocks
-      // and takedowns still slip through and would sit on screen as a
+      // iTunes music-video PREVIEW (~30s .m4v) — a direct media file, played
+      // muted + looped in a plain <video>. onerror drops it from rotation.
+      if (s.provider === "itunes" && s.videoUrl) {
+        const vid = document.createElement("video");
+        vid.src = s.videoUrl;
+        vid.autoplay = true; vid.muted = true; vid.loop = true;
+        vid.playsInline = true; vid.setAttribute("playsinline", "");
+        vid.addEventListener("error", () => dropVideo(s.videoId));
+        wrap.appendChild(vid);
+        return { node: wrap, full: false };
+      }
+      // Dailymotion — plain iframe embed (its api=postMessage events feed the
+      // error listener below, which drops dead embeds from rotation).
+      if (s.provider === "dailymotion" && s.embedUrl) {
+        const frame = document.createElement("iframe");
+        frame.src = s.embedUrl;
+        frame.allow = "autoplay; encrypted-media";
+        frame.setAttribute("frameborder", "0");
+        frame.dataset.videoId = s.videoId;
+        frame.addEventListener("error", () => dropVideo(s.videoId));
+        wrap.appendChild(frame);
+        return { node: wrap, full: false };
+      }
+      // YouTube: the IFrame Player API (not a bare iframe) so embed failures
+      // are DETECTED: the server verifies status.embeddable, but region
+      // blocks and takedowns still slip through and would sit on screen as a
       // "Video unavailable" card. onError drops the video from rotation.
       const holder = document.createElement("div");
       wrap.appendChild(holder);
@@ -363,6 +386,18 @@
     });
     return ytPromise;
   }
+
+  // Dailymotion embeds report failures via postMessage (api=postMessage on
+  // the embed URL). An error event drops that video from rotation, same as
+  // the YouTube onError path.
+  window.addEventListener("message", (ev) => {
+    if (!/(^|\.)dailymotion\.com$/.test((() => { try { return new URL(ev.origin).hostname; } catch (e) { return ""; } })())) return;
+    const data = typeof ev.data === "string" ? ev.data : "";
+    if (!/(^|&)event=(error|playback_unavailable)(&|$)/.test(data)) return;
+    document.querySelectorAll(".video-wrap iframe[data-video-id]").forEach(f => {
+      if (f.contentWindow === ev.source) dropVideo(f.dataset.videoId);
+    });
+  });
 
   // A video that can't actually play (region block, takedown) leaves the
   // rotation for good; if it's on screen right now, advance immediately.
