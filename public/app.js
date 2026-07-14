@@ -3798,7 +3798,7 @@
   const openBtn    = document.getElementById("settings-toggle");
   const overlay    = document.getElementById("settings-overlay");
   const versionEl  = document.getElementById("settings-version");
-  const radioToggle = document.getElementById("radio-toggle");
+
   const zoneSelect  = document.getElementById("zone-select");
   const labelOrderSelect = document.getElementById("label-order-select");
   const labelMinSelect   = document.getElementById("label-min-select");
@@ -3824,24 +3824,41 @@
     });
   }
 
-  async function loadRadio() {
-    if (!radioToggle || !zoneSelect || !zoneSelect.value) return;
+  // Don't Stop The Music for the selected zone — LMS's built-in keep-playing
+  // feature (replaces the old app-side Random album radio toggle, which
+  // talked to a route that was never ported). Options come from LMS itself
+  // (localized provider names); the row hides when the plugin is disabled.
+  const dstmSelect = document.getElementById("dstm-select");
+  const dstmRow    = document.getElementById("dstm-row");
+  async function loadDstm() {
+    if (!dstmSelect || !zoneSelect || !zoneSelect.value) return;
     try {
-      const r = await fetch("/api/radio?zone=" + encodeURIComponent(zoneSelect.value), { cache: "no-store" });
-      if (r.ok) { const j = await r.json(); radioToggle.checked = !!j.enabled; }
-    } catch (e) {} // network error loading radio state — toggle stays at default, non-critical
+      const r = await fetch("/api/lms/player/" + encodeURIComponent(zoneSelect.value) + "/dstm", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      if (!j.options || !j.options.length) { if (dstmRow) dstmRow.classList.add("hidden"); return; }
+      if (dstmRow) dstmRow.classList.remove("hidden");
+      dstmSelect.innerHTML = "";
+      for (const o of j.options) {
+        const opt = document.createElement("option");
+        opt.value = o.key; opt.textContent = o.text;
+        dstmSelect.appendChild(opt);
+      }
+      dstmSelect.value = j.current != null ? String(j.current) : "0";
+    } catch (e) { if (dstmRow) dstmRow.classList.add("hidden"); }
   }
-  if (radioToggle) {
-    radioToggle.addEventListener("change", async () => {
+  if (dstmSelect) {
+    dstmSelect.addEventListener("change", async () => {
       if (!zoneSelect || !zoneSelect.value) return;
       try {
-        await fetch("/api/radio", {
+        await fetch("/api/lms/player/" + encodeURIComponent(zoneSelect.value) + "/dstm", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ zone: zoneSelect.value, enabled: radioToggle.checked })
+          body: JSON.stringify({ provider: dstmSelect.value })
         });
-      } catch (e) {} // network error toggling radio — toggle UI already updated, best-effort
+      } catch (e) {} // best-effort — the select already shows the pick
     });
   }
+  if (zoneSelect) zoneSelect.addEventListener("change", loadDstm);
 
   let versionLoaded = false;
   async function loadVersion() {
@@ -4502,14 +4519,18 @@
       append(b);
     }
 
-    // Playback modes
+    // Playback modes + Don't Stop The Music (LMS's own keep-playing feature)
+    const dstm = j.dstm && j.dstm.options && j.dstm.options.length ? j.dstm : null;
     append(psBlock(
       j.modes && j.modes.shuffle != null ? psRowSelect("Shuffle", "Shuffle mode for this player's queue.",
         [[0, "Off"], [1, "By song"], [2, "By album"]], j.modes.shuffle,
         (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { shuffle: v })) : null,
       j.modes && j.modes.repeat != null ? psRowSelect("Repeat", "Repeat mode for this player's queue.",
         [[0, "Off"], [1, "One song"], [2, "All"]], j.modes.repeat,
-        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { repeat: v })) : null
+        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { repeat: v })) : null,
+      dstm ? psRowSelect("Don't Stop The Music", "When the queue runs out, LMS keeps playing using the selected mix (Random Album, Random Artist, …). This is LMS's built-in feature — it replaces the old app-side Random album radio.",
+        dstm.options.map(o => [o.key, o.text]), dstm.current,
+        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/dstm`, { provider: v })) : null
     ));
 
     // Audio
@@ -4526,12 +4547,10 @@
         p.replayGainMode, (v) => psSavePref("replayGainMode", v)) : null,
       has("remoteReplayGain") ? psRowNumber("Remote stream gain (dB)", "Fixed gain applied to remote/streamed tracks that have no ReplayGain tags.",
         p.remoteReplayGain, -20, 20, 1, (v) => psSavePref("remoteReplayGain", v)) : null,
-      has("digitalVolumeControl") ? psRowToggle("Software volume control", "Off = fixed 100% digital output for an external amp/DAC volume.",
-        p.digitalVolumeControl === "1" || p.digitalVolumeControl === 1, (on) => psSavePref("digitalVolumeControl", on ? "1" : "0")) : null,
-      has("bass") ? psRowNumber("Bass", "Tone control (hardware players only). 50 = flat.",
-        p.bass, 0, 100, 1, (v) => psSavePref("bass", v)) : null,
-      has("treble") ? psRowNumber("Treble", "Tone control (hardware players only). 50 = flat.",
-        p.treble, 0, 100, 1, (v) => psSavePref("treble", v)) : null
+      // LMS's own Volume Control setting, with its exact two options.
+      has("digitalVolumeControl") ? psRowSelect("Volume control", "Fix the output at 100% if your amplifier/DAC controls loudness or you need perfect digital passthrough. Affects both digital and analog volume.",
+        [["0", "Output level is fixed at 100%"], ["1", "Volume controls adjust outputs"]],
+        p.digitalVolumeControl, (v) => psSavePref("digitalVolumeControl", v)) : null
     ));
 
     // Power behaviour
@@ -4681,7 +4700,7 @@
   wireRescan(lmsPane.rescanNew, null, "Library rescan");
   wireRescan(lmsPane.rescanOnline, "onlinelibrary", "Online-services import");
 
-  const open = () => { showView("home"); loadRadio(); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
+  const open = () => { showView("home"); loadDstm(); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
     // Closing Settings ends the client side of any pending Tidal device flow

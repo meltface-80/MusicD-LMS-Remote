@@ -850,13 +850,16 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
         <div class="settings-divider"></div>
 
-        <div class="settings-block">
+        <div class="settings-block" id="dstm-row">
           <div class="settings-row">
-            <span class="settings-label">Random album radio <button class="settings-info-btn" data-info="When this zone's queue ends and Roon Radio is off, keep playing whole random albums — a never-ending random album radio." aria-label="Info">ⓘ</button></span>
-            <label class="switch">
-              <input type="checkbox" id="radio-toggle" aria-label="Random album radio">
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-            </label>
+            <span class="settings-label">Don't Stop The Music <button class="settings-info-btn" data-info="LMS's built-in keep-the-music-playing feature: when this zone's queue runs out, LMS continues with the selected mix (Random Album, Random Artist, …). Set per player — the same control is in Player settings." aria-label="Info">ⓘ</button></span>
+            <div class="settings-select-wrap">
+              <select id="dstm-select" class="settings-select" aria-label="Don't Stop The Music"></select>
+              <svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
           </div>
         </div>
       </div>
