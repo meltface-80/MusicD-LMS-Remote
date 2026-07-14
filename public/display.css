@@ -220,7 +220,13 @@ body.show-ui .controls { opacity: 1; pointer-events: auto; }
 .bottombar.hidden { display: none; }
 .bb-title  { font-size: clamp(18px, 2.6vw, 30px); font-weight: 700; }
 .bb-artist { font-size: clamp(13px, 1.8vw, 19px); color: #b9bfc6; margin-top: 2px; }
-.bb-title, .bb-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bb-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The now-playing artist may carry several performers — let it wrap to two
+   lines rather than clipping mid-name, while the fixed bottom bar stays put. */
+.bb-artist {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
 .bb-progress-row {
   display: flex; align-items: center; gap: 14px;
   margin-top: 12px;
