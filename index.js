@@ -335,6 +335,29 @@ const updater = makeUpdater({
   debug: DEBUG
 });
 
+// ---------------------------------------------------------------------------
+// Album metadata overrides (lib/albumedits.js) + artwork rescue
+// (lib/albumart.js). Both persist in the app's own database under data/ — the
+// music mount is read-only, so the files/LMS are never modified. Edits are
+// keyed by the ORIGINAL LMS title+artist so they survive rescans; artwork for
+// local albums with no embedded/folder cover is fetched from external sources
+// (MAI plugin → Cover Art Archive by MBID → MusicBrainz release-group →
+// Qobuz → iTunes) and stored as "art-…" image keys served by /api/image.
+// ---------------------------------------------------------------------------
+const makeAlbumEdits = require("./lib/albumedits");
+const albumEdits = makeAlbumEdits({ dataDir: DATA_DIR, debug: DEBUG });
+
+const { makeAlbumArt } = require("./lib/albumart");
+const albumArt = makeAlbumArt({
+  getLms:    () => (state.connected ? state.lms : null),
+  qobuzCall: (fn) => qobuzWithToken(fn),
+  qobuz,
+  dataDir:   DATA_DIR,
+  normalize: search.normalize,
+  artistKey: search.artistKey,
+  debug:     DEBUG
+});
+
 // FNV-1a string hash — a stable seed for deterministic daily/weekly picks
 // (album-of-the-day, label-of-the-week). Returns an unsigned 32-bit int;
 // callers do `hash % n` to choose an index.
@@ -649,9 +672,24 @@ async function buildIndex() {
     rows.push(...albums);
     indexProgress = total ? Math.min(1, rows.length / total) : 1;
   }
+  // Layer owner edits (title/artist/year/artwork overrides) and any
+  // previously-rescued artwork onto the raw LMS rows before indexing — both
+  // live in the app's own database; the files/LMS are untouched.
+  for (const row of rows) {
+    albumEdits.applyToRow(row);
+    if (!row.coverId) {
+      const stored = albumArt.storedFor(row.origTitle || row.title, row.origArtist || row.subtitle);
+      if (stored) row.coverId = stored;
+    }
+  }
   search.loadRecords(index, rows);
   indexProgress = 1;
   if (DEBUG) console.log("[index] built", index.records.length, "albums");
+  // Background sweep: fetch + store covers for local albums that still have
+  // none. Best-effort, rate-limited (MusicBrainz), mutates records in place so
+  // tiles/modals pick the new art up on their next fetch. Never blocks build.
+  albumArt.sweep(index.records, (rec, key) => { rec.image_key = key; })
+    .catch(e => { if (DEBUG) console.error("[albumart] sweep:", e.message); });
   // Labels ride on the album index: re-project cached labels onto the fresh
   // offsets (fast, no network), then kick the background scan to fill in any
   // albums we haven't looked up yet. Both are best-effort — a labels failure
@@ -978,6 +1016,108 @@ app.get("/api/album", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// The album view's shape for a record, echoing the tile/modal fields plus the
+// edited flag so the client can offer "Remove edits".
+function albumView(rec) {
+  return {
+    offset: rec.offset, title: rec.title, subtitle: rec.subtitle,
+    year: rec.year, image_key: rec.image_key, source: rec.source, edited: !!rec.edited
+  };
+}
+
+// ---- album editor: owner metadata/artwork overrides (stored in app DB) ----
+
+// Artwork candidates for an album (external sources) — powers the editor's
+// "Find artwork" grid. Does NOT store anything; the client picks one and Save
+// downloads it.
+app.get("/api/albumart/candidates", async (req, res) => {
+  const offset = parseInt(req.query.offset, 10);
+  const rec = Number.isFinite(offset) ? index.byOffset.get(offset) : null;
+  const title  = String(req.query.title  || (rec && rec.title)    || "").trim();
+  const artist = String(req.query.artist || (rec && rec.subtitle) || "").trim();
+  if (!title) return res.status(400).json({ error: "title required" });
+  try {
+    const cands = await withDeadline(
+      albumArt.candidates({ title, artist, mbid: rec && rec.mbid }), 30000);
+    res.json({ candidates: cands || [] });
+  } catch (e) { res.json({ candidates: [] }); }
+});
+
+// Server-side preview proxy for a candidate cover (remote sources are often
+// CORS-less / hotlink-blocked in the browser).
+app.get("/api/albumart/thumb", async (req, res) => {
+  const url = String(req.query.url || "");
+  if (!/^https?:\/\//i.test(url)) return res.status(400).end();
+  try {
+    const { body, type } = await withDeadline(albumArt.thumb(url), 15000);
+    res.set("Content-Type", type);
+    res.set("Cache-Control", "public, max-age=3600");
+    res.send(body);
+  } catch (e) { res.status(404).end(); }
+});
+
+// Save an owner edit. Body: { offset, title?, artist?, year?, art_url? }.
+// Overrides are keyed by the album's ORIGINAL LMS title/artist so they survive
+// library rescans. art_url is downloaded + stored; the resulting image key is
+// remembered. Returns the updated album view.
+app.post("/api/album/edit", async (req, res) => {
+  const { offset, title, artist, year, art_url } = req.body || {};
+  const rec = Number.isFinite(offset) ? index.byOffset.get(offset) : null;
+  if (!rec) return res.status(404).json({ error: "Unknown album offset" });
+  const origTitle  = rec.origTitle  || rec.title;
+  const origArtist = rec.origArtist || rec.subtitle;
+  try {
+    let art;   // undefined = leave artwork override as-is
+    if (typeof art_url === "string" && art_url.trim()) {
+      art = await withDeadline(
+        albumArt.saveFromUrl(origTitle, origArtist, art_url.trim(), "Manual"), 25000);
+    }
+    // Empty string clears an override; undefined leaves it unchanged.
+    const norm = (v) => (v === undefined ? undefined : (v === null || String(v).trim() === "" ? null : v));
+    const yr = year === undefined ? undefined
+             : (year === null || year === "" ? null : Number(year));
+    albumEdits.set(origTitle, origArtist, {
+      title:  norm(title),
+      artist: norm(artist),
+      year:   Number.isNaN(yr) ? undefined : yr,
+      art
+    });
+    // Re-project the edit onto the live index record so the change shows
+    // immediately without a full rebuild.
+    const edit = albumEdits.get(origTitle, origArtist);
+    rec.origTitle = origTitle; rec.origArtist = origArtist;
+    rec.title    = (edit && edit.title  != null) ? edit.title  : origTitle;
+    rec.subtitle = (edit && edit.artist != null) ? edit.artist : origArtist;
+    rec.year     = (edit && edit.year   != null) ? edit.year   : rec.year;
+    if (edit && edit.art != null) rec.image_key = edit.art;
+    rec.edited = !!edit;
+    search.reindexRecord(index, rec);
+    // Owner edits are durable immediately (not just on the debounce timer).
+    albumEdits.flushNow();
+    albumArt.flushNow();
+    res.json({ album: albumView(rec) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Remove all overrides for an album, restoring LMS values.
+app.delete("/api/album/edit", async (req, res) => {
+  const offset = parseInt(req.query.offset, 10);
+  const rec = Number.isFinite(offset) ? index.byOffset.get(offset) : null;
+  if (!rec) return res.status(404).json({ error: "Unknown album offset" });
+  const origTitle  = rec.origTitle  || rec.title;
+  const origArtist = rec.origArtist || rec.subtitle;
+  albumEdits.remove(origTitle, origArtist);
+  albumEdits.flushNow();
+  rec.title = origTitle; rec.subtitle = origArtist; rec.edited = false;
+  if (rec.origYear !== undefined) rec.year = rec.origYear;
+  // Restore artwork: the real LMS cover if the album had one, else whatever
+  // the background sweep rescued, else nothing.
+  const stored = albumArt.storedFor(origTitle, origArtist);
+  rec.image_key = rec.origImageKey || stored || null;
+  search.reindexRecord(index, rec);
+  res.json({ album: albumView(rec) });
+});
+
 // Artwork proxy: image_key is the LMS coverid.
 app.get("/api/image/:image_key", async (req, res) => {
   const size = Math.max(64, Math.min(1200, parseInt(req.query.size || "400", 10)));
@@ -987,6 +1127,17 @@ app.get("/api/image/:image_key", async (req, res) => {
     res.set("Content-Type", cached.type);
     res.set("Cache-Control", "public, max-age=604800, immutable");
     return res.send(cached.body);
+  }
+  // Rescued/owner-set artwork stored in the app's own database. These keys are
+  // content-addressed (a new cover mints a new key), so serving them immutable
+  // is safe. Served straight from disk — no LMS round-trip.
+  if (String(req.params.image_key).startsWith("art-")) {
+    const stored = albumArt.read(req.params.image_key);
+    if (!stored) return res.status(404).end();
+    imgPut(key, { body: stored.body, type: stored.type, bytes: stored.body.length });
+    res.set("Content-Type", stored.type);
+    res.set("Cache-Control", "public, max-age=604800, immutable");
+    return res.send(stored.body);
   }
   if (!state.lms) return res.status(503).end();
   try {

@@ -65,3 +65,15 @@ Layout section of README.md.
   adding tags.
 - `/api/queue` returns only current + upcoming tracks; `queue_item_id` is
   the REAL LMS playlist index (play-from-here/remove depend on it).
+- The music mount is READ-ONLY: never write artwork/metadata back to files or
+  LMS. Owner album edits (`lib/albumedits.js`, `data/album-edits.json`) and
+  rescued cover art (`lib/albumart.js`, `data/artwork/` + cache) live in the
+  app's own DB, keyed by the ORIGINAL LMS title+artist so they survive
+  rescans. Both are layered onto the LMS rows in `buildIndex` before
+  `search.loadRecords`; a record carries `origTitle/origArtist/origYear/
+  origImageKey` so "Remove edits" can restore LMS values. Rescued/edited
+  covers use content-addressed `art-…` image keys served straight from disk by
+  `/api/image` (a new cover mints a new key — immutable HTTP caching stays
+  safe). Artwork sources, best-first: MAI `albumcovers` → Cover Art Archive by
+  MBID (LMS tag M = release id) → MusicBrainz release-group search (artistKey
+  fold, no disambiguation) → Qobuz → iTunes.

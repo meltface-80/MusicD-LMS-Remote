@@ -358,6 +358,52 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     <div id="label-unmerge-list" class="label-unmerge-list"></div>
   </div>
 
+  <!-- Album edit sheet: owner metadata/artwork overrides, stored in the app's
+       own database — the music files and LMS are never modified. -->
+  <div id="album-edit-sheet" class="album-edit-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="album-edit-heading">
+    <div class="album-edit-header">
+      <span id="album-edit-heading">Edit album</span>
+      <button id="ae-close" class="icon-btn" type="button" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 6 6 18M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="album-edit-body">
+      <label class="album-edit-field">
+        <span>Title</span>
+        <input id="ae-title" type="text" autocomplete="off">
+      </label>
+      <label class="album-edit-field">
+        <span>Artist</span>
+        <input id="ae-artist" type="text" autocomplete="off">
+      </label>
+      <label class="album-edit-field">
+        <span>Year</span>
+        <input id="ae-year" type="number" inputmode="numeric" min="0" max="3000">
+      </label>
+      <div class="album-edit-art">
+        <div class="album-edit-art-head">
+          <span>Artwork</span>
+          <button id="ae-find-art" class="action-btn" type="button">Find artwork</button>
+        </div>
+        <div id="ae-art-status" class="album-edit-status hidden"></div>
+        <div id="ae-art-grid" class="album-edit-art-grid"></div>
+        <label class="album-edit-field">
+          <span>…or paste an image URL</span>
+          <input id="ae-art-url" type="url" placeholder="https://…" autocomplete="off">
+        </label>
+      </div>
+      <div class="album-edit-actions">
+        <button id="ae-reset" class="action-btn ae-danger hidden" type="button">Remove edits</button>
+        <button id="ae-cancel" class="action-btn" type="button">Cancel</button>
+        <button id="ae-save" class="action-btn primary" type="button">Save</button>
+      </div>
+      <p class="album-edit-note">Edits are stored in the app's database — your music files and LMS are never modified.</p>
+    </div>
+  </div>
+
   <!-- Album detail modal -->
   <div id="album-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-backdrop" data-close></div>
@@ -387,6 +433,13 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
           <polyline points="16 6 12 2 8 6"/>
           <line x1="12" y1="2" x2="12" y2="15"/>
           <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+        </svg>
+      </button>
+      <!-- Album mode only (CSS-gated away in np-mode): metadata/artwork editor -->
+      <button class="modal-edit icon-btn" id="modal-edit-btn" aria-label="Edit album" title="Edit album">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
         </svg>
       </button>
 
