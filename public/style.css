@@ -1953,6 +1953,57 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    (the proxied page's own background is forced dark too). */
 .lmsset-frame { flex: 1; width: 100%; border: 0; background: #181818; }
 
+/* Artist page header: photo + bio + band membership (full grid width) */
+.artist-head {
+  grid-column: 1 / -1;
+  display: flex; gap: 18px; align-items: flex-start;
+  padding: 6px 0 10px;
+}
+.artist-head-photo {
+  flex: 0 0 auto;
+  width: 128px; height: 128px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-elev);
+  box-shadow: 0 4px 18px rgba(0,0,0,.25);
+}
+.artist-head-body { flex: 1; min-width: 0; }
+.artist-head-members {
+  font-size: 13.5px; color: var(--text-dim);
+  margin-bottom: 6px; line-height: 1.7;
+}
+.artist-head-members-label {
+  color: var(--text-faint);
+  margin-right: 6px;
+  font-weight: 600; font-size: 12px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.artist-member-link {
+  background: none; border: none; padding: 0;
+  color: var(--accent); font-size: inherit; font-family: inherit;
+  cursor: pointer;
+}
+.artist-member-link:hover { opacity: .75; }
+.artist-head-bio {
+  font-size: 14px; line-height: 1.55; color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.artist-head-bio.expanded { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.artist-head-toggle {
+  background: none; border: none; padding: 4px 0 0;
+  color: var(--accent); font-size: 13px; cursor: pointer;
+}
+.artist-head-attrib { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+@media (max-width: 560px) {
+  .artist-head { flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+  .artist-head-photo { width: 108px; height: 108px; }
+  .artist-head-bio { text-align: left; }
+}
+
 /* Artist albums view */
 .artist-view-back {
   background: none; border: 1px solid var(--border); border-radius: 8px;

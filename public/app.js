@@ -5950,6 +5950,77 @@ initServiceBrowser({
 
   let artistViewActive = false;
   let saved            = null;   // snapshot of the screen we came from
+  let currentArtistHeader = null;   // which artist the in-flight header fetch is for
+
+  // Full-width header at the top of the artist grid: photo, bio (clamped,
+  // tap to expand) and band membership as tappable artist links.
+  function renderArtistHeader(info) {
+    const head = document.createElement("div");
+    head.className = "artist-head";
+
+    if (info.photo) {
+      const img = document.createElement("img");
+      img.className = "artist-head-photo";
+      img.alt = "";
+      img.src = info.photo;
+      img.addEventListener("error", () => img.remove());
+      head.appendChild(img);
+    }
+
+    const body = document.createElement("div");
+    body.className = "artist-head-body";
+
+    const memberRow = (label, names) => {
+      if (!names || !names.length) return null;
+      const row = document.createElement("div");
+      row.className = "artist-head-members";
+      const lab = document.createElement("span");
+      lab.className = "artist-head-members-label";
+      lab.textContent = label;
+      row.appendChild(lab);
+      names.forEach((nm, i) => {
+        if (i > 0) row.appendChild(document.createTextNode(" · "));
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "artist-member-link";
+        b.textContent = nm;
+        b.addEventListener("click", () => showArtistAlbums(nm));
+        row.appendChild(b);
+      });
+      return row;
+    };
+    const members  = memberRow("Members:", info.members);
+    const memberOf = memberRow("Member of:", info.memberOf);
+    if (members)  body.appendChild(members);
+    if (memberOf) body.appendChild(memberOf);
+
+    if (info.bio && info.bio.text) {
+      const bio = document.createElement("div");
+      bio.className = "artist-head-bio";
+      bio.textContent = info.bio.text;
+      const attrib = document.createElement("div");
+      attrib.className = "artist-head-attrib";
+      attrib.textContent = "Bio: " + (info.bio.attribution || "");
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "artist-head-toggle";
+      toggle.textContent = "Show more";
+      toggle.addEventListener("click", () => {
+        const open = bio.classList.toggle("expanded");
+        toggle.textContent = open ? "Show less" : "Show more";
+      });
+      body.appendChild(bio);
+      body.appendChild(toggle);
+      if (info.bio.attribution) body.appendChild(attrib);
+      // Only offer the toggle when the clamped text actually overflows.
+      requestAnimationFrame(() => {
+        if (bio.scrollHeight <= bio.clientHeight + 4) toggle.remove();
+      });
+    }
+
+    head.appendChild(body);
+    grid.prepend(head);
+  }
 
   function exitArtistView() {
     if (!artistViewActive) return;
@@ -6014,6 +6085,20 @@ initServiceBrowser({
       document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
     }
     grid.innerHTML = "";
+
+    // Photo + bio + band-membership header, fetched in PARALLEL with the
+    // album list (external sources are slower than the local index) and
+    // rendered as a full-width block at the top of the grid when it arrives.
+    // A stale response (user already navigated on) is dropped.
+    currentArtistHeader = artistName;
+    fetch("/api/artist-info?artist=" + encodeURIComponent(artistName))
+      .then(r => (r.ok ? r.json() : null))
+      .then(info => {
+        if (!info || !artistViewActive || currentArtistHeader !== artistName) return;
+        if (!(info.photo || info.bio || (info.members || []).length || (info.memberOf || []).length)) return;
+        renderArtistHeader(info);
+      })
+      .catch(() => { /* header is enrichment — the album grid stands alone */ });
 
     try {
       const r = await fetch("/api/artist-albums?artist=" + encodeURIComponent(artistName));
