@@ -748,6 +748,7 @@
     btn.setAttribute("aria-label",
       `${a.title || "Untitled"}${a.subtitle ? " by " + a.subtitle : ""}`);
     btn.dataset.albumKey = (a.title || "").toLowerCase().trim();
+    if (a.offset != null) btn.dataset.offset = String(a.offset);
 
     const artWrap = document.createElement("div");
     artWrap.className = "album-art-wrap";
@@ -1722,6 +1723,178 @@
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     })[c]);
   }
+
+  // ----- Album editor: owner metadata/artwork overrides ---------------------
+  // Edits live in the app's own database (the music mount is read-only) and
+  // are applied on top of what LMS reports. Artwork candidates come from the
+  // server's external lookup (/api/albumart/candidates).
+  (function initAlbumEdit() {
+    const sheet   = document.getElementById("album-edit-sheet");
+    const editBtn = document.getElementById("modal-edit-btn");
+    if (!sheet || !editBtn) return;
+    const fTitle   = document.getElementById("ae-title");
+    const fArtist  = document.getElementById("ae-artist");
+    const fYear    = document.getElementById("ae-year");
+    const fUrl     = document.getElementById("ae-art-url");
+    const artGrid  = document.getElementById("ae-art-grid");
+    const statusEl = document.getElementById("ae-art-status");
+    const findBtn  = document.getElementById("ae-find-art");
+    const saveBtn  = document.getElementById("ae-save");
+    const resetBtn = document.getElementById("ae-reset");
+
+    let selectedArtUrl = null;
+
+    function setStatus(msg) {
+      statusEl.textContent = msg || "";
+      statusEl.classList.toggle("hidden", !msg);
+    }
+
+    function openSheet() {
+      if (!currentAlbum || currentAlbum.offset == null) return;
+      fTitle.value  = currentAlbum.title || "";
+      fArtist.value = currentAlbum.subtitle || "";
+      fYear.value   = currentAlbum.year != null ? currentAlbum.year : "";
+      fUrl.value    = "";
+      artGrid.innerHTML = "";
+      selectedArtUrl = null;
+      setStatus("");
+      resetBtn.classList.toggle("hidden", !currentAlbum.edited);
+      saveBtn.disabled = false;
+      sheet.classList.remove("hidden");
+    }
+    function closeSheet() { sheet.classList.add("hidden"); }
+    editBtn.addEventListener("click", openSheet);
+    document.getElementById("ae-close").addEventListener("click", closeSheet);
+    document.getElementById("ae-cancel").addEventListener("click", closeSheet);
+
+    findBtn.addEventListener("click", async () => {
+      if (!currentAlbum) return;
+      findBtn.disabled = true;
+      setStatus("Searching cover sources…");
+      artGrid.innerHTML = "";
+      selectedArtUrl = null;
+      try {
+        const r = await fetch(`/api/albumart/candidates?offset=${encodeURIComponent(currentAlbum.offset)}` +
+          `&title=${encodeURIComponent(fTitle.value || currentAlbum.title || "")}` +
+          `&artist=${encodeURIComponent(fArtist.value || currentAlbum.subtitle || "")}`);
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        const cands = j.candidates || [];
+        if (!cands.length) { setStatus("No artwork found — try adjusting title/artist, or paste a URL below."); return; }
+        setStatus("Tap a cover to select it, then Save.");
+        for (const c of cands) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "ae-art-candidate";
+          const img = document.createElement("img");
+          img.loading = "lazy";
+          img.alt = "";
+          // Remote candidates render through the server-side thumb proxy so a
+          // CORS-less/hotlink-blocked source still previews.
+          img.src = `/api/albumart/thumb?url=${encodeURIComponent(c.url)}`;
+          img.onerror = () => b.remove();
+          const src = document.createElement("span");
+          src.className = "ae-art-src";
+          src.textContent = c.source || "";
+          b.appendChild(img); b.appendChild(src);
+          b.addEventListener("click", () => {
+            selectedArtUrl = c.url;
+            fUrl.value = "";
+            artGrid.querySelectorAll(".ae-art-candidate").forEach(el => el.classList.toggle("selected", el === b));
+          });
+          artGrid.appendChild(b);
+        }
+      } catch (e) {
+        setStatus("Artwork search failed: " + e.message);
+      } finally {
+        findBtn.disabled = false;
+      }
+    });
+    // Typing a manual URL supersedes any tapped candidate.
+    fUrl.addEventListener("input", () => {
+      if (fUrl.value.trim()) {
+        selectedArtUrl = null;
+        artGrid.querySelectorAll(".ae-art-candidate.selected").forEach(el => el.classList.remove("selected"));
+      }
+    });
+
+    // Push the saved record back into the open modal (and the cached album the
+    // tiles handed us) so the edit is visible immediately.
+    function applySaved(album) {
+      if (!album) return;
+      Object.assign(currentAlbum, album);
+      window.__currentAlbum = currentAlbum;
+      modalTitle.textContent = currentAlbum.title || "Untitled";
+      setModalArtist(currentAlbum.subtitle);
+      if (currentAlbum.image_key) {
+        modalImg.src = `/api/image/${encodeURIComponent(currentAlbum.image_key)}?size=800`;
+        modalImg.style.display = "";
+        setModalAmbient(modalImg.src);
+      } else {
+        modalImg.removeAttribute("src");
+        modalImg.style.display = "none";
+        setModalAmbient(null);
+      }
+      // Any tile currently on screen for this album gets the fresh data too.
+      document.querySelectorAll(".album[data-offset]").forEach(tile => {
+        if (tile.dataset.offset !== String(currentAlbum.offset)) return;
+        const t = tile.querySelector(".album-title");    if (t) t.textContent = currentAlbum.title || "";
+        const a = tile.querySelector(".album-artist");   if (a) a.textContent = currentAlbum.subtitle || "";
+        const wrap = tile.querySelector(".album-art-wrap");
+        if (wrap && currentAlbum.image_key) {
+          let im = wrap.querySelector("img");
+          if (!im) { im = document.createElement("img"); im.alt = ""; wrap.prepend(im); }
+          im.src = `/api/image/${encodeURIComponent(currentAlbum.image_key)}?size=400`;
+          wrap.classList.remove("no-image");
+        }
+      });
+    }
+
+    saveBtn.addEventListener("click", async () => {
+      if (!currentAlbum) return;
+      saveBtn.disabled = true;
+      const artUrl = (fUrl.value || "").trim() || selectedArtUrl || undefined;
+      setStatus(artUrl ? "Saving (downloading artwork)…" : "Saving…");
+      try {
+        const r = await fetch("/api/album/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            offset: currentAlbum.offset,
+            title:  fTitle.value,
+            artist: fArtist.value,
+            year:   fYear.value === "" ? null : Number(fYear.value),
+            art_url: artUrl
+          })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        applySaved(j.album);
+        closeSheet();
+        showToast("Album saved to the app's database");
+      } catch (e) {
+        setStatus("Save failed: " + e.message);
+        saveBtn.disabled = false;
+      }
+    });
+
+    resetBtn.addEventListener("click", async () => {
+      if (!currentAlbum) return;
+      resetBtn.disabled = true;
+      try {
+        const r = await fetch(`/api/album/edit?offset=${encodeURIComponent(currentAlbum.offset)}`, { method: "DELETE" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        applySaved(j.album);
+        closeSheet();
+        showToast("Edits removed — back to LMS values");
+      } catch (e) {
+        setStatus("Remove failed: " + e.message);
+      } finally {
+        resetBtn.disabled = false;
+      }
+    });
+  })();
 
   // ----- Library search (instant, prefix-aware; collapsible) -----
   (function initSearch() {
