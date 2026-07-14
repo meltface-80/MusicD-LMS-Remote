@@ -1464,9 +1464,18 @@ app.post("/api/lms/player/:id/pref/:name", async (req, res) => {
   }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Rescan the LMS library. `mode` (from the pane's dropdown) is whitelisted to
+// LMS's known rescan sub-commands so nothing arbitrary is forwarded to the CLI:
+//   (none)          → ["rescan"]               new & changed files
+//   "full"          → ["rescan","full"]        clear + full rescan
+//   "playlists"     → ["rescan","playlists"]   playlists only
+//   "onlinelibrary" → ["rescan","onlinelibrary"] online-library import only
+const RESCAN_MODES = new Set(["full", "playlists", "onlinelibrary"]);
 app.post("/api/lms/rescan", async (req, res) => {
   if (!state.connected) return notConnected(res);
-  try { await state.lms.rescan((req.body || {}).mode || null); res.json({ ok: true }); }
+  const raw = (req.body || {}).mode;
+  const mode = RESCAN_MODES.has(raw) ? raw : null;
+  try { await state.lms.rescan(mode); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

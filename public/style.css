@@ -1859,6 +1859,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .settings-sub { font-size: 13px; color: var(--text-faint); }
 .settings-block { padding: 4px 0; }
 .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+/* Rescan mode dropdown grows to fill the row; the Rescan button sits beside it. */
+.lms-rescan-row { gap: 10px; }
+.lms-rescan-row .settings-select { flex: 1 1 auto; min-width: 0; }
+.lms-rescan-row .action-btn { flex: 0 0 auto; }
 .settings-label { font-size: 16px; color: var(--text); }
 /* Artist link in album modal */
 .modal-artist-link {

@@ -4795,8 +4795,8 @@
     status:  document.getElementById("lms-conn-status"),
     note:    document.getElementById("lms-settings-note"),
     open:    document.getElementById("lms-open-settings"),
-    rescanNew:    document.getElementById("lms-rescan-new"),
-    rescanOnline: document.getElementById("lms-rescan-online"),
+    rescanMode:   document.getElementById("lms-rescan-mode"),
+    rescanGo:     document.getElementById("lms-rescan-go"),
     rescanStatus: document.getElementById("lms-rescan-status"),
     overlay: document.getElementById("lmsset-overlay"),
     frame:   document.getElementById("lmsset-frame"),
@@ -4861,26 +4861,29 @@
       } catch (e) { /* keep polling */ }
     }, 4000);
   }
-  function wireRescan(btn, mode, label) {
-    if (!btn) return;
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = label + " started…";
-      try {
-        const r = await fetch("/api/lms/rescan", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(mode ? { mode } : {})
-        });
-        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
-        watchLmsScan();
-      } catch (e) {
-        if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = "Couldn't start: " + e.message;
-      }
-      setTimeout(() => { btn.disabled = false; }, 3000);
-    });
-  }
-  wireRescan(lmsPane.rescanNew, null, "Library rescan");
-  wireRescan(lmsPane.rescanOnline, "onlinelibrary", "Online-services import");
+  // One Rescan button; the dropdown chooses what LMS scans. Mirrors LMS's own
+  // "Rescan Media Library" control. "full" wipes and rebuilds the library, so
+  // it gets a confirm first.
+  if (lmsPane.rescanGo) lmsPane.rescanGo.addEventListener("click", async () => {
+    const sel = lmsPane.rescanMode;
+    const mode = sel ? sel.value : "";
+    const label = sel ? sel.options[sel.selectedIndex].text : "Rescan";
+    if (mode === "full" &&
+        !confirm("Clear the LMS library and rescan everything? The library is temporarily empty while it rebuilds.")) return;
+    lmsPane.rescanGo.disabled = true;
+    if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = "“" + label + "” started…";
+    try {
+      const r = await fetch("/api/lms/rescan", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mode ? { mode } : {})
+      });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
+      watchLmsScan();
+    } catch (e) {
+      if (lmsPane.rescanStatus) lmsPane.rescanStatus.textContent = "Couldn't start: " + e.message;
+    }
+    setTimeout(() => { lmsPane.rescanGo.disabled = false; }, 3000);
+  });
 
   const open = () => { showView("home"); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
   const close = () => {
@@ -6202,13 +6205,25 @@ initServiceBrowser({
     grid.prepend(head);
   }
 
+  // Move all of an element's children into a fragment (detaching them but
+  // keeping the LIVE nodes, with their event listeners, intact). Restoring the
+  // grid via innerHTML string would re-parse dead nodes — album tiles attach
+  // their open handler per node, so a string round-trip left every restored
+  // tile inert (tapping did nothing) until a grid refresh rebuilt real nodes.
+  function detachChildren(el) {
+    const frag = document.createDocumentFragment();
+    while (el.firstChild) frag.appendChild(el.firstChild);
+    return frag;
+  }
+
   function exitArtistView() {
     if (!artistViewActive) return;
     artistViewActive = false;
     // Restore exactly the screen the artist view was opened from (the Home
     // landing, or an album wall) so Back doesn't dump the user somewhere else.
     if (saved) {
-      grid.innerHTML = saved.gridHtml;
+      grid.innerHTML = "";
+      if (saved.gridNodes) grid.appendChild(saved.gridNodes);   // live nodes → listeners survive
       grid.classList.toggle("hidden", saved.gridHidden);
       if (homeView)     homeView.classList.toggle("hidden", saved.homeViewHidden);
       if (homeSections) homeSections.classList.toggle("hidden", saved.homeSectionsHidden);
@@ -6231,7 +6246,12 @@ initServiceBrowser({
     // Snapshot the screen we're leaving (Home landing or an album wall) so the
     // "← Back" button restores it exactly.
     saved = {
-      gridHtml:           grid.innerHTML,
+      // Detach the wall's LIVE tiles (with their click/long-press listeners)
+      // rather than serialising to an HTML string — a string restore produces
+      // fresh, listener-less nodes and the tiles stop opening (the reported
+      // "can't open another album" bug). This also empties the grid, so the
+      // grid.innerHTML = "" below is a harmless no-op.
+      gridNodes:          detachChildren(grid),
       gridHidden:         grid.classList.contains("hidden"),
       homeViewHidden:     homeView     ? homeView.classList.contains("hidden")     : true,
       homeSectionsHidden: homeSections ? homeSections.classList.contains("hidden") : true,
