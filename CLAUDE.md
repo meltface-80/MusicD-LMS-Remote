@@ -77,3 +77,10 @@ Layout section of README.md.
   safe). Artwork sources, best-first: MAI `albumcovers` → Cover Art Archive by
   MBID (LMS tag M = release id) → MusicBrainz release-group search (artistKey
   fold, no disambiguation) → Qobuz → iTunes.
+- Logging goes through the leveled logger `lib/log.js` (`makeLogger("tag")` →
+  error/warn/info/debug/trace; `.child("sub")`, `.enabled(level)`). Level from
+  env: `LOG_LEVEL` wins, else `DEBUG=1`→debug / `DEBUG=trace`→trace, else info.
+  Prefer it over `console.*` in new code; pass a tagged `log:` into lib
+  factories (lms/albumart/albuminfo already take one). Keep failure diagnostics
+  at debug and per-request/per-command firehose at trace. COMPLIANCE: never log
+  Pitchfork review TEXT — URL/score/status only.
