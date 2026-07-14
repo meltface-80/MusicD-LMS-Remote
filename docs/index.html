@@ -576,6 +576,7 @@
     var cmd = ["docker run -d \\"];
     cmd.push("  --name " + IMAGE + " \\");
     cmd.push("  --restart unless-stopped \\");
+    cmd.push("  -e DEBUG=1 \\");
 
     if (mode === "same") {
       cmd.push("  --network host \\");
@@ -599,6 +600,9 @@
     cmd.push("  " + IMAGE);
 
     out.push({ t: cmd.join("\n"), c: "" });
+    out.push({ t: "", c: "" });
+    out.push({ t: "# Follow the logs (DEBUG=1 makes them verbose — handy for troubleshooting)", c: "c" });
+    out.push({ t: "docker logs -f " + IMAGE, c: "" });
     return out;
   }
 
@@ -631,6 +635,9 @@
       y.push("      - \"" + appport + ":3390\"");
     }
     var envs = [];
+    // Verbose logging on by default — `docker compose logs -f` (below) then
+    // shows why LMS connects/covers resolve/etc. Set DEBUG: "0" to quieten it.
+    envs.push("      DEBUG: \"1\"");
     if (mode !== "same" || (els.lmshost.value.trim() && els.lmshost.value.trim() !== "192.168.1.50")) {
       envs.push("      LMS_HOST: \"" + lmshost + "\"");
       envs.push("      LMS_PORT: \"" + lmsport + "\"");
@@ -657,6 +664,9 @@
     // from the GitHub URL. Some Compose versions/pull-policies otherwise die
     // with "pull access denied" on a build+image service.
     y.push("docker compose up -d --build");
+    y.push("");
+    y.push("# Follow the logs (DEBUG is on above — handy for troubleshooting)");
+    y.push("docker compose logs -f");
     return [{ t: y.join("\n"), c: "" }];
   }
 
@@ -665,7 +675,7 @@
     return esc(text)
       .replace(/^(#.*)$/gm, '<span class="c">$1</span>')
       .replace(/(--?[a-zA-Z-]+)/g, '<span class="k">$1</span>')
-      .replace(/((?:LMS_HOST|LMS_PORT|LMS_USER|LMS_PASS|MUSIC_DIR|PORT)[=:])/g, '<span class="k">$1</span>');
+      .replace(/((?:LMS_HOST|LMS_PORT|LMS_USER|LMS_PASS|MUSIC_DIR|PORT|DEBUG)[=:])/g, '<span class="k">$1</span>');
   }
 
   function render() {
