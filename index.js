@@ -29,7 +29,11 @@ const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
 
 const pkg = require("./package.json");
-const DEBUG = process.env.DEBUG === "1";
+const { makeLogger, levelName } = require("./lib/log");
+const log = makeLogger("app");
+// DEBUG stays a boolean for the many existing `if (DEBUG)` gates; the leveled
+// logger (lib/log.js) reads the same env plus LOG_LEVEL for finer control.
+const DEBUG = process.env.DEBUG === "1" || String(process.env.DEBUG).toLowerCase() === "trace";
 const PORT = Number(process.env.PORT) || 3390;
 
 // ---------------------------------------------------------------------------
@@ -316,6 +320,7 @@ const albumInfo = makeAlbumInfo({
   dataDir:   DATA_DIR,
   normalize: search.normalize,
   artistKey: search.artistKey,
+  log:       makeLogger("albuminfo"),
   debug:     DEBUG
 });
 
@@ -355,6 +360,7 @@ const albumArt = makeAlbumArt({
   dataDir:   DATA_DIR,
   normalize: search.normalize,
   artistKey: search.artistKey,
+  log:       makeLogger("albumart"),
   debug:     DEBUG
 });
 
@@ -590,7 +596,7 @@ function lmsConfigFromSettings() {
 function rebuildAdapter() {
   const cfg = lmsConfigFromSettings();
   if (!cfg.host) { state.lms = null; return null; }
-  state.lms = createLms(cfg);
+  state.lms = createLms({ ...cfg, log: makeLogger("lms") });
   return state.lms;
 }
 
@@ -782,6 +788,23 @@ function fetchArtwork(url) {
 const app = express();
 app.use(compression());
 app.use(express.json());
+
+// HTTP access log — one line per request with status + elapsed ms. At debug
+// only /api/* is logged (static assets are noise); at trace everything is.
+// Slow requests (>2s) and 5xx are surfaced at warn regardless of level.
+const httpLog = makeLogger("http");
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - started;
+    const line = [res.statusCode, req.method, req.originalUrl, ms + "ms"];
+    if (res.statusCode >= 500 || ms > 2000) httpLog.warn(...line);
+    else if (req.path.startsWith("/api/")) httpLog.debug(...line);
+    else httpLog.trace(...line);
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 const notConnected = (res) => res.status(503).json({
@@ -2429,6 +2452,8 @@ app.post("/api/settings/label-folder-depth", (req, res) => {
 // ---------------------------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`MusicD LMS Remote v${pkg.version} listening on :${PORT}`);
+  log.info("log level:", levelName(),
+    "(set DEBUG=1 for diagnostics, DEBUG=trace or LOG_LEVEL=trace for the firehose)");
   refreshConnection();
   const timer = setInterval(refreshConnection, 2500);
   if (timer.unref) timer.unref();
