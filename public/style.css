@@ -2764,25 +2764,6 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .pf-action-primary { background: var(--accent); border-color: var(--accent); color: #04121a; font-weight: 600; }
 .pf-action-link { color: var(--accent); background: none; border-color: transparent; }
 
-
-/* Tidal device-authorization pending block (settings sheet) */
-.tidal-auth-pending {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  margin: 10px 0; padding: 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--bg-elev-2);
-}
-.tidal-auth-link {
-  color: var(--accent); font-size: 14px; font-weight: 600;
-  text-decoration: underline; word-break: break-all; text-align: center;
-}
-.tidal-auth-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 22px; letter-spacing: .18em; color: var(--text);
-  padding: 4px 10px; border-radius: 8px; background: var(--bg-elev);
-}
-.tidal-auth-wait { font-size: 12px; color: var(--text-faint); text-align: center; }
-
 /* ------------------------------------------------------------------ */
 /*  Old-Safari (<15) square-tile fallback                              */
 /*  Safari before 15 ignores aspect-ratio, so each cover <img>'s       */

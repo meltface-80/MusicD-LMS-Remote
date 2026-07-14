@@ -85,26 +85,15 @@
           </svg>
         </button>
 
-        <!-- Qobuz "Q" logomark (Arcticons, CC BY 4.0) — 48-unit viewBox, so the
-             3.6 stroke renders at the same visual weight as the 1.8 strokes
-             on the neighbouring 24-unit icons. -->
-        <button id="qobuz-toggle" class="icon-btn" aria-label="Qobuz" title="Qobuz">
+        <!-- Browse the online-library / Qobuz on the SERVER — opens the LMS
+             Material skin in the embedded frame (browsing + adding happens
+             through the server's own plugin). Q logomark (Arcticons, CC BY 4.0). -->
+        <button id="server-browse-toggle" class="icon-btn" aria-label="Browse Qobuz on your server" title="Browse Qobuz / library on your server">
           <svg width="20" height="20" viewBox="0 0 48 48" fill="none" stroke="currentColor"
                stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M39.203 39.203A21.43 21.43 0 0 0 45.5 24c0-11.874-9.626-21.5-21.5-21.5S2.5 12.126 2.5 24S12.126 45.5 24 45.5c4.89 0 9.4-1.633 13.012-4.383"/>
             <circle cx="24" cy="24" r="4.873"/>
             <path d="M32.944 32.944L45.5 45.5"/>
-          </svg>
-        </button>
-
-        <!-- Hidden until a Tidal account is connected (app.js loadTidalStatus unhides it) -->
-        <button id="tidal-toggle" class="icon-btn hidden" aria-label="Tidal" title="Tidal">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M2 9l3-3 3 3-3 3z"/>
-            <path d="M9 9l3-3 3 3-3 3z"/>
-            <path d="M16 9l3-3 3 3-3 3z"/>
-            <path d="M9 16l3-3 3 3-3 3z"/>
           </svg>
         </button>
 
@@ -193,13 +182,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           <span>Labels</span>
         </button>
-        <button class="menu-item" type="button" data-target="qobuz-toggle">
+        <button class="menu-item" type="button" data-target="server-browse-toggle">
           <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M39.203 39.203A21.43 21.43 0 0 0 45.5 24c0-11.874-9.626-21.5-21.5-21.5S2.5 12.126 2.5 24S12.126 45.5 24 45.5c4.89 0 9.4-1.633 13.012-4.383"/><circle cx="24" cy="24" r="4.873"/><path d="M32.944 32.944L45.5 45.5"/></svg>
-          <span>Qobuz</span>
-        </button>
-        <button class="menu-item hidden" type="button" data-target="tidal-toggle" id="menu-item-tidal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9l3-3 3 3-3 3z"/><path d="M9 9l3-3 3 3-3 3z"/><path d="M16 9l3-3 3 3-3 3z"/><path d="M9 16l3-3 3 3-3 3z"/></svg>
-          <span>Tidal</span>
+          <span>Browse Qobuz</span>
         </button>
         <button class="menu-item" type="button" data-target="pitchfork-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h7a3 3 0 0 1 3 3v11a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v11a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg>
@@ -668,81 +653,6 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
   </div>
 
   <!-- Settings bottom sheet -->
-  <!-- Qobuz browser overlay (self-contained; does not touch the album grid) -->
-  <div id="qobuz-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Qobuz">
-    <div class="settings-backdrop" data-qobuz-close></div>
-    <div class="settings-sheet qobuz-sheet">
-      <div class="qobuz-pin">
-        <div class="settings-grip"></div>
-        <div class="settings-head">
-          <h2>Qobuz</h2>
-          <button id="qobuz-overlay-close" class="icon-btn" type="button" aria-label="Close" data-qobuz-close>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="qobuz-search-row">
-          <input id="qobuz-search-input" type="search" placeholder="Search the Qobuz catalogue…"
-                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-          <button id="qobuz-search-clear" class="hidden" type="button" aria-label="Clear search">×</button>
-        </div>
-        <div id="qobuz-tabs" role="tablist" aria-label="Qobuz sections">
-          <button class="qobuz-tab is-active" type="button" role="tab" data-qtab="new-releases">New Releases</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="best-sellers">Best Sellers</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="most-streamed">Most Streamed</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="press-awards">Press Awards</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="editor-picks">Editor's Picks</button>
-        </div>
-      </div>
-      <div id="qobuz-nr-status" class="settings-token-status"></div>
-      <div id="qobuz-artist-head" class="hidden"></div>
-      <div id="qobuz-artists" class="hidden"></div>
-      <div id="qobuz-nr-list" class="qobuz-nr-list"></div>
-      <button id="qobuz-load-more" class="hidden" type="button">Load more</button>
-      <div id="qobuz-nr-detail" class="qobuz-nr-detail hidden"></div>
-    </div>
-  </div>
-
-  <!-- Tidal browser overlay — same structure/classes as the Qobuz overlay
-       (shared qobuz-* CLASSES drive the styling; only ids differ). Driven by
-       the same initServiceBrowser factory in app.js. -->
-  <div id="tidal-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Tidal">
-    <div class="settings-backdrop" data-tidal-close></div>
-    <div class="settings-sheet qobuz-sheet">
-      <div class="qobuz-pin">
-        <div class="settings-grip"></div>
-        <div class="settings-head">
-          <h2>Tidal</h2>
-          <button id="tidal-overlay-close" class="icon-btn" type="button" aria-label="Close" data-tidal-close>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-        <div class="qobuz-search-row">
-          <input id="tidal-search-input" type="search" placeholder="Search the Tidal catalogue…"
-                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-          <button id="tidal-search-clear" class="hidden" type="button" aria-label="Clear search">×</button>
-        </div>
-        <div id="tidal-tabs" role="tablist" aria-label="Tidal sections">
-          <button class="qobuz-tab is-active" type="button" role="tab" data-qtab="new-releases">New Releases</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="top">Top Albums</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="rising">Rising</button>
-          <button class="qobuz-tab" type="button" role="tab" data-qtab="recommended">Recommended</button>
-        </div>
-      </div>
-      <div id="tidal-nr-status" class="settings-token-status"></div>
-      <div id="tidal-artist-head" class="hidden"></div>
-      <div id="tidal-artists" class="hidden"></div>
-      <div id="tidal-nr-list" class="qobuz-nr-list"></div>
-      <button id="tidal-load-more" class="hidden" type="button">Load more</button>
-      <div id="tidal-nr-detail" class="qobuz-nr-detail hidden"></div>
-    </div>
-  </div>
-
   <!-- Pitchfork magazine overlay — reuses the settings-sheet / qobuz-pin / qobuz-tab
        chrome; the magazine grid + detail use dedicated pf-* classes. Driven by
        initPitchfork() in app.js (its own module — does NOT touch the Qobuz/Tidal
@@ -824,17 +734,6 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Artwork &amp; metadata</span>
               <span class="settings-nav-desc">Discogs &amp; FanArt.tv keys</span>
-            </span>
-            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-
-          <button class="settings-nav-item" type="button" data-pane="streaming">
-            <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-            </span>
-            <span class="settings-nav-txt">
-              <span class="settings-nav-title">Streaming accounts</span>
-              <span class="settings-nav-desc">Qobuz &amp; Tidal</span>
             </span>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -1057,45 +956,6 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
         </div>
       </div>
 
-      <!-- Streaming accounts -->
-      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="streaming">
-        <div class="settings-pane-head">
-          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <h2>Streaming accounts</h2>
-        </div>
-
-        <div class="settings-block">
-          <div class="settings-row">
-            <span class="settings-label">Qobuz account <button class="settings-info-btn" data-info="Connects to Qobuz via the unofficial API (the Lyrion/LMS plugin's app id). Used only to browse and search the Qobuz catalogue and add albums to your Qobuz favourites/library — no streaming or downloading (Roon streams). Against Qobuz's Terms of Service and may break at any time. Your password is sent to Qobuz once to obtain a token; only the token is stored, never the plaintext password." aria-label="Info">ⓘ</button></span>
-          </div>
-          <div class="settings-token-row">
-            <input id="qobuz-username-input" type="email" class="settings-token-input" placeholder="Qobuz email…" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="settings-token-row">
-            <input id="qobuz-password-input" type="password" class="settings-token-input" placeholder="Qobuz password…" autocomplete="off" spellcheck="false">
-            <button id="qobuz-connect" class="settings-update-btn" type="button">Connect</button>
-          </div>
-          <div id="qobuz-status" class="settings-token-status"></div>
-          <button id="qobuz-disconnect" class="settings-update-btn hidden" type="button">Disconnect</button>
-          <div class="settings-token-status" style="opacity:.6;font-size:11px;margin-top:6px;">Unofficial Qobuz API — against Qobuz ToS, may break, use at your own risk.</div>
-        </div>
-
-        <div class="settings-divider"></div>
-
-        <div class="settings-block">
-          <div class="settings-row">
-            <span class="settings-label">Tidal account <button class="settings-info-btn" data-info="Connects to Tidal via the unofficial API (the Lyrion/LMS Tidal plugin's client id). Used only to browse and search the Tidal catalogue and manage your Tidal favourites/library — no streaming or downloading (Roon streams). Against Tidal's Terms of Service and may break at any time. Login happens on Tidal's own device-authorization page — your password is never entered here; only tokens are stored." aria-label="Info">ⓘ</button></span>
-          </div>
-          <button id="tidal-connect" class="settings-update-btn" type="button">Connect Tidal…</button>
-          <div id="tidal-auth-pending" class="tidal-auth-pending hidden"></div>
-          <div id="tidal-status" class="settings-token-status"></div>
-          <button id="tidal-disconnect" class="settings-update-btn hidden" type="button">Disconnect</button>
-          <div class="settings-token-status" style="opacity:.6;font-size:11px;margin-top:6px;">Unofficial Tidal API — against Tidal ToS, may break, use at your own risk.</div>
-        </div>
-      </div>
-
       <!-- Wall display -->
       <!-- LMS server -->
       <div class="settings-view settings-pane hidden" data-view="pane" data-pane="lms">
@@ -1127,7 +987,7 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
         <div class="settings-block">
           <div class="settings-row">
-            <span class="settings-label">Rescan media library <button class="settings-info-btn" data-info="Rescan the LMS library on the server (playback keeps working while it scans). Choose what to scan, then tap Rescan. The online-music import also runs automatically ~30s after you add albums from the Qobuz page." aria-label="Info">ⓘ</button></span>
+            <span class="settings-label">Rescan media library <button class="settings-info-btn" data-info="Rescan the LMS library on the server (playback keeps working while it scans). Choose what to scan, then tap Rescan. The online-music import brings in Qobuz/Tidal favourites you add through your server's plugin." aria-label="Info">ⓘ</button></span>
           </div>
           <div class="settings-row lms-rescan-row">
             <select id="lms-rescan-mode" class="settings-select" aria-label="Rescan mode">

@@ -56,10 +56,16 @@ Layout section of README.md.
   through `search.artistKey()` (stylization-folded: P!nk == Pink), display
   strings never do.
 - Pitchfork review TEXT must never reach a client (UK-law compliance):
-  score / Best-New-Music flag / link only. Review text comes from the LMS
-  Music & Artist Information plugin or Qobuz (`lib/albuminfo.js`).
-- The Qobuz client (`lib/qobuz.js`) uses the unofficial API — unsigned
-  endpoints only, no stream URLs, nothing that needs an app_secret.
+  score / Best-New-Music flag / link only. Review text comes ONLY from the LMS
+  Music & Artist Information (MAI) plugin (`lib/albuminfo.js`).
+- Reviews / bios / artwork / artist photos come from the LMS MAI plugin
+  (`musicartistinfo` albumreview/biography/albumcovers/artistphoto[s]); there is
+  NO app-side Qobuz/Tidal streaming integration — those were removed (v1.0.15).
+  Browsing/adding online-library albums is done on the SERVER via its own
+  Qobuz/Tidal plugins; the app opens the LMS Material skin (`/material/`) in the
+  embedded frame (topbar "Browse Qobuz" button → server-browse-toggle). The
+  `lib/labels.js` Qobuz label lookup is an unrelated PUBLIC web scrape (no
+  account/API) and stays.
 - Song/album LMS tag letters differ (`c` vs `j` for cover ids; see
   `lib/lms.js` TRACK_TAGS/ALBUM_TAGS comments) — check the comments before
   adding tags.
@@ -76,7 +82,7 @@ Layout section of README.md.
   `/api/image` (a new cover mints a new key — immutable HTTP caching stays
   safe). Artwork sources, best-first: MAI `albumcovers` → Cover Art Archive by
   MBID (LMS tag M = release id) → MusicBrainz release-group search (artistKey
-  fold, no disambiguation) → Qobuz → iTunes.
+  fold, no disambiguation) → iTunes.
 - Logging goes through the leveled logger `lib/log.js` (`makeLogger("tag")` →
   error/warn/info/debug/trace; `.child("sub")`, `.enabled(level)`). Level from
   env: `LOG_LEVEL` wins, else `DEBUG=1`→debug / `DEBUG=trace`→trace, else info.
