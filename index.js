@@ -101,38 +101,29 @@ function scrobbleUpdate(playerId, st) {
   }
 }
 
-// Qobuz (UNOFFICIAL API — see lib/qobuz.js). Credentials/token set via Settings.
-// We persist the username, the md5 of the password (for silent re-login), the
-// user_auth_token, and the display name. Never the plaintext password.
-const qobuz = require("./lib/qobuz");
 const { fetchPitchfork, getPitchforkReviews, searchPitchforkReviews } = require("./lib/pitchfork");
-const _persistedQobuz = loadSettings();
-let qobuzUsername    = _persistedQobuz.qobuzUsername    || "";
-let qobuzPasswordMd5 = _persistedQobuz.qobuzPasswordMd5 || "";
-let qobuzToken       = _persistedQobuz.qobuzToken       || "";
-let qobuzDisplayName = _persistedQobuz.qobuzDisplayName || "";
+const _persistedSettings = loadSettings();
 
 // Discogs / FanArt.tv / label-folder-depth — persisted settings, no connection
 // required. Never expose the raw token/key back to the client, only masked.
-let discogsToken     = _persistedQobuz.discogsToken     || "";
-let fanartKey        = _persistedQobuz.fanartKey        || "";
-let labelFolderDepth = Number(_persistedQobuz.labelFolderDepth) || 0;
+let discogsToken     = _persistedSettings.discogsToken     || "";
+let fanartKey        = _persistedSettings.fanartKey        || "";
+let labelFolderDepth = Number(_persistedSettings.labelFolderDepth) || 0;
 
 // Wall display (/display): off by default. When off the page fetches nothing
 // and the content endpoint refuses, so flipping the toggle brings a mounted
 // wall tablet to life without a reload. `youtubeKey` (optional) enables the
 // muted video-clip slides; without it, video is simply omitted.
-let displayEnabled = _persistedQobuz.displayEnabled === true;
+let displayEnabled = _persistedSettings.displayEnabled === true;
 let displaySeconds = (() => {
-  const s = parseInt(_persistedQobuz.displaySeconds, 10);
+  const s = parseInt(_persistedSettings.displaySeconds, 10);
   return Number.isFinite(s) && s >= 5 && s <= 60 ? s : 10;
 })();
-let youtubeKey = _persistedQobuz.youtubeKey || "";
+let youtubeKey = _persistedSettings.youtubeKey || "";
 
 // ---------------------------------------------------------------------------
-// Shared HTTP JSON helper (global fetch), deadlined. Used by the Qobuz browse
-// routes and the wall-display YouTube lookup. A non-2xx throws with the status
-// in the message so callers can map 429/401 to the right response.
+// Shared HTTP JSON helper (global fetch), deadlined. Used by the wall-display
+// YouTube lookup. A non-2xx throws with the status in the message.
 // ---------------------------------------------------------------------------
 async function httpJson(url, headers, timeoutMs = 8000) {
   const ctl = new AbortController();
@@ -144,123 +135,6 @@ async function httpJson(url, headers, timeoutMs = 8000) {
   } finally { clearTimeout(timer); }
 }
 
-// ---------------------------------------------------------------------------
-// Qobuz browse infrastructure (the Qobuz page/tab + external search). Login is
-// already handled below; these add authenticated-call plumbing and the slow-
-// changing featured/favourite caches, ported from the Roon build.
-// ---------------------------------------------------------------------------
-// Short-lived cache of the user's favourited album ids, shared by every Qobuz
-// browse route so each render doesn't re-fetch the full favourites list (429
-// risk). Best-effort: on failure it serves recent ids (bounded staleness) or an
-// empty Set — the list still renders, just without favourite marks.
-function makeFavIdsCache({ name, fetchIds, cacheMs = 60 * 1000, staleMaxMs = 10 * 60 * 1000 }) {
-  let ids = null, at = 0, pending = null;
-  return {
-    async get() {
-      if (ids && (Date.now() - at) < cacheMs) return ids;
-      if (pending) return pending;
-      pending = (async () => {
-        try { const fresh = await fetchIds(); ids = fresh; at = Date.now(); return fresh; }
-        catch (e) {
-          if (DEBUG) console.error("[" + name + "] favourite-ids lookup failed:", e.message);
-          if (ids && (Date.now() - at) < staleMaxMs) return ids;
-          return new Set();
-        } finally { pending = null; }
-      })();
-      return pending;
-    },
-    add(id)    { if (ids) ids.add(String(id)); },
-    remove(id) { if (ids) ids.delete(String(id)); },
-    clear()    { ids = null; at = 0; }
-  };
-}
-// TTL memo keyed by string. Featured lists change slowly (~daily) but each tab
-// tap would otherwise hit the rate-limit-sensitive unofficial API. Values are
-// cached RAW; favourite flags are applied per request from the fresher fav-ids
-// cache. Errors are not cached — a failed fetch just throws.
-function makeTtlCache(ttlMs) {
-  const map = new Map();
-  return {
-    async get(key, fetchFn) {
-      const hit = map.get(key);
-      if (hit && (Date.now() - hit.at) < ttlMs) return hit.value;
-      const value = await fetchFn();
-      map.set(key, { value, at: Date.now() });
-      return value;
-    },
-    clear() { map.clear(); }
-  };
-}
-let qobuzLoginPending  = null;
-let qobuzLoginFailedAt = 0;
-// Silent re-login from the stored md5 (single-flight; 60s failure backoff).
-function qobuzRelogin() {
-  if (Date.now() - qobuzLoginFailedAt < 60 * 1000) {
-    return Promise.reject(new Error("Qobuz not connected — recent login attempt failed, retrying shortly"));
-  }
-  if (!qobuzLoginPending) {
-    qobuzLoginPending = (async () => {
-      try {
-        const r = await qobuz.login(qobuzUsername, qobuzPasswordMd5, true);
-        qobuzToken = r.token; qobuzDisplayName = r.displayName; qobuzLoginFailedAt = 0;
-        saveSettings({ qobuzToken, qobuzDisplayName });
-      } catch (e) { qobuzLoginFailedAt = Date.now(); throw e; }
-      finally { qobuzLoginPending = null; }
-    })();
-  }
-  return qobuzLoginPending;
-}
-// Run an authenticated Qobuz call; on a 401 (expired token) re-login once and
-// retry. Throws a "not connected" error when no credentials are stored.
-async function qobuzWithToken(fn) {
-  if (!qobuzToken && qobuzUsername && qobuzPasswordMd5) await qobuzRelogin();
-  if (!qobuzToken) throw new Error("Qobuz not connected — add your Qobuz login in Settings");
-  try { return await fn(qobuzToken); }
-  catch (e) {
-    if (e && e.code === 401 && qobuzUsername && qobuzPasswordMd5) { await qobuzRelogin(); return await fn(qobuzToken); }
-    throw e;
-  }
-}
-const qobuzFavIds = makeFavIdsCache({ name: "qobuz", fetchIds: () => qobuzWithToken(t => qobuz.getFavoriteAlbumIds(t)) });
-const qobuzFeaturedCache = makeTtlCache(10 * 60 * 1000); // type → raw items[]
-function getFeaturedItemsCached(type) {
-  return qobuzFeaturedCache.get(type, () => qobuzWithToken(t => qobuz.getFeaturedAlbums(t, type, 150)));
-}
-// Best-effort release timestamp (ms) from a Qobuz album object.
-function qobuzReleaseTs(a) {
-  if (a.released_at && Number.isFinite(a.released_at)) return a.released_at * 1000;
-  const d = a.release_date_original || a.release_date_stream || a.release_date_download;
-  if (d) { const t = Date.parse(d); if (Number.isFinite(t)) return t; }
-  return null;
-}
-// Shared album→JSON normalizer for every album-returning Qobuz route.
-function normalizeQobuzAlbum(a, favIds) {
-  return {
-    id:           String(a.id),
-    title:        a.title || "",
-    version:      a.version || null,
-    artist:       (a.artist && a.artist.name) || (a.performer && a.performer.name) || "",
-    artist_id:    (a.artist && a.artist.id != null) ? String(a.artist.id) : null,
-    image:        qobuz.pickImage(a),
-    released_at:  qobuzReleaseTs(a),
-    release_date: a.release_date_original || null,
-    favourited:   favIds.has(String(a.id))
-  };
-}
-function normalizeQobuzAlbums(items, favIds) {
-  const albums = [];
-  for (const a of items || []) { if (a && a.id) albums.push(normalizeQobuzAlbum(a, favIds)); }
-  return albums;
-}
-// Streaming-service HTTP status mapping: 429 passes through, "not connected" is
-// the caller's fault (400), everything else is upstream (502).
-function serviceErrorStatus(e) {
-  return e && e.code === 429 ? 429 : (/not connected/i.test(e.message) ? 400 : 502);
-}
-function parseOffsetParam(req) {
-  const offset = parseInt(req.query.offset, 10);
-  return (Number.isFinite(offset) && offset > 0) ? offset : 0;
-}
 // Per-source deadline so one slow source can't hold a combined response. The
 // timer is cleared once the race settles so a resolved-fast source doesn't
 // leave a 10s timer pinning the event loop until it fires.
@@ -315,8 +189,6 @@ const labels = makeLabels({
 const { makeAlbumInfo } = require("./lib/albuminfo");
 const albumInfo = makeAlbumInfo({
   getLms:    () => (state.connected ? state.lms : null),
-  qobuzCall: (fn) => qobuzWithToken(fn),
-  qobuz,
   dataDir:   DATA_DIR,
   normalize: search.normalize,
   artistKey: search.artistKey,
@@ -355,8 +227,6 @@ const albumEdits = makeAlbumEdits({ dataDir: DATA_DIR, debug: DEBUG });
 const { makeAlbumArt } = require("./lib/albumart");
 const albumArt = makeAlbumArt({
   getLms:    () => (state.connected ? state.lms : null),
-  qobuzCall: (fn) => qobuzWithToken(fn),
-  qobuz,
   dataDir:   DATA_DIR,
   normalize: search.normalize,
   artistKey: search.artistKey,
@@ -2178,196 +2048,14 @@ app.post("/api/update/apply", async (req, res) => {
   res.json({ ok: true, status: updater.getStatus() });
   updater.apply().catch(() => {});
 });
-const notPorted = (name) => (req, res) => res.status(501).json({
-  ok: false, error: name + " login isn't ported to this LMS build yet — see PORTING.md"
-});
-// Connection status (never returns credentials).
-app.get("/api/settings/qobuz", (req, res) => {
-  res.json({ connected: !!qobuzToken, username: qobuzUsername || "", displayName: qobuzDisplayName || "" });
-});
-// Connect: log in with email/password, persist token (+ md5 for re-login).
-app.post("/api/settings/qobuz", async (req, res) => {
-  const username = ((req.body && req.body.username) || "").trim();
-  const password = ((req.body && req.body.password) || "");
-  if (!username || !password) return res.status(400).json({ ok: false, error: "username and password required" });
-  try {
-    const r = await qobuz.login(username, password);
-    qobuzUsername    = username;
-    qobuzPasswordMd5 = r.passwordMd5;
-    qobuzToken       = r.token;
-    qobuzDisplayName = r.displayName;
-    saveSettings({ qobuzUsername, qobuzPasswordMd5, qobuzToken, qobuzDisplayName });
-    qobuzFavIds.clear();        // account may have changed — drop cached favourite ids
-    qobuzFeaturedCache.clear();
-    console.log("[settings] qobuz connected as " + qobuzDisplayName);
-    res.json({ ok: true, displayName: qobuzDisplayName });
-  } catch (e) {
-    res.status(502).json({ ok: false, error: e.message });
-  }
-});
-// Disconnect: clear all stored Qobuz credentials/token.
-app.post("/api/settings/qobuz/disconnect", (req, res) => {
-  qobuzUsername = qobuzPasswordMd5 = qobuzToken = qobuzDisplayName = "";
-  qobuzFavIds.clear();
-  qobuzFeaturedCache.clear();
-  saveSettings({ qobuzUsername: "", qobuzPasswordMd5: "", qobuzToken: "", qobuzDisplayName: "" });
-  res.json({ ok: true });
-});
 
-// ---- Qobuz browse (the Qobuz page/tab) ----
-// New releases from the last N days (default 30), newest first.
-app.get("/api/qobuz/new-releases", async (req, res) => {
-  let days = parseInt(req.query.days, 10);
-  if (!Number.isFinite(days) || days <= 0 || days > 365) days = 30;
-  try {
-    const [items, favIds] = await Promise.all([getFeaturedItemsCached("new-releases-full"), qobuzFavIds.get()]);
-    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const future = Date.now() + 2 * 24 * 60 * 60 * 1000; // tolerate a couple days' skew
-    const albums = [];
-    for (const a of items) {
-      if (!a || !a.id) continue;
-      const ts = qobuzReleaseTs(a);
-      if (ts !== null && (ts < cutoff || ts > future)) continue;
-      albums.push(normalizeQobuzAlbum(a, favIds));
-    }
-    albums.sort((x, y) => (y.released_at || 0) - (x.released_at || 0));
-    res.json({ albums, days });
-  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
-});
-// ---------------------------------------------------------------------------
-// Auto-rescan after Qobuz favourite changes. Favouriting an album puts it in
-// the user's Qobuz library, but LMS only sees it after its online-library
-// import runs — which used to mean a manual Material Skin → server settings →
-// rescan. Instead: 30s after the LAST favourite change (adds in a burst
-// collapse into one scan), trigger LMS's online-services-only import
-// (["rescan","onlinelibrary"] — not a full library rescan), then watch
-// serverstatus until the scan finishes and rebuild this app's own album
-// index so the new album shows up everywhere without a reload.
-// ---------------------------------------------------------------------------
-const QOBUZ_RESCAN_DEBOUNCE_MS = Number(process.env.QOBUZ_RESCAN_DEBOUNCE_MS) || 30 * 1000;
-let qobuzRescanTimer = null;
-let qobuzRescanWatch = null;
-function scheduleQobuzRescan() {
-  if (qobuzRescanTimer) clearTimeout(qobuzRescanTimer);
-  qobuzRescanTimer = setTimeout(async () => {
-    qobuzRescanTimer = null;
-    if (!state.connected) return;   // reconnect rebuilds the index anyway
-    try {
-      await state.lms.rescan("onlinelibrary");
-      console.log("[qobuz] favourites changed — LMS online-library import started");
-      watchScanThenReindex();
-    } catch (e) { console.error("[qobuz] auto-rescan failed:", e.message); }
-  }, QOBUZ_RESCAN_DEBOUNCE_MS);
-  if (qobuzRescanTimer.unref) qobuzRescanTimer.unref();
-}
-function watchScanThenReindex() {
-  if (qobuzRescanWatch) return;   // one watcher is enough for any burst
-  let polls = 0;
-  qobuzRescanWatch = setInterval(async () => {
-    polls++;
-    const stop = () => { clearInterval(qobuzRescanWatch); qobuzRescanWatch = null; };
-    if (polls > 120 || !state.connected) return stop();   // give up after ~10 min
-    try {
-      const ss = await state.lms.serverStatus();
-      // Skip the very first poll when idle — the import may not have flagged
-      // `rescan` yet; from the second poll on, idle means it's done.
-      if (!ss.scanning && polls >= 2) {
-        stop();
-        index.builtAt = 0;
-        ensureIndex();
-        console.log("[qobuz] LMS import finished — album index rebuilding");
-      }
-    } catch (e) { /* poll blip — next tick retries */ }
-  }, 5000);
-  if (qobuzRescanWatch.unref) qobuzRescanWatch.unref();
-}
-
-app.post("/api/qobuz/favorite", async (req, res) => {
-  const albumId = ((req.body && req.body.album_id) || "").toString().trim();
-  if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
-  try {
-    await qobuzWithToken(t => qobuz.favoriteAlbum(t, albumId));
-    qobuzFavIds.add(albumId);
-    scheduleQobuzRescan();
-    res.json({ ok: true, rescan_scheduled: true });
-  }
-  catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
-});
-app.post("/api/qobuz/unfavorite", async (req, res) => {
-  const albumId = ((req.body && req.body.album_id) || "").toString().trim();
-  if (!albumId) return res.status(400).json({ ok: false, error: "album_id required" });
-  try {
-    await qobuzWithToken(t => qobuz.unfavoriteAlbum(t, albumId));
-    qobuzFavIds.remove(albumId);
-    scheduleQobuzRescan();
-    res.json({ ok: true, rescan_scheduled: true });
-  }
-  catch (e) { res.status(serviceErrorStatus(e)).json({ ok: false, error: e.message }); }
-});
-// Full Qobuz catalog search (albums + artists), paged by offset.
-app.get("/api/qobuz/search", async (req, res) => {
-  const q = String(req.query.q || "").trim();
-  if (!q) return res.status(400).json({ error: "q required" });
-  const offset = parseOffsetParam(req);
-  try {
-    const [r, favIds] = await Promise.all([qobuzWithToken(t => qobuz.searchCatalog(t, q, 50, offset)), qobuzFavIds.get()]);
-    const albums = normalizeQobuzAlbums(r.albums.items, favIds);
-    const artists = [];
-    if (offset === 0) {
-      for (const x of r.artists.items.slice(0, 8)) {
-        if (!x || !x.id) continue;
-        artists.push({ id: String(x.id), name: x.name || "", image: qobuz.pickImage(x), albums_count: x.albums_count || 0 });
-      }
-    }
-    // has_more from the RAW page length (normalization can drop malformed items).
-    const hasMore = offset + r.albums.items.length < r.albums.total;
-    res.json({ query: q, offset, limit: 50, total: r.albums.total, has_more: hasMore, albums, artists });
-  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
-});
-// A Qobuz artist's discography, paged by offset (kept in Qobuz's own order).
-app.get("/api/qobuz/artist-albums", async (req, res) => {
-  const artistId = String(req.query.artist_id || "").trim();
-  if (!artistId) return res.status(400).json({ error: "artist_id required" });
-  const offset = parseOffsetParam(req);
-  try {
-    const [r, favIds] = await Promise.all([qobuzWithToken(t => qobuz.getArtist(t, artistId, 50, offset)), qobuzFavIds.get()]);
-    const albums = normalizeQobuzAlbums(r.albums.items, favIds);
-    const hasMore = offset + r.albums.items.length < r.albums.total;
-    res.json({ artist: r.artist, offset, limit: 50, total: r.albums.total, has_more: hasMore, albums });
-  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
-});
-// Qobuz featured/browse categories (albums stay in Qobuz's own order).
-const QOBUZ_FEATURED_TYPES = new Set([
-  "new-releases-full", "best-sellers", "most-streamed", "press-awards",
-  "editor-picks", "qobuzissims", "ideal-discography", "recent-releases"
-]);
-app.get("/api/qobuz/featured", async (req, res) => {
-  const type = String(req.query.type || "").trim();
-  if (!QOBUZ_FEATURED_TYPES.has(type)) return res.status(400).json({ error: "invalid type" });
-  try {
-    const [items, favIds] = await Promise.all([getFeaturedItemsCached(type), qobuzFavIds.get()]);
-    res.json({ type, albums: normalizeQobuzAlbums(items, favIds) });
-  } catch (e) { res.status(serviceErrorStatus(e)).json({ error: e.message }); }
-});
-
-app.get("/api/settings/tidal",       (req, res) => res.json({ connected: false })); // PHASE 2
-app.post("/api/settings/tidal/start", notPorted("Tidal"));                         // PHASE 2
-
-// ---- Global search across external sources (Qobuz + Pitchfork; Tidal N/A) ----
+// ---- Global search across external sources (Pitchfork reviews only) ----
 app.get("/api/search/external", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const LIM = 6, DEADLINE_MS = 10000;
-  if (!q) return res.json({ query: q, qobuz: null, tidal: null, pitchfork: [] });
-  const [qb, pf] = await Promise.all([
-    (async () => {
-      try {
-        const r = await withDeadline(qobuzWithToken(t => qobuz.searchCatalog(t, q, LIM, 0)), DEADLINE_MS);
-        return normalizeQobuzAlbums(r.albums.items.slice(0, LIM), new Set());
-      } catch (e) { return null; /* not connected / blocked / slow — section absent */ }
-    })(),
-    withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => [])
-  ]);
-  res.json({ query: q, qobuz: qb, tidal: null, pitchfork: pf });
+  if (!q) return res.json({ query: q, pitchfork: [] });
+  const pf = await withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => []);
+  res.json({ query: q, pitchfork: pf });
 });
 
 // ---- Pitchfork magazine (browse + per-card library match) ----

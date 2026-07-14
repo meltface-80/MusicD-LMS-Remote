@@ -54,12 +54,9 @@ Search your music library instantly by:
 * Artist
 * Record Label
 
-Optionally extend searches to supported streaming services including:
+Optionally extend searches to Pitchfork reviews.
 
-* Qobuz
-* TIDAL
-
-Also browse Qobuz and Tidal directly and add favourites to your Roon library. 
+Browse and add Qobuz / TIDAL albums through your LMS server's own plugins — reachable in-app via the **Browse** button, which opens the LMS Material skin.
 
 ⸻
 
@@ -165,9 +162,8 @@ Includes:
 
 Supports information and artwork from:
 
-* Roon
-* Qobuz
-* TIDAL
+* LMS Music & Artist Information plugin
+* MusicBrainz / Cover Art Archive
 * Discogs
 * FanArt.tv
 * Pitchfork
