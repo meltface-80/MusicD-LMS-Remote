@@ -2073,7 +2073,7 @@
         d.className = "filter-empty";
         d.textContent = type === "genre" ? "No genres found"
                       : (type === "tag" ? "No tags found"
-                      : "No decades yet — release years fill in as the label scan runs.");
+                      : "No decades — no album release years in the library yet.");
         container.appendChild(d);
         return;
       }
@@ -2132,7 +2132,9 @@
       });
     }
     wireSection(genresToggle, genresList, "genre");
-    wireSection(tagsToggle,   tagsList,   "tag");
+    // Tags section removed from the sheet (owner decision) — its toggle/list
+    // elements no longer exist; the tag branches above stay harmless.
+    if (tagsToggle && tagsList) wireSection(tagsToggle, tagsList, "tag");
     wireSection(decadesToggle, decadesList, "decade");
 
     function open()  { overlay.classList.remove("hidden"); markActive(); }
@@ -2814,6 +2816,10 @@
   const npIconVol   = document.getElementById("np-icon-vol");
   const npIconMute  = document.getElementById("np-icon-mute");
   const npVolSlider = document.getElementById("np-vol-slider");
+  const npVolPanel  = document.getElementById("np-vol-panel");
+  const npVolVal    = document.getElementById("np-vol-value");
+  const npVolMinus  = document.getElementById("np-vol-minus");
+  const npVolPlus   = document.getElementById("np-vol-plus");
 
   let currentZone = null;       // server-side zone state
   let pollTimer   = null;
@@ -2949,7 +2955,9 @@
       iconPause.classList.toggle("hidden", !playing);
       btnPP.setAttribute("aria-label", playing ? "Pause" : "Play");
 
-      // Volume: use the first output that has a volume control
+      // Volume: use the first output that has a volume control. A player set
+      // to fixed 100% output has NO volume object (server strips it) — its
+      // speaker button disappears entirely.
       if (volOutput) {
         const v = volOutput.volume;
         volSlider.min   = v.min   != null ? v.min  : 0;
@@ -2958,10 +2966,14 @@
         if (!userIsDraggingVolume) {
           volSlider.value = v.value;
           volVal.textContent = Math.round(v.value);
+          paintVolFill(volSlider);
         }
         btnVol.disabled = false;
+        btnVol.classList.remove("hidden");
       } else {
         btnVol.disabled = true;
+        btnVol.classList.add("hidden");
+        volPop.classList.add("hidden");   // don't leave an orphaned popover up
       }
 
       iconVol .classList.toggle("hidden",  muted);
@@ -3056,7 +3068,7 @@
     }
     paintSeek();
 
-    // Volume — show the slider only when the endpoint has a controllable
+    // Volume — show the panel only when the endpoint has a controllable
     // volume; otherwise show "Volume control is fixed" (matches Roon).
     const volOutput = (currentZone.outputs || []).find(o => o.volume);
     if (volOutput) {
@@ -3064,11 +3076,15 @@
       npVolSlider.min  = v.min  != null ? v.min  : 0;
       npVolSlider.max  = v.max  != null ? v.max  : 100;
       npVolSlider.step = v.step != null ? v.step : 1;
-      if (!userIsDraggingVolume) npVolSlider.value = v.value;
-      npVolSlider.classList.remove("hidden");
+      if (!userIsDraggingVolume) {
+        npVolSlider.value = v.value;
+        if (npVolVal) npVolVal.textContent = Math.round(v.value);
+        paintVolFill(npVolSlider);
+      }
+      if (npVolPanel) npVolPanel.classList.remove("hidden");
       if (npVolFixed) npVolFixed.classList.add("hidden");
     } else {
-      npVolSlider.classList.add("hidden");
+      if (npVolPanel) npVolPanel.classList.add("hidden");
       if (npVolFixed) npVolFixed.classList.remove("hidden");
     }
     const muted = (currentZone.outputs || []).some(o => o.is_muted);
@@ -3081,6 +3097,17 @@
     if (!progFill) return;
     const pct = npLen > 0 ? Math.max(0, Math.min(100, (npPos / npLen) * 100)) : 0;
     progFill.style.width = pct + "%";
+  }
+
+  // Paint a volume slider's filled (accent) portion up to the thumb —
+  // Roon-style track fill, shared by the mini-bar and now-playing sliders.
+  function paintVolFill(slider) {
+    if (!slider) return;
+    const min = parseFloat(slider.min) || 0;
+    const max = parseFloat(slider.max) || 100;
+    const val = parseFloat(slider.value) || 0;
+    const pct = max > min ? Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100)) : 0;
+    slider.style.setProperty("--vol-fill", pct + "%");
   }
 
   // Paint the elapsed portion of the scrubber blue (before the thumb).
@@ -3200,6 +3227,8 @@
       userIsDraggingVolume = true;
       const v = parseFloat(npVolSlider.value);
       volSlider.value = v; volVal.textContent = Math.round(v);
+      if (npVolVal) npVolVal.textContent = Math.round(v);
+      paintVolFill(npVolSlider); paintVolFill(volSlider);
       clearTimeout(npVolDebounce);
       npVolDebounce = setTimeout(() => setVolume(v), 90);
     });
@@ -3208,6 +3237,8 @@
       setVolume(parseFloat(npVolSlider.value));
     });
   }
+  if (npVolMinus) npVolMinus.addEventListener("click", (e) => { e.stopPropagation(); stepVolume(-2); });
+  if (npVolPlus)  npVolPlus .addEventListener("click", (e) => { e.stopPropagation(); stepVolume(+2); });
 
   // Advance the now-playing progress bar smoothly between 1.5s polls.
   setInterval(() => {
@@ -3249,6 +3280,7 @@
   volSlider.addEventListener("input", () => {
     userIsDraggingVolume = true;
     volVal.textContent = Math.round(parseFloat(volSlider.value));
+    paintVolFill(volSlider);
     clearTimeout(volDebounce);
     volDebounce = setTimeout(() => setVolume(parseFloat(volSlider.value)), 90);
   });
@@ -3341,6 +3373,9 @@
     const next = Math.max(min, Math.min(max, cur + delta));
     volSlider.value = next;
     volVal.textContent = Math.round(next);
+    paintVolFill(volSlider);
+    if (npVolSlider) { npVolSlider.value = next; paintVolFill(npVolSlider); }
+    if (npVolVal) npVolVal.textContent = Math.round(next);
     setVolume(next);
   }
   if (stepMinus) stepMinus.addEventListener("click", (e) => { e.stopPropagation(); stepVolume(-2); });
@@ -3824,41 +3859,8 @@
     });
   }
 
-  // Don't Stop The Music for the selected zone — LMS's built-in keep-playing
-  // feature (replaces the old app-side Random album radio toggle, which
-  // talked to a route that was never ported). Options come from LMS itself
-  // (localized provider names); the row hides when the plugin is disabled.
-  const dstmSelect = document.getElementById("dstm-select");
-  const dstmRow    = document.getElementById("dstm-row");
-  async function loadDstm() {
-    if (!dstmSelect || !zoneSelect || !zoneSelect.value) return;
-    try {
-      const r = await fetch("/api/lms/player/" + encodeURIComponent(zoneSelect.value) + "/dstm", { cache: "no-store" });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const j = await r.json();
-      if (!j.options || !j.options.length) { if (dstmRow) dstmRow.classList.add("hidden"); return; }
-      if (dstmRow) dstmRow.classList.remove("hidden");
-      dstmSelect.innerHTML = "";
-      for (const o of j.options) {
-        const opt = document.createElement("option");
-        opt.value = o.key; opt.textContent = o.text;
-        dstmSelect.appendChild(opt);
-      }
-      dstmSelect.value = j.current != null ? String(j.current) : "0";
-    } catch (e) { if (dstmRow) dstmRow.classList.add("hidden"); }
-  }
-  if (dstmSelect) {
-    dstmSelect.addEventListener("change", async () => {
-      if (!zoneSelect || !zoneSelect.value) return;
-      try {
-        await fetch("/api/lms/player/" + encodeURIComponent(zoneSelect.value) + "/dstm", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider: dstmSelect.value })
-        });
-      } catch (e) {} // best-effort — the select already shows the pick
-    });
-  }
-  if (zoneSelect) zoneSelect.addEventListener("change", loadDstm);
+  // Don't Stop The Music is configured in Settings → Player settings (per
+  // player, LMS-backed) — deliberately NOT duplicated on this pane.
 
   let versionLoaded = false;
   async function loadVersion() {
@@ -4700,7 +4702,7 @@
   wireRescan(lmsPane.rescanNew, null, "Library rescan");
   wireRescan(lmsPane.rescanOnline, "onlinelibrary", "Online-services import");
 
-  const open = () => { showView("home"); loadDstm(); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
+  const open = () => { showView("home"); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); loadQobuzStatus(); loadTidalStatus(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
     // Closing Settings ends the client side of any pending Tidal device flow

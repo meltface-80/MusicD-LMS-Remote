@@ -465,8 +465,22 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
                   </svg>
                 </button>
                 <div class="np-popover np-vol-popover hidden" id="np-vol-popover">
-                  <input type="range" id="np-vol-slider" class="np-vol-slider" min="0" max="100" step="1" value="50"
-                         aria-label="Volume">
+                  <!-- Roon-style volume panel: icon + value · slider with 0/100 scale · − / + -->
+                  <div class="vol-panel" id="np-vol-panel">
+                    <span class="vol-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>
+                      </svg>
+                    </span>
+                    <span class="vol-num" id="np-vol-value">50</span>
+                    <div class="vol-slide">
+                      <input type="range" id="np-vol-slider" class="vol-range np-vol-slider" min="0" max="100" step="1" value="50"
+                             aria-label="Volume">
+                      <div class="vol-scale" aria-hidden="true"><span>0</span><span>100</span></div>
+                    </div>
+                    <button class="vol-round" id="np-vol-minus" type="button" aria-label="Volume down">−</button>
+                    <button class="vol-round" id="np-vol-plus" type="button" aria-label="Volume up">+</button>
+                  </div>
                   <div class="np-vol-fixed hidden" id="np-vol-fixed">
                     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                       <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>
@@ -560,16 +574,20 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     </div>
 
     <div class="mt-vol-popover hidden" id="mt-vol-popover" role="dialog" aria-label="Volume">
-      <span class="mt-vol-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>
-        </svg>
-      </span>
-      <span class="mt-vol-value" id="mt-vol-value">50</span>
-      <div class="vol-row">
-        <button class="mt-vol-step" id="mt-vol-minus" aria-label="Volume down">−</button>
-        <input type="range" id="mt-vol-slider" min="0" max="100" step="1" value="50" aria-label="Volume level">
-        <button class="mt-vol-step" id="mt-vol-plus" aria-label="Volume up">+</button>
+      <!-- Roon-style volume panel: icon + value · slider with 0/100 scale · − / + -->
+      <div class="vol-panel">
+        <span class="vol-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>
+          </svg>
+        </span>
+        <span class="vol-num" id="mt-vol-value">50</span>
+        <div class="vol-slide">
+          <input type="range" id="mt-vol-slider" class="vol-range" min="0" max="100" step="1" value="50" aria-label="Volume level">
+          <div class="vol-scale" aria-hidden="true"><span>0</span><span>100</span></div>
+        </div>
+        <button class="vol-round" id="mt-vol-minus" type="button" aria-label="Volume down">−</button>
+        <button class="vol-round" id="mt-vol-plus" type="button" aria-label="Volume up">+</button>
       </div>
     </div>
   </div>
@@ -850,18 +868,8 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
         <div class="settings-divider"></div>
 
-        <div class="settings-block" id="dstm-row">
-          <div class="settings-row">
-            <span class="settings-label">Don't Stop The Music <button class="settings-info-btn" data-info="LMS's built-in keep-the-music-playing feature: when this zone's queue runs out, LMS continues with the selected mix (Random Album, Random Artist, …). Set per player — the same control is in Player settings." aria-label="Info">ⓘ</button></span>
-            <div class="settings-select-wrap">
-              <select id="dstm-select" class="settings-select" aria-label="Don't Stop The Music"></select>
-              <svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </div>
-          </div>
-        </div>
+        <!-- Don't Stop The Music lives in Settings → Player settings (per
+             player, LMS-backed) — deliberately not duplicated here. -->
       </div>
 
       <!-- Player settings (native per-player LMS settings) -->
@@ -1178,17 +1186,7 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
       <div class="settings-divider"></div>
 
-      <button class="filter-section-toggle" id="filter-tags-toggle" type="button" aria-expanded="false">
-        <span>Tag</span>
-        <svg class="filter-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-      <div class="filter-list hidden" id="filter-tags-list"></div>
-
-      <div class="settings-divider"></div>
-
+      <!-- Tags section removed (owner decision) — LMS has no tag facet here. -->
       <button class="filter-section-toggle" id="filter-decades-toggle" type="button" aria-expanded="false">
         <span>Decade</span>
         <svg class="filter-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -1198,10 +1196,6 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
       </button>
       <div class="filter-list hidden" id="filter-decades-list"></div>
 
-      <p class="settings-help filter-hint">
-        Tip: in Roon, use Focus (e.g. hi-res only), select all, and add the
-        results to a Tag — then filter by that Tag here.
-      </p>
     </div>
   </div>
 

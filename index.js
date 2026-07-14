@@ -810,6 +810,20 @@ app.get("/api/random-albums", async (req, res) => {
       return res.json({ albums: out, total, filtered: true });
     }
 
+    // Decade wall — straight off the in-memory index (records carry the LMS
+    // year and their GLOBAL offsets, so play/queue work unchanged).
+    if (req.query.filter_type === "decade" && req.query.filter_value) {
+      await ensureIndex();
+      const start = parseInt(String(req.query.filter_value), 10);   // "1990s" → 1990
+      if (!Number.isFinite(start)) return res.json({ albums: [], total: 0, filtered: true });
+      const pool = index.records.filter(r => r.year != null && r.year >= start && r.year <= start + 9);
+      if (!pool.length) return res.json({ albums: [], total: 0, filtered: true });
+      const want = Math.min(count, pool.length);
+      const picked = new Set();
+      while (picked.size < want) picked.add(Math.floor(Math.random() * pool.length));
+      return res.json({ albums: [...picked].map(i => albumOut(pool[i])), total: pool.length, filtered: true });
+    }
+
     await ensureIndex();
     const pool = index.records;
     if (!pool.length) return res.json({ albums: [], total: 0, filtered: false });
@@ -1122,6 +1136,23 @@ app.post("/api/transfer-zone", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Fixed-volume check (playerpref digitalVolumeControl === "0" — "Output
+// level is fixed at 100%"). Cached 60s per player: the transport polls
+// every ~1.5s and the pref rarely changes; a Player-settings save clears
+// the cache so the slider appears/disappears promptly.
+const fixedVolCache = new Map();   // playerId → { at, fixed }
+async function isFixedVolume(playerId) {
+  const hit = fixedVolCache.get(playerId);
+  if (hit && (Date.now() - hit.at) < 60 * 1000) return hit.fixed;
+  let fixed = false;
+  try {
+    const v = await state.lms.getPlayerPref(playerId, "digitalVolumeControl");
+    fixed = String(v) === "0";
+  } catch (e) { /* unknown → assume adjustable */ }
+  fixedVolCache.set(playerId, { at: Date.now(), fixed });
+  return fixed;
+}
+
 // Live zone state for the mini-transport bar.
 app.get("/api/zone-state", async (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -1132,6 +1163,9 @@ app.get("/api/zone-state", async (req, res) => {
   try { st = await state.lms.playerStatus(zoneId); state.statuses.set(zoneId, st); }
   catch (e) { /* fall back to the cached status if a live fetch fails */ }
   const t = (st && st.track) || null;
+  // A player set to "Output level is fixed at 100%" gets NO volume object —
+  // the UI then hides its volume controls entirely (Roon behaviour).
+  const fixedVol = await isFixedVolume(zoneId);
   res.json({
     zone: {
       zone_id: player.id,
@@ -1142,7 +1176,7 @@ app.get("/api/zone-state", async (req, res) => {
       outputs: [{
         output_id: player.id, display_name: player.name,
         is_muted: !!(st && st.muted),
-        volume: st && st.volume != null ? { value: st.volume, min: 0, max: 100, step: 1, soft_limit: 100, type: "number" } : null
+        volume: !fixedVol && st && st.volume != null ? { value: st.volume, min: 0, max: 100, step: 1, soft_limit: 100, type: "number" } : null
       }],
       now_playing: t ? {
         line1: t.title || "", line2: t.artist || "", line3: t.album || "",
@@ -1264,7 +1298,12 @@ app.get("/api/lms/player/:id/pref/:name", async (req, res) => {
 });
 app.post("/api/lms/player/:id/pref/:name", async (req, res) => {
   if (!state.connected) return notConnected(res);
-  try { await state.lms.setPlayerPref(req.params.id, req.params.name, (req.body || {}).value); res.json({ ok: true }); }
+  try {
+    await state.lms.setPlayerPref(req.params.id, req.params.name, (req.body || {}).value);
+    // Volume-mode changes must reach the transport bar promptly.
+    if (req.params.name === "digitalVolumeControl") fixedVolCache.delete(req.params.id);
+    res.json({ ok: true });
+  }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post("/api/lms/rescan", async (req, res) => {
@@ -1742,8 +1781,28 @@ app.get("/api/labels-scan-log", (req, res) => {
 // shape so the existing frontend degrades gracefully instead of erroring.
 // ---------------------------------------------------------------------------
 app.get("/api/home/genre-groups",    (req, res) => res.json({ groups: [] }));     // PHASE 2
-app.get("/api/filters/tags",         (req, res) => res.json({ tags: [] }));       // PHASE 2
-app.get("/api/filters/decades",      (req, res) => res.json({ decades: [] }));    // PHASE 2 (LMS `years` query)
+// Tags stays an empty stub for old cached clients — the Tags filter section
+// was removed from the UI (owner decision; LMS tags aren't a browse facet here).
+app.get("/api/filters/tags",         (req, res) => res.json({ tags: [] }));
+
+// Decades, from the in-memory album index (LMS supplies each album's year in
+// the `y` tag). Shape matches the filter sheet's renderer: title + subtitle.
+app.get("/api/filters/decades", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    await ensureIndex();
+    const counts = new Map();   // 1990 → n
+    for (const rec of index.records) {
+      if (!rec.year || rec.year < 1000) continue;
+      const start = Math.floor(rec.year / 10) * 10;
+      counts.set(start, (counts.get(start) || 0) + 1);
+    }
+    const decades = [...counts.entries()]
+      .sort((a, b) => b[0] - a[0])   // newest first
+      .map(([start, n]) => ({ title: start + "s", subtitle: n + (n === 1 ? " album" : " albums") }));
+    res.json({ decades });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // ---------------------------------------------------------------------------
 // Wall display (/display). The page polls /api/settings/display to honour the
 // toggle live; /api/display/content assembles the per-album rotation extras.
