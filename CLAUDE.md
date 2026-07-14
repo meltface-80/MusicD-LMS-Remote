@@ -30,6 +30,15 @@ Layout section of README.md.
    `package.json` on `main` and downloads the `main` tarball. Merging the
    bump publishes the update to every install.
 
+5. **Keep the GitHub Pages site in step with every release.** The docs /
+   configurator page (`docs/index.html`, served at
+   https://meltface-80.github.io/MusicD-LMS-Remote/) shows the current
+   version and must be updated in the same release commit: bump the
+   `#version-badge` fallback text to match `package.json` (the badge also
+   self-updates from `package.json` on `main` via fetch, but the static
+   fallback must not drift), and reflect any new user-facing features or
+   changed setup/config steps in the page's content.
+
 ## Git
 
 - Develop on the designated `claude/…` branch; after a PR merges, restart
