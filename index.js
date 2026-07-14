@@ -1435,7 +1435,7 @@ app.post("/api/lms/player/:id/sync", async (req, res) => {
 // loopback-host case (LMS known as 127.0.0.1) and HTTPS mixed content.
 // Trust-wise this exposes nothing new: /api already offers full LMS control.
 // ---------------------------------------------------------------------------
-const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/music"];
+const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/music", "/imageproxy"];
 const LMS_EMBED_CSS =
   '<style id="musicd-embed-fix">\n' +
   ':root {\n' +
@@ -1498,6 +1498,31 @@ function lmsProxy(req, res) {
   req.pipe(preq);
 }
 for (const p of LMS_PROXY_PREFIXES) app.use(p, lmsProxy);
+
+// Artist page header data: photo + bio + band membership. Photo/bio come
+// from the LMS Music & Artist Information plugin when installed (its photos
+// arrive absolute or as LMS-relative imageproxy paths — the client loads the
+// relative ones through this app's LMS proxy), falling back to Qobuz; band
+// members / member-of come from MusicBrainz artist relations. Every part is
+// best-effort and disk-cached (lib/albuminfo.js).
+app.get("/api/artist-info", async (req, res) => {
+  const artist = String(req.query.artist || "").trim();
+  if (!artist) return res.status(400).json({ error: "artist required" });
+  try {
+    const [info, bio] = await Promise.all([
+      withDeadline(albumInfo.artistInfo(artist), 25000).catch(() => null),
+      withDeadline(albumInfo.artistBio(artist), 20000).catch(() => null)
+    ]);
+    res.json({
+      artist,
+      photo:    info ? info.photo  : null,
+      photos:   info ? info.photos : [],
+      bio:      bio ? { text: bio.text, attribution: bio.attribution } : null,
+      members:  info ? info.members  : [],
+      memberOf: info ? info.memberOf : []
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Info for the embedded LMS server-settings frame: LMS's address, whether a
 // scan is running, and which settings page to frame — served SAME-ORIGIN via
@@ -1845,8 +1870,8 @@ app.get("/display", (req, res) => res.sendFile(path.join(__dirname, "public", "d
 // in-memory indexes — instant, no keys), the album review + credited-artist
 // bios (LMS Music & Artist Information plugin → Qobuz fallback, see
 // lib/albuminfo.js), plus a best-effort YouTube video clip when a key is set.
-// Artist photos still degrade to empty (no source ported). Every part is
-// best-effort — the page rotates whatever arrived. Cached 6h per album.
+// Artist photos come from the same module (MAI plugin -> Qobuz). Every part
+// is best-effort - the page rotates whatever arrived. Cached 6h per album.
 const displayContentCache = new Map();
 const DISPLAY_CONTENT_TTL_MS = 6 * 60 * 60 * 1000;
 app.get("/api/display/content", async (req, res) => {
@@ -1882,7 +1907,7 @@ app.get("/api/display/content", async (req, res) => {
     const npRec = index.records.find(r => search.normalize(r.title) === npTitleN &&
       search.normalize(r.subtitle || "").includes(search.normalize(primaryArtist))) || null;
     const creditedArtists = search.splitArtistNames(artist).map(a => a.name).slice(0, 3);
-    const [video, review, ...bioResults] = await Promise.all([
+    const [video, review, artistPhotoInfo, ...bioResults] = await Promise.all([
       fetchDisplayVideo(primaryArtist, track, (st && st.duration) || (t && t.duration) || null).catch(() => null),
       withDeadline(albumInfo.albumReview({
         albumId: npRec ? npRec.id : null,
@@ -1891,9 +1916,13 @@ app.get("/api/display/content", async (req, res) => {
         extid:   npRec ? npRec.extid  : null,
         source:  npRec ? npRec.source : null
       }), 20000).catch(() => null),
+      // Artist photos for the rotation (MAI plugin → Qobuz) — display.js
+      // takes up to 4 and already knows how to rotate them.
+      withDeadline(albumInfo.artistInfo(primaryArtist), 25000).catch(() => null),
       ...creditedArtists.map(name =>
         withDeadline(albumInfo.artistBio(name), 20000).catch(() => null))
     ]);
+    const artistPhotos = artistPhotoInfo && artistPhotoInfo.photos ? artistPhotoInfo.photos.slice(0, 4) : [];
     const bios = bioResults.filter(Boolean)
       .map(b => ({ name: b.name, text: b.text, attribution: b.attribution }));
     // More by this artist — from the in-memory album index (no API keys).
@@ -1928,7 +1957,7 @@ app.get("/api/display/content", async (req, res) => {
       if (picks.length >= 3) moreLabel = { name: labels.canonicalName(labelName), albums: picks };
     }
     const data = {
-      artistPhotos: [],
+      artistPhotos,
       review: review ? { text: review.text, attribution: review.attribution } : null,
       bio:    bios.length ? bios[0] : null,   // legacy single-bio field
       bios,
