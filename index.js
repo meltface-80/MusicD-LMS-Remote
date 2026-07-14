@@ -1280,10 +1280,13 @@ app.post("/api/lms/rescan", async (req, res) => {
 // for this player come back null and the pane hides those controls — that's
 // the Material-skin behaviour (tone controls only on hardware that has them).
 // ---------------------------------------------------------------------------
+// NB: bass/treble deliberately absent — LMS stores default values (50) for
+// every player, so a pref probe can't tell whether the hardware actually has
+// tone controls (LMS's own UI gates them on client capabilities). Tone/DSP
+// is plugin territory; the owner asked for them removed.
 const PLAYER_SETTING_PREFS = [
   "transitionType", "transitionDuration", "transitionSmart",
   "replayGainMode", "remoteReplayGain", "digitalVolumeControl",
-  "bass", "treble",
   "powerOnResume", "fadeInDuration",
   "syncPower", "syncVolume", "maintainSync",
   "maxBitrate", "packetLatency", "startDelay", "playDelay",
@@ -1293,11 +1296,12 @@ app.get("/api/lms/player/:id/settings", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const id = req.params.id;
   try {
-    const [name, power, modes, groups, ...prefVals] = await Promise.all([
+    const [name, power, modes, groups, dstm, ...prefVals] = await Promise.all([
       state.lms.getPlayerName(id).catch(() => null),
       state.lms.getPower(id).catch(() => null),
       state.lms.getPlayerModes(id).catch(() => ({ shuffle: null, repeat: null })),
       state.lms.syncGroups().catch(() => []),
+      state.lms.dstmOptions(id).catch(() => ({ options: [], current: null })),
       ...PLAYER_SETTING_PREFS.map(p => state.lms.getPlayerPref(id, p).catch(() => null))
     ]);
     const prefs = {};
@@ -1314,6 +1318,9 @@ app.get("/api/lms/player/:id/settings", async (req, res) => {
       power,
       modes,
       prefs,
+      // Don't Stop The Music: providers with localized names + selection
+      // (empty options → plugin disabled → the UI hides the row).
+      dstm,
       sync: {
         // The other members of this player's group (empty = not synced).
         members: myGroup ? myGroup.members.filter(m => m !== id) : [],
@@ -1342,6 +1349,19 @@ app.post("/api/lms/player/:id/mode", async (req, res) => {
 app.post("/api/lms/player/:id/power", async (req, res) => {
   if (!state.connected) return notConnected(res);
   try { await state.lms.setPower(req.params.id, !!(req.body || {}).on); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Don't Stop The Music — the LMS-native "keep the music playing" feature
+// (replaces this app's old Random album radio toggle). GET lists providers +
+// current pick for a zone; POST sets it (provider "0"/null = disabled).
+app.get("/api/lms/player/:id/dstm", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try { res.json(await state.lms.dstmOptions(req.params.id)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/lms/player/:id/dstm", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try { await state.lms.setDstm(req.params.id, (req.body || {}).provider); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 // Sync this player WITH another (join its group), or unsync (with: null).
@@ -1378,7 +1398,17 @@ const LMS_EMBED_CSS =
   '  --menu-dlg-shadow: 0 4px 24px rgba(0,0,0,.6);\n' +
   '}\n' +
   '.custom-select-panel, .x-menu, .x-menu-list { background-color: var(--popup-background-color, #303030) !important; }\n' +
+  // Framed on a phone: vertical scrolling ONLY, and no white ever — a dark
+  // page background covers overscroll/short pages, and anything wider than
+  // the screen is clamped instead of panning sideways.
+  'html { background: #181818 !important; }\n' +
+  'html, body { max-width: 100% !important; overflow-x: hidden !important; min-height: 100% !important; }\n' +
+  'img, video, iframe, select, input { max-width: 100% !important; }\n' +
   '</style>';
+// Settings pages ship without a viewport meta (they expect a desktop browser
+// or Material's own frame) — without it a phone lays the page out at desktop
+// width and pans sideways. Injected only when the page doesn't set its own.
+const LMS_EMBED_VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">';
 function lmsProxy(req, res) {
   if (!state.connected || !state.lms) return res.status(503).send("Not connected to LMS");
   const cfg = state.lms.cfg;
@@ -1397,8 +1427,10 @@ function lmsProxy(req, res) {
         pres.on("data", (c) => chunks.push(c));
         pres.on("end", () => {
           let body = Buffer.concat(chunks).toString("utf8");
-          if (/<\/head>/i.test(body)) body = body.replace(/<\/head>/i, LMS_EMBED_CSS + "</head>");
-          else body = LMS_EMBED_CSS + body;
+          let inject = LMS_EMBED_CSS;
+          if (!/name=["']viewport["']/i.test(body)) inject = LMS_EMBED_VIEWPORT + inject;
+          if (/<\/head>/i.test(body)) body = body.replace(/<\/head>/i, inject + "</head>");
+          else body = inject + body;
           const out = { ...pres.headers };
           delete out["content-encoding"];
           delete out["transfer-encoding"];   // body is re-emitted whole — chunked + content-length is invalid

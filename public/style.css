@@ -1897,7 +1897,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .lmsset-close:hover { background: var(--bg); }
 .lmsset-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lmsset-newtab { font-size: 13px; color: var(--accent); text-decoration: none; flex: 0 0 auto; }
-.lmsset-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+/* Dark, not white: short pages and load gaps must never flash white
+   (the proxied page's own background is forced dark too). */
+.lmsset-frame { flex: 1; width: 100%; border: 0; background: #181818; }
 
 /* Artist albums view */
 .artist-view-back {
