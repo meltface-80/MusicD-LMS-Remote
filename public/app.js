@@ -1241,12 +1241,14 @@
       modalTracks.innerHTML = "";
       for (const t of j.tracks) {
         const li = document.createElement("li");
+        const tx = document.createElement("div"); tx.className = "t-text";
         const ti = document.createElement("span"); ti.className = "t-title";
         ti.textContent = t.title || "";
         const su = document.createElement("span"); su.className = "t-sub";
         // Every credited artist is its own tappable link to their artist page.
         su.appendChild(artistLinkNodes(t.subtitle, "t-artist-link"));
-        li.appendChild(ti); li.appendChild(su);
+        tx.appendChild(ti); tx.appendChild(su);
+        li.appendChild(tx);
         modalTracks.appendChild(li);
       }
     } else {
@@ -1487,13 +1489,18 @@
       trackList.forEach((t, idx) => {
         const li = document.createElement("li");
         li.className = "t-row";
+        // Title stacked over the full artist credit (Qobuz/Roon style) so
+        // every performer on multi-artist / various-artists tracks shows in
+        // full and wraps instead of being clipped.
+        const tx = document.createElement("div"); tx.className = "t-text";
         const ti = document.createElement("span"); ti.className = "t-title";
         ti.textContent = t.title || "";
         const su = document.createElement("span"); su.className = "t-sub";
         // Every credited artist is its own tappable link to their artist page
         // (stopPropagation inside keeps the row's play/queue toggle intact).
         su.appendChild(artistLinkNodes(t.subtitle, "t-artist-link"));
-        li.appendChild(ti); li.appendChild(su);
+        tx.appendChild(ti); tx.appendChild(su);
+        li.appendChild(tx);
         li.addEventListener("click", (e) => {
           if (e.target.closest(".t-actions")) return;   // taps on the buttons themselves
           toggleTrackActions(li, t, idx);
