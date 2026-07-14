@@ -1274,6 +1274,88 @@ app.post("/api/lms/rescan", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Native per-player settings (the Settings → Player pane; SETTINGS.md §1/§3).
+// One batched read returns everything the pane renders: identity, queue
+// modes, the per-player prefs, and sync-group state. Prefs LMS doesn't have
+// for this player come back null and the pane hides those controls — that's
+// the Material-skin behaviour (tone controls only on hardware that has them).
+// ---------------------------------------------------------------------------
+const PLAYER_SETTING_PREFS = [
+  "transitionType", "transitionDuration", "transitionSmart",
+  "replayGainMode", "remoteReplayGain", "digitalVolumeControl",
+  "bass", "treble",
+  "powerOnResume", "fadeInDuration",
+  "syncPower", "syncVolume", "maintainSync",
+  "maxBitrate", "packetLatency", "startDelay", "playDelay",
+  "alarmsEnabled", "alarmDefaultVolume"
+];
+app.get("/api/lms/player/:id/settings", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const id = req.params.id;
+  try {
+    const [name, power, modes, groups, ...prefVals] = await Promise.all([
+      state.lms.getPlayerName(id).catch(() => null),
+      state.lms.getPower(id).catch(() => null),
+      state.lms.getPlayerModes(id).catch(() => ({ shuffle: null, repeat: null })),
+      state.lms.syncGroups().catch(() => []),
+      ...PLAYER_SETTING_PREFS.map(p => state.lms.getPlayerPref(id, p).catch(() => null))
+    ]);
+    const prefs = {};
+    PLAYER_SETTING_PREFS.forEach((p, i) => {
+      const v = prefVals[i];
+      prefs[p] = (v === undefined || v === null || v === "") ? null : v;
+    });
+    const player = state.players.find(p => p.id === id) || null;
+    const myGroup = groups.find(g => g.members.includes(id)) || null;
+    res.json({
+      id,
+      name: name != null ? name : (player ? player.name : ""),
+      model: player ? player.model : "",
+      power,
+      modes,
+      prefs,
+      sync: {
+        // The other members of this player's group (empty = not synced).
+        members: myGroup ? myGroup.members.filter(m => m !== id) : [],
+        // Every other player, as sync candidates.
+        others: state.players.filter(p => p.id !== id).map(p => ({ id: p.id, name: p.name }))
+      }
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/lms/player/:id/name", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const name = String((req.body || {}).name || "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  try { await state.lms.setPlayerName(req.params.id, name); res.json({ ok: true, name }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/lms/player/:id/mode", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const b = req.body || {};
+  try {
+    if (b.shuffle != null) await state.lms.setShuffle(req.params.id, parseInt(b.shuffle, 10) || 0);
+    if (b.repeat  != null) await state.lms.setRepeat(req.params.id, parseInt(b.repeat, 10) || 0);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/lms/player/:id/power", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try { await state.lms.setPower(req.params.id, !!(req.body || {}).on); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Sync this player WITH another (join its group), or unsync (with: null).
+app.post("/api/lms/player/:id/sync", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const withId = (req.body || {}).with || null;
+  try {
+    if (withId) await state.lms.syncPlayers(withId, req.params.id);
+    else await state.lms.unsync(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------------------------------------------------------------------------
 // Same-origin proxy for LMS's settings pages. The settings frame used to
 // point the browser straight at the LMS origin, but Material's settings
 // pages get their theme CSS VARIABLES injected by the Material app when it
