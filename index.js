@@ -717,10 +717,17 @@ function imgPut(key, val) {
   }
 }
 
-// Fetch an artwork URL from LMS as raw bytes.
+// Fetch an artwork URL from LMS as raw bytes. Sends the same HTTP basic auth
+// the JSON-RPC adapter uses — on a password-protected LMS, /music/... needs
+// it too (without it every cover silently 404s while metadata still works).
 function fetchArtwork(url) {
+  const headers = {};
+  const cfg = state.lms && state.lms.cfg;
+  if (cfg && cfg.username) {
+    headers.Authorization = "Basic " + Buffer.from(`${cfg.username}:${cfg.password || ""}`).toString("base64");
+  }
   return new Promise((resolve, reject) => {
-    const req = http.get(url, (res) => {
+    const req = http.get(url, { headers }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error("art HTTP " + res.statusCode)); }
       const chunks = [];
       res.on("data", c => chunks.push(c));
