@@ -556,8 +556,15 @@
   if (ppClose) ppClose.addEventListener("click", closePlayPanel);
 
   // ---- Boot ---------------------------------------------------------------
+  // Adaptive poll: ~2s while playing (catch track changes), ~6s when paused/
+  // idle — progress is painted client-side (paintProgress), so a slow poll
+  // while nothing's playing costs the wall nothing but saves LMS a constant
+  // stream of player-status queries. Self-rescheduling from live `playing`.
   checkSettings().then(() => { if (enabled) tick(); });
-  setInterval(checkSettings, 30000);
-  setInterval(() => { if (enabled) tick(); }, 2000);
+  setInterval(checkSettings, 60000);   // the wall on/off toggle rarely changes (was 30s)
+  (function pollLoop() {
+    const delay = (enabled && playing) ? 2000 : 6000;
+    setTimeout(async () => { if (enabled) await tick(); pollLoop(); }, delay);
+  })();
   setInterval(paintProgress, 250);
 })();

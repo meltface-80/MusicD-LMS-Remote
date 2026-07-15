@@ -29,7 +29,7 @@ const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
 
 const pkg = require("./package.json");
-const { makeLogger, levelName } = require("./lib/log");
+const { makeLogger, levelName, setLogFile } = require("./lib/log");
 const log = makeLogger("app");
 // DEBUG stays a boolean for the many existing `if (DEBUG)` gates; the leveled
 // logger (lib/log.js) reads the same env plus LOG_LEVEL for finer control.
@@ -41,6 +41,18 @@ const PORT = Number(process.env.PORT) || 3390;
 // ---------------------------------------------------------------------------
 const DATA_DIR = path.join(__dirname, "data");
 const SETTINGS_FILE = path.join(DATA_DIR, "lms-settings.json");
+
+// Roon-style rotating file log under the data volume (survives restarts + the
+// in-app updater, which preserves data/). Console output is unchanged, so
+// `docker logs` keeps working. Tunable via env; LOG_FILE=off disables the file.
+if (String(process.env.LOG_FILE || "").toLowerCase() !== "off") {
+  const logPath  = process.env.LOG_FILE || path.join(DATA_DIR, "logs", "musicd.log");
+  const maxMb    = Number(process.env.LOG_MAX_MB) || 8;
+  const archives = process.env.LOG_ARCHIVES != null ? Number(process.env.LOG_ARCHIVES) : 10;
+  if (setLogFile(logPath, { maxBytes: maxMb * 1024 * 1024, archives })) {
+    log.info("file log:", logPath, "(rotate at " + maxMb + "MB, keep " + archives + " archives)");
+  }
+}
 
 function loadSettings() {
   try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) || {}; }
@@ -1205,13 +1217,26 @@ async function isFixedVolume(playerId) {
 }
 
 // Live zone state for the mini-transport bar.
+// Coalesce concurrent player-status fetches per zone: the phone app and the
+// wall display both poll /api/zone-state, often within the same tick — sharing
+// one in-flight LMS call (rather than one each) halves that load with zero
+// staleness (it's the same live fetch, just not duplicated).
+const zoneStatusInflight = new Map();
+function playerStatusShared(zoneId) {
+  const existing = zoneStatusInflight.get(zoneId);
+  if (existing) return existing;
+  const p = state.lms.playerStatus(zoneId).finally(() => zoneStatusInflight.delete(zoneId));
+  zoneStatusInflight.set(zoneId, p);
+  return p;
+}
+
 app.get("/api/zone-state", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const zoneId = req.query.zone;
   const player = state.players.find(p => p.id === zoneId);
   if (!player) return res.json({ zone: null });
   let st = state.statuses.get(zoneId);
-  try { st = await state.lms.playerStatus(zoneId); state.statuses.set(zoneId, st); }
+  try { st = await playerStatusShared(zoneId); state.statuses.set(zoneId, st); }
   catch (e) { /* fall back to the cached status if a live fetch fails */ }
   const t = (st && st.track) || null;
   // A player set to "Output level is fixed at 100%" gets NO volume object —
