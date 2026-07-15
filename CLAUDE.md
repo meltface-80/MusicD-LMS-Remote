@@ -89,4 +89,12 @@ Layout section of README.md.
   Prefer it over `console.*` in new code; pass a tagged `log:` into lib
   factories (lms/albumart/albuminfo already take one). Keep failure diagnostics
   at debug and per-request/per-command firehose at trace. COMPLIANCE: never log
-  Pitchfork review TEXT — URL/score/status only.
+  Pitchfork review TEXT — URL/score/status only. `setLogFile()` (called once in
+  index.js) tees every line to a rotating file under `data/logs/` (8MB × 10
+  archives, Roon-style); console output is unchanged so `docker logs` works.
+- Transport polling is ADAPTIVE and must stay cheap: the phone app
+  (`public/app.js` fetchState loop) and the wall (`public/display.js` pollLoop)
+  poll `/api/zone-state` ~2s while playing, ~6s when paused/stopped (progress is
+  interpolated client-side). `/api/zone-state` hits LMS live per call, so
+  concurrent app+display polls are coalesced server-side (`playerStatusShared`).
+  Don't reintroduce fixed fast polls.

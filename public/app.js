@@ -2921,7 +2921,9 @@
             }
           } catch (e) {} // corrupt sessionStorage modal state — skip restore, open normally
 
-          setInterval(loadZones, 15000);
+          // The zone list only changes when a player connects/disconnects —
+          // 30s is plenty (was 15s).
+          setInterval(loadZones, 30000);
           return;
         }
       } catch (e) {} // /api/status fetch failed — server not ready yet, fall through to "Waiting" banner
@@ -3540,14 +3542,30 @@
   if (stepMinus) stepMinus.addEventListener("click", (e) => { e.stopPropagation(); stepVolume(-2); });
   if (stepPlus)  stepPlus .addEventListener("click", (e) => { e.stopPropagation(); stepVolume(+2); });
 
-  // Polling: 1.5s when visible/playing, slower when not
+  // Adaptive polling: progress is interpolated client-side (the 1s ticker), so
+  // zone-state only needs to catch track changes and external play/pause/stop/
+  // volume. Poll ~2s while actively playing, but back off to ~6s when paused or
+  // stopped — nothing changes there, so the old fixed 1.5s hammered LMS for no
+  // reason. A self-rescheduling timeout re-reads the interval from live state.
+  let polling = false;
+  function pollDelayMs() {
+    const playing = currentZone && (currentZone.state === "playing" || currentZone.state === "loading");
+    return playing ? 2000 : 6000;
+  }
   function startPolling() {
-    if (pollTimer) return;
-    fetchState();
-    pollTimer = setInterval(fetchState, 1500);
+    if (polling) return;
+    polling = true;
+    const loop = async () => {
+      if (!polling) return;
+      await fetchState();
+      if (!polling) return;
+      pollTimer = setTimeout(loop, pollDelayMs());
+    };
+    loop();
   }
   function stopPolling() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    polling = false;
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   }
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) stopPolling();
