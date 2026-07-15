@@ -2220,6 +2220,11 @@
       markActive();
       close();
       if (window.__showWall) window.__showWall();   // reveal the album grid (leave Home)
+      // Entering a filtered grid must start at the TOP. <main> is the sole
+      // scroller, and tapping a genre card low on the Home screen otherwise
+      // leaves the new grid scrolled to that offset (mirrors showHome()).
+      const m = document.querySelector("main");
+      if (m) m.scrollTop = 0;
       updateCountReadout(null);
       loadRandom();
     }
