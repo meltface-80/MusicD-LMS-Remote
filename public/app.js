@@ -2084,6 +2084,7 @@ function esc(s) {
         const wrap = document.createElement("div");
         wrap.className = "ext-search-wrap";
         let added = 0;
+        added += extQobuzSection(wrap, j.qobuz);        // playable online albums first
         added += extPitchforkSection(wrap, j.pitchfork);
         if (!added) return;
         extWrap = wrap;
@@ -2125,6 +2126,64 @@ function esc(s) {
       return btn;
     }
 
+
+    // Qobuz section: albums NOT in the library that Qobuz can stream. Each row
+    // offers Play Now / Add to Queue without importing the album (the actions
+    // were captured server-side from the LMS Qobuz plugin at search time; the
+    // client only echoes the opaque token back to /api/qobuz/play).
+    async function qobuzPlay(token, kind, btn) {
+      if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
+      const orig = btn.innerHTML; btn.disabled = true; btn.classList.add("is-busy");
+      try {
+        const r = await fetch("/api/qobuz/play", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, zone_or_output_id: selectedZoneId, kind })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        showToast(`${kind === "queue" ? "Queued" : "Playing"} → ${zoneName(selectedZoneId)}`);
+      } catch (e) {
+        showToast(e.message, "error");
+      } finally { btn.disabled = false; btn.classList.remove("is-busy"); btn.innerHTML = orig; }
+    }
+
+    const QOBUZ_PLAY_SVG  = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+    const QOBUZ_QUEUE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0h3v-3h2v3h3v2h-3v3h-2v-3h-3z"/></svg>';
+
+    function extQobuzSection(frag, items) {
+      if (!items || !items.length) return 0;
+      extHeader(frag, "Available on Qobuz");
+      for (const it of items) {
+        const row = document.createElement("div");
+        row.className = "ext-search-row ext-qobuz-row";
+        const img = document.createElement("img");
+        img.className = "ext-search-art"; img.loading = "lazy"; img.alt = "";
+        if (it.image_key) {
+          img.src = `/api/image/${encodeURIComponent(it.image_key)}?size=100`;
+          img.addEventListener("error", () => { img.removeAttribute("src"); img.style.visibility = "hidden"; });
+        } else { img.style.visibility = "hidden"; }
+        const tx = document.createElement("div"); tx.className = "ext-search-meta";
+        const t  = document.createElement("div"); t.className = "ext-search-title"; t.textContent = it.title || "Untitled";
+        const s  = document.createElement("div"); s.className = "ext-search-sub";   s.textContent = it.subtitle || "";
+        tx.appendChild(t); tx.appendChild(s);
+        const actions = document.createElement("div"); actions.className = "ext-qobuz-actions";
+        const playBtn = document.createElement("button");
+        playBtn.type = "button"; playBtn.className = "ext-qobuz-btn"; playBtn.title = "Play now";
+        playBtn.setAttribute("aria-label", "Play now"); playBtn.innerHTML = QOBUZ_PLAY_SVG;
+        playBtn.addEventListener("click", () => qobuzPlay(it.token, "play_now", playBtn));
+        actions.appendChild(playBtn);
+        if (it.can_queue) {
+          const qBtn = document.createElement("button");
+          qBtn.type = "button"; qBtn.className = "ext-qobuz-btn"; qBtn.title = "Add to queue";
+          qBtn.setAttribute("aria-label", "Add to queue"); qBtn.innerHTML = QOBUZ_QUEUE_SVG;
+          qBtn.addEventListener("click", () => qobuzPlay(it.token, "queue", qBtn));
+          actions.appendChild(qBtn);
+        }
+        row.appendChild(img); row.appendChild(tx); row.appendChild(actions);
+        frag.appendChild(row);
+      }
+      return items.length;
+    }
 
     // Pitchfork section: tapping a review deep-links to its detail view.
     function extPitchforkSection(frag, items) {
