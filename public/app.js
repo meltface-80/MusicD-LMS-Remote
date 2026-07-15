@@ -5,6 +5,15 @@
  * Released under the MIT License. See the LICENSE file for details.
  */
 
+// Single HTML-escaper shared by every module IIFE below (each is a separate
+// scope, so this lives at script top-level). Use it on ANY LMS/network string
+// interpolated into innerHTML — album/artist/track names can carry markup,
+// especially online-library titles the owner didn't author.
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g,
+    c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 (() => {
   // Disable pinch-zoom on iOS Safari (which ignores user-scalable=no since iOS 10)
   ["gesturestart", "gesturechange", "gestureend"].forEach((evt) => {
@@ -1187,7 +1196,7 @@
       if (typeof window.__refreshTransport === "function") window.__refreshTransport();
     } else {
       fetchAlbumDetail(album).catch(err => {
-        modalActs.innerHTML = `<div class="modal-error">${escapeHtml(err.message)}</div>`;
+        modalActs.innerHTML = `<div class="modal-error">${esc(err.message)}</div>`;
       });
       fetchAlbumExtras(album).catch(() => { /* extras are non-critical — modal still opens */ });
     }
@@ -1725,11 +1734,6 @@
     const z = zones.find(z => z.zone_id === id);
     return z ? z.display_name : "zone";
   }
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    })[c]);
-  }
 
   // ----- Album editor: owner metadata/artwork overrides ---------------------
   // Edits live in the app's own database (the music mount is read-only) and
@@ -2194,8 +2198,6 @@
     const allCheck     = overlay && overlay.querySelector('.filter-check[data-for="all"]');
     const genresToggle = document.getElementById("filter-genres-toggle");
     const genresList   = document.getElementById("filter-genres-list");
-    const tagsToggle   = document.getElementById("filter-tags-toggle");
-    const tagsList     = document.getElementById("filter-tags-list");
     const decadesToggle = document.getElementById("filter-decades-toggle");
     const decadesList   = document.getElementById("filter-decades-list");
     if (!overlay || !toggleBtn) return;
@@ -2236,8 +2238,7 @@
         const d = document.createElement("div");
         d.className = "filter-empty";
         d.textContent = type === "genre" ? "No genres found"
-                      : (type === "tag" ? "No tags found"
-                      : "No decades — no album release years in the library yet.");
+                      : "No decades — no album release years in the library yet.";
         container.appendChild(d);
         return;
       }
@@ -2263,18 +2264,17 @@
       markActive();
     }
 
-    const loaded = { genre: false, tag: false, decade: false };
+    const loaded = { genre: false, decade: false };
     async function ensureList(type) {
       if (loaded[type]) return;
-      const container = type === "genre" ? genresList : (type === "tag" ? tagsList : decadesList);
+      const container = type === "genre" ? genresList : decadesList;
       container.innerHTML = '<div class="filter-empty">Loading\u2026</div>';
       try {
-        const url = type === "genre" ? "/api/filters/genres"
-                  : (type === "tag" ? "/api/filters/tags" : "/api/filters/decades");
+        const url = type === "genre" ? "/api/filters/genres" : "/api/filters/decades";
         const r = await fetch(url);
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-        const rows = type === "genre" ? j.genres : (type === "tag" ? j.tags : j.decades);
+        const rows = type === "genre" ? j.genres : j.decades;
         renderList(container, type, rows || []);
         loaded[type] = true;
       } catch (e) {
@@ -2296,9 +2296,8 @@
       });
     }
     wireSection(genresToggle, genresList, "genre");
-    // Tags section removed from the sheet (owner decision) — its toggle/list
-    // elements no longer exist; the tag branches above stay harmless.
-    if (tagsToggle && tagsList) wireSection(tagsToggle, tagsList, "tag");
+    // Tags section was removed from the sheet (owner decision, v1.0.8) — no
+    // toggle/list elements and no /api/filters/tags plumbing remain.
     wireSection(decadesToggle, decadesList, "decade");
 
     function open()  { overlay.classList.remove("hidden"); markActive(); }
@@ -4731,10 +4730,6 @@
   const currentView = () => viewStack[viewStack.length - 1];
   const setStatus   = (m) => { if (statusEl) statusEl.textContent = m || ""; };
 
-  function esc(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g,
-      c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  }
   function fmtScore(n) { return Number(n).toFixed(1); }   // toFixed already rounds to 1 dp
 
   function hideOverlay() {
@@ -5320,12 +5315,12 @@
       if (countBar) {
         countBar.innerHTML = `
           <button class="artist-view-back" id="artist-back-btn">← Back</button>
-          <span class="count-text">${total} album${total !== 1 ? "s" : ""} · ${artistName}</span>`;
+          <span class="count-text">${total} album${total !== 1 ? "s" : ""} · ${esc(artistName)}</span>`;
         document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
       }
 
       if (!total) {
-        grid.innerHTML = `<div class="artist-view-empty">No albums found for "${artistName}"</div>`;
+        grid.innerHTML = `<div class="artist-view-empty">No albums found for "${esc(artistName)}"</div>`;
         return;
       }
 
@@ -5358,7 +5353,7 @@
       if (countBar) {
         countBar.innerHTML = `
           <button class="artist-view-back" id="artist-back-btn">← Back</button>
-          <span class="count-text" style="color:var(--danger)">Error: ${e.message}</span>`;
+          <span class="count-text" style="color:var(--danger)">Error: ${esc(e.message)}</span>`;
         document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
       }
     }
