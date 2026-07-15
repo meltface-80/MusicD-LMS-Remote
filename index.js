@@ -25,6 +25,7 @@ const express = require("express");
 const compression = require("compression");
 
 const { createLms, discover } = require("./lib/lms");
+const { assertPublicUrl } = require("./lib/urlguard");
 const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
 
@@ -974,6 +975,7 @@ app.post("/api/album/edit", async (req, res) => {
   try {
     let art;   // undefined = leave artwork override as-is
     if (typeof art_url === "string" && art_url.trim()) {
+      await assertPublicUrl(art_url.trim());   // SSRF guard on the owner-supplied cover URL
       art = await withDeadline(
         albumArt.saveFromUrl(origTitle, origArtist, art_url.trim(), "Manual"), 25000);
     }
@@ -1334,7 +1336,17 @@ app.post("/api/play-unheard", async (req, res) => {
   const zoneId = (req.body && req.body.zone) || null;
   if (!zoneId) return res.status(400).json({ error: "zone required" });
   if (!index.records.length) return res.status(503).json({ error: "No albums available" });
-  const rec = index.records[Math.floor(Math.random() * index.records.length)];
+  // "Unheard": prefer an album not played in the last 6 months (mirrors
+  // /api/home/unplayed). Fall back to the whole library if everything has been
+  // heard recently, so the Shortcut always plays something.
+  const cutoff = Date.now() - 6 * 30 * 24 * 60 * 60 * 1000;
+  const heard = playsLog.getPlayedTitlesSince(cutoff);
+  const unplayed = index.records.filter(rec => {
+    const t = (rec.title || "").toLowerCase().trim();
+    return !(t && heard.has(t));
+  });
+  const from = unplayed.length ? unplayed : index.records;
+  const rec = from[Math.floor(Math.random() * from.length)];
   try { await state.lms.playAlbum(zoneId, rec.id, "now"); res.json({ ok: true, album: { title: rec.title, subtitle: rec.subtitle } }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
