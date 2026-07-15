@@ -306,6 +306,20 @@ button { font-family: inherit; }
 }
 .ext-search-score.is-bnm { background: #d4a017; color: #1a1000; }
 
+/* Qobuz search rows carry inline Play / Queue buttons (a whole-row tap would
+   be ambiguous — there's no library album to open). */
+.ext-qobuz-row { cursor: default; }
+.ext-qobuz-actions { flex-shrink: 0; display: flex; gap: 6px; }
+.ext-qobuz-btn {
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 999px; cursor: pointer;
+  background: var(--bg-elev); color: var(--text);
+  font-family: inherit;
+}
+.ext-qobuz-btn:active { background: var(--accent); color: #fff; }
+.ext-qobuz-btn:disabled, .ext-qobuz-btn.is-busy { opacity: .5; cursor: default; }
+
 .search-chip {
   display: inline-flex; align-items: center;
   padding: 6px 14px;

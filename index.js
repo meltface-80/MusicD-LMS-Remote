@@ -21,6 +21,7 @@
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const crypto = require("crypto");
 const express = require("express");
 const compression = require("compression");
 
@@ -2087,12 +2088,70 @@ app.post("/api/update/apply", async (req, res) => {
 });
 
 // ---- Global search across external sources (Pitchfork reviews only) ----
+// Play/add actions for Qobuz search results are kept SERVER-SIDE, keyed by an
+// opaque token the client echoes back to /api/qobuz/play — the client never
+// sees or submits a raw LMS command (which would be a command-injection hole).
+const qobuzActionStore = new Map();   // token -> { play, add, at }
+const QOBUZ_ACTION_TTL = 30 * 60 * 1000;
+function qobuzActionPut(play, add) {
+  const token = crypto.randomBytes(9).toString("base64url");
+  qobuzActionStore.set(token, { play, add, at: Date.now() });
+  if (qobuzActionStore.size > 800) {   // opportunistic sweep of expired tokens
+    const cut = Date.now() - QOBUZ_ACTION_TTL;
+    for (const [k, v] of qobuzActionStore) if (v.at < cut) qobuzActionStore.delete(k);
+  }
+  return token;
+}
+// Absolute remote cover → the existing "url-…" image_key form so /api/image
+// serves it through LMS's imageproxy (same as online-library album art).
+function qobuzImageKey(img) {
+  const s = String(img || "");
+  return /^https?:\/\//i.test(s) ? "url-" + Buffer.from(s, "utf8").toString("base64url") : null;
+}
+async function searchQobuz(q, playerId, limit) {
+  if (!state.lms || !state.lms.qobuzSearchAlbums || !playerId) return [];
+  const rows = await state.lms.qobuzSearchAlbums(playerId, q, limit);
+  return rows.map(r => ({
+    token:     qobuzActionPut(r.play, r.add),
+    title:     r.title || "",
+    subtitle:  r.artist || "",
+    source:    "qobuz",
+    image_key: qobuzImageKey(r.image),
+    can_queue: !!r.add,
+  }));
+}
+
 app.get("/api/search/external", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const LIM = 6, DEADLINE_MS = 10000;
-  if (!q) return res.json({ query: q, pitchfork: [] });
-  const pf = await withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => []);
-  res.json({ query: q, pitchfork: pf });
+  if (!q) return res.json({ query: q, pitchfork: [], qobuz: [] });
+  const player = state.players[0] && state.players[0].id;
+  const [pf, qb] = await Promise.all([
+    withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => []),
+    (state.connected && player)
+      ? withDeadline(searchQobuz(q, player, LIM), DEADLINE_MS).catch((e) => { log.debug("qobuz search failed:", e.message); return []; })
+      : Promise.resolve([]),
+  ]);
+  res.json({ query: q, pitchfork: pf, qobuz: qb });
+});
+
+// Play / queue a Qobuz album from a search result WITHOUT adding it to the
+// library. `kind`: play_now (replace + play) or queue (append). The action was
+// captured from the plugin's own menu at search time (see searchQobuz).
+app.post("/api/qobuz/play", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { token, zone_or_output_id, kind } = req.body || {};
+  if (!token)             return res.status(400).json({ error: "token required" });
+  if (!zone_or_output_id) return res.status(400).json({ error: "zone_or_output_id required" });
+  const entry = qobuzActionStore.get(token);
+  if (!entry || (Date.now() - entry.at) > QOBUZ_ACTION_TTL) {
+    qobuzActionStore.delete(token);
+    return res.status(410).json({ error: "Search result expired — search again" });
+  }
+  const action = (kind === "queue") ? (entry.add || entry.play) : entry.play;
+  if (!action) return res.status(400).json({ error: "action unavailable" });
+  try { await state.lms.qobuzRunAction(zone_or_output_id, action); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ---- Pitchfork magazine (browse + per-card library match) ----
