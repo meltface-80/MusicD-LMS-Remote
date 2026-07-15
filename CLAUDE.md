@@ -98,3 +98,13 @@ Layout section of README.md.
   interpolated client-side). `/api/zone-state` hits LMS live per call, so
   concurrent app+display polls are coalesced server-side (`playerStatusShared`).
   Don't reintroduce fixed fast polls.
+- `public/app.js` is a series of sibling IIFEs (separate scopes, NOT one closure)
+  — there is ONE shared HTML-escaper `esc()` at script top-level for all of them.
+  Any LMS/network string put into `innerHTML` MUST go through `esc()` (album/
+  artist/track names carry markup, esp. online-library titles the owner didn't
+  author). Prefer `textContent`/DOM building where possible.
+- Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
+  label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
+  first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
+  validates the request TARGET; an HTTP redirect to a private address is a known
+  residual gap. Don't add new server-side fetches of caller URLs without it.
