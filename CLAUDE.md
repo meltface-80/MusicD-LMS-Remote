@@ -108,3 +108,17 @@ Layout section of README.md.
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
   validates the request TARGET; an HTTP redirect to a private address is a known
   residual gap. Don't add new server-side fetches of caller URLs without it.
+- Qobuz-catalogue search (albums NOT in the library) is driven through the LMS
+  Qobuz plugin over JSON-RPC by MENU-ACTION REPLAY, the same mechanism Material
+  uses — not by parsing Qobuz ids. `lib/lms.js` walks `qobuz items` (root →
+  Search node, cached; descends into an Albums category if search returns
+  sub-menus) and captures each album row's `play`/`add` menu actions
+  (`menuAction()` merges response-level `base.actions` with per-item `params`);
+  `qobuzRunAction()` replays them as `qobuz playlist play|add …`. Every `qobuz`
+  dispatch is needs-client=1, so a real player id is required (search uses
+  `state.players[0].id`). Actions are held SERVER-SIDE in `qobuzActionStore`
+  keyed by an opaque token (30-min TTL) the client echoes to `/api/qobuz/play` —
+  the client never submits a raw LMS command. This generalises to Tidal/Deezer
+  (same interface, different tag). Result covers reuse the `url-…` image_key →
+  `/api/image` → LMS imageproxy path. NOTE: the exact plugin menu shapes are
+  unverified against a live server — keep it defensive and logged.
