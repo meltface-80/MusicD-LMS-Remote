@@ -2119,7 +2119,13 @@ async function qobuzFavorites(force) {
 // Absolute remote cover → the existing "url-…" image_key form so /api/image
 // serves it through LMS's imageproxy (same as online-library album art).
 function qobuzImageKey(img) {
-  const s = String(img || "");
+  let s = String(img || "");
+  // Qobuz covers arrive as a RELATIVE LMS imageproxy path:
+  //   /imageproxy/<uri-encoded absolute url>/image.jpg
+  // Unwrap the embedded absolute URL so it flows through the normal url- key →
+  // /api/image → LMS imageproxy resize path (same as online-library art).
+  const m = s.match(/^\/imageproxy\/([^/]+)\/image/i);
+  if (m) { try { const u = decodeURIComponent(m[1]); if (/^https?:\/\//i.test(u)) s = u; } catch (e) { /* keep s */ } }
   return /^https?:\/\//i.test(s) ? "url-" + Buffer.from(s, "utf8").toString("base64url") : null;
 }
 async function searchQobuz(q, playerId, limit) {
