@@ -122,3 +122,14 @@ Layout section of README.md.
   (same interface, different tag). Result covers reuse the `url-…` image_key →
   `/api/image` → LMS imageproxy path. NOTE: the exact plugin menu shapes are
   unverified against a live server — keep it defensive and logged.
+- Qobuz FAVOURITES (the heart) also use menu-action replay — the plugin has no
+  favourite CLI verb, so `qobuzAlbumFavoriteToggle()` descends into an album's
+  menu (its captured `go` action), finds the Add/Remove-favourite child and
+  invokes it only when the state must change. Favouriting is FAVOURITE-ONLY (no
+  library rescan, owner decision). Library albums expose `qobuz_id`
+  (`search.qobuzIdFromExtid` off the `qobuz:album:<id>` extid); the client fills
+  a heart on any tile whose id is in `/api/qobuz/favorites` (server-cached 60s
+  via `qobuzFavoriteAlbums`, which walks the root Favorites node). Search-result
+  hearts POST `/api/qobuz/favorite` (token → stored `go`); library-tile hearts
+  POST `/api/qobuz/favorite-id` (qobuz_id → the favourites cache's `go`). Same
+  live-server caveat — defensive + logged.
