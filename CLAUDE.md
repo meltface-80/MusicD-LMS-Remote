@@ -138,4 +138,17 @@ Layout section of README.md.
   `actions.go.params.item_id` (NOT a top-level `id`) — use `qLabel()` and
   `qobuzItemId()` in lib/lms.js, never `it.id`/`it.name`. Navigation stays on
   `menu:1` via `qobuzNav()`. `GET /api/qobuz/debug?q=…` dumps the raw plugin
-  menu responses for when shapes differ again.
+  menu responses for when shapes differ again. Search is TWO-STEP: the Search
+  node returns a "New search" input whose go action template carries
+  `search:"__TAGGEDINPUT__"` + `item_id:0.0` — substitute the term and run it;
+  results come back as CATEGORY groups (albums are "Releases", not "Albums" —
+  `isAlbumCategory()` matches Releases/Albums/icon). Album rows are labelled
+  "Album\nArtist (Year)" (`qobuzTitleArtist()` un-swaps them) and their cover is
+  a RELATIVE `/imageproxy/<enc-url>/image.jpg` in `icon` (`qobuzImageKey()`
+  unwraps the embedded URL). Strip per-row `isContextMenu` from replayed actions.
+- The native Qobuz BROWSER (`qobuzBrowse()` → `/api/qobuz/browse`, side-menu
+  "Browse Qobuz") walks the same menu tree, classifying rows as navigable NODEs
+  (`addAction:"go"`/`type:link`) or playable ALBUMs; the frontend overlay
+  (`initQobuzBrowse`) renders nodes as category rows and albums via the shared
+  `window.__buildQobuzRow` (same Play/Queue/Heart used by search). Replaced the
+  old Material-frame deep-link (Material has no app deep-link param).
