@@ -2143,13 +2143,15 @@ app.get("/api/qobuz/debug", async (req, res) => {
   if (!state.connected || !state.lms) return res.status(503).json({ error: "not connected to LMS" });
   const q = String(req.query.q || "radiohead").trim();
   const player = state.players[0] && state.players[0].id;
-  const out = { player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
+  const out = { version: pkg.version, player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
   const call = async (label, cmd) => { try { out[label] = await state.lms.request(player, cmd); } catch (e) { out[label] = { error: e.message }; } };
   if (!player) { out.error = "no player available (qobuz commands need a player id)"; return res.json(out); }
   await call("root", ["qobuz", "items", 0, 50, "menu:1"]);
-  const searchNode = (out.root && (out.root.item_loop || []).find(it =>
-    it.type === "search" || /search/i.test(it.name || "") || /search/i.test(it.title || "")));
-  out.searchNodeId = searchNode ? searchNode.id : null;
+  const items0 = (out.root && out.root.item_loop) || [];
+  const rootBase = out.root && out.root.base;
+  const goParams = (it) => { const go = (it.actions && it.actions.go) || (rootBase && rootBase.actions && rootBase.actions.go); return (go && go.params) || {}; };
+  const searchNode = items0.find(it => it.type === "search" || /search/i.test(it.text || it.name || it.title || ""));
+  out.searchNodeId = searchNode ? (goParams(searchNode).item_id != null ? String(goParams(searchNode).item_id) : (searchNode.id != null ? String(searchNode.id) : null)) : null;
   if (out.searchNodeId) {
     await call("searchPrompt", ["qobuz", "items", 0, 10, "item_id:" + out.searchNodeId, "menu:1"]);
     // The Search node returns a "New search" input template — run its go action
