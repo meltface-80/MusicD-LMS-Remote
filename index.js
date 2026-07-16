@@ -2136,6 +2136,26 @@ async function searchQobuz(q, playerId, limit) {
   }));
 }
 
+// Diagnostic: dump the RAW Qobuz-plugin menu responses so the exact live
+// menu shapes can be inspected (the parsers were built without a live server).
+// Read-only. GET /api/qobuz/debug?q=radiohead
+app.get("/api/qobuz/debug", async (req, res) => {
+  if (!state.connected || !state.lms) return res.status(503).json({ error: "not connected to LMS" });
+  const q = String(req.query.q || "radiohead").trim();
+  const player = state.players[0] && state.players[0].id;
+  const out = { player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
+  const call = async (label, cmd) => { try { out[label] = await state.lms.request(player, cmd); } catch (e) { out[label] = { error: e.message }; } };
+  if (!player) { out.error = "no player available (qobuz commands need a player id)"; return res.json(out); }
+  await call("root", ["qobuz", "items", 0, 50, "menu:1"]);
+  const searchNode = (out.root && (out.root.item_loop || []).find(it =>
+    it.type === "search" || /search/i.test(it.name || "") || /search/i.test(it.title || "")));
+  out.searchNodeId = searchNode ? searchNode.id : null;
+  if (out.searchNodeId) await call("search", ["qobuz", "items", 0, 10, "item_id:" + out.searchNodeId, "search:" + q, "menu:1"]);
+  try { out.parsedSearch = await state.lms.qobuzSearchAlbums(player, q, 6); } catch (e) { out.parsedSearch = { error: e.message }; }
+  try { out.parsedFavorites = await state.lms.qobuzFavoriteAlbums(player); } catch (e) { out.parsedFavorites = { error: e.message }; }
+  res.json(out);
+});
+
 app.get("/api/search/external", async (req, res) => {
   const q = String(req.query.q || "").trim();
   const LIM = 6, DEADLINE_MS = 10000;
