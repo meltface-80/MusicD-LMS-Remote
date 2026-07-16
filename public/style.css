@@ -3061,6 +3061,21 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .album-source-badge svg { width: 13px; height: 13px; display: block; }
 
+/* Favourite heart on a Qobuz album tile (bottom-right of the art). */
+.album-fav-heart {
+  position: absolute; bottom: 6px; right: 6px; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border: none; border-radius: 999px;
+  background: rgba(8, 12, 16, .55); color: #fff; cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+.album-fav-heart svg { width: 16px; height: 16px; display: block; }
+.album-fav-heart.is-fav { color: #ff4d6d; }
+.album-fav-heart:disabled { opacity: .5; cursor: default; }
+/* Heart in the Qobuz search-result row reuses the round action button. */
+.ext-qobuz-heart.is-fav { color: #ff4d6d; }
+
 /* ------------------------------------------------------------------ */
 /*  Album detail refresh — Home-language styling (v1.6.6 onward)       */
 /*  The detail modal borrows the Home screen's visual language:        */

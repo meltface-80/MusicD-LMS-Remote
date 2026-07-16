@@ -748,6 +748,41 @@ function esc(s) {
   // floor keeps DPR-1 desktops sharp on wide walls where tiles exceed 200px.
   const TILE_IMG_SIZE = Math.min(500, Math.max(300, Math.ceil((190 * (window.devicePixelRatio || 1)) / 100) * 100));
 
+  // ----- Qobuz favourite hearts -----
+  // A library album imported from Qobuz carries a `qobuz_id`; a search result
+  // carries a token. Both can be favourited/un-favourited through the LMS Qobuz
+  // plugin (favourite-only — no library rescan is triggered).
+  const HEART_FILLED  = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.6-4.9-9.8-9.2C.8 8.3 2.4 5 5.6 5c2 0 3.3 1.2 4.4 2.7C11.1 6.2 12.4 5 14.4 5c3.2 0 4.8 3.3 3.4 6.8C19.6 16.1 12 21 12 21z"/></svg>';
+  const HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M12 20s-6.8-4.4-8.8-8.2C1.9 8.5 3.2 6 5.6 6c1.8 0 3 1.1 4.4 2.7C11.3 7.1 12.6 6 14.4 6c2.4 0 3.7 2.5 2.4 5.8C18.8 15.6 12 20 12 20z"/></svg>';
+  let _qobuzFavIds = null, _qobuzFavPromise = null;
+  function ensureQobuzFavs() {
+    if (_qobuzFavIds) return Promise.resolve(_qobuzFavIds);
+    if (!_qobuzFavPromise) {
+      _qobuzFavPromise = fetch("/api/qobuz/favorites").then(r => (r.ok ? r.json() : { ids: [] }))
+        .then(j => (_qobuzFavIds = new Set(j.ids || []))).catch(() => (_qobuzFavIds = new Set()));
+    }
+    return _qobuzFavPromise;
+  }
+  function setHeart(btn, filled) {
+    btn.classList.toggle("is-fav", !!filled);
+    btn.innerHTML = filled ? HEART_FILLED : HEART_OUTLINE;
+    btn.title = filled ? "Remove from Qobuz favourites" : "Add to Qobuz favourites";
+    btn.setAttribute("aria-label", btn.title);
+  }
+  async function qobuzFavPost(url, body, btn) {
+    const want = !btn.classList.contains("is-fav");
+    btn.disabled = true;
+    try {
+      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, favorite: want }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      setHeart(btn, j.favorite);
+      if (_qobuzFavIds && body.qobuz_id) { j.favorite ? _qobuzFavIds.add(body.qobuz_id) : _qobuzFavIds.delete(body.qobuz_id); }
+      showToast(j.favorite ? "Added to Qobuz favourites" : "Removed from Qobuz favourites");
+    } catch (e) { showToast(e.message, "error"); }
+    finally { btn.disabled = false; }
+  }
+
   // Build a single album tile. onClick defaults to opening the album modal,
   // but callers (e.g. the label browser) can override it to carry a filter.
   function buildAlbumTile(a, onClick) {
@@ -787,6 +822,17 @@ function esc(s) {
         '<circle cx="24" cy="24" r="4.873"/>' +
         '<path d="M32.944 32.944L45.5 45.5"/></svg>';
       artWrap.appendChild(badge);
+    }
+
+    // Favourite heart for a Qobuz album that IS in the library (imported from a
+    // Qobuz favourite). Filled once the favourites set loads; tap un-favourites.
+    if (a.source === "qobuz" && a.qobuz_id) {
+      const heart = document.createElement("button");
+      heart.type = "button"; heart.className = "album-fav-heart";
+      setHeart(heart, false);
+      ensureQobuzFavs().then(set => setHeart(heart, set.has(a.qobuz_id)));
+      heart.addEventListener("click", (e) => { e.stopPropagation(); qobuzFavPost("/api/qobuz/favorite-id", { qobuz_id: a.qobuz_id }, heart); });
+      artWrap.appendChild(heart);
     }
 
     const meta = document.createElement("div");
@@ -2178,6 +2224,13 @@ function esc(s) {
           qBtn.setAttribute("aria-label", "Add to queue"); qBtn.innerHTML = QOBUZ_QUEUE_SVG;
           qBtn.addEventListener("click", () => qobuzPlay(it.token, "queue", qBtn));
           actions.appendChild(qBtn);
+        }
+        if (it.can_favorite) {
+          const heart = document.createElement("button");
+          heart.type = "button"; heart.className = "ext-qobuz-btn ext-qobuz-heart";
+          setHeart(heart, false);
+          heart.addEventListener("click", () => qobuzFavPost("/api/qobuz/favorite", { token: it.token }, heart));
+          actions.appendChild(heart);
         }
         row.appendChild(img); row.appendChild(tx); row.appendChild(actions);
         frag.appendChild(row);

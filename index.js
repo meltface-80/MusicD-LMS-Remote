@@ -723,7 +723,7 @@ app.get("/api/zones", (req, res) => {
 // ---- library reads ----
 
 function albumOut(rec) {
-  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null };
+  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null, qobuz_id: search.qobuzIdFromExtid(rec.extid) };
 }
 
 app.get("/api/random-albums", async (req, res) => {
@@ -2091,16 +2091,30 @@ app.post("/api/update/apply", async (req, res) => {
 // Play/add actions for Qobuz search results are kept SERVER-SIDE, keyed by an
 // opaque token the client echoes back to /api/qobuz/play — the client never
 // sees or submits a raw LMS command (which would be a command-injection hole).
-const qobuzActionStore = new Map();   // token -> { play, add, at }
+const qobuzActionStore = new Map();   // token -> { play, add, go, at }
 const QOBUZ_ACTION_TTL = 30 * 60 * 1000;
-function qobuzActionPut(play, add) {
+function qobuzActionPut(play, add, go) {
   const token = crypto.randomBytes(9).toString("base64url");
-  qobuzActionStore.set(token, { play, add, at: Date.now() });
+  qobuzActionStore.set(token, { play, add, go, at: Date.now() });
   if (qobuzActionStore.size > 800) {   // opportunistic sweep of expired tokens
     const cut = Date.now() - QOBUZ_ACTION_TTL;
     for (const [k, v] of qobuzActionStore) if (v.at < cut) qobuzActionStore.delete(k);
   }
   return token;
+}
+
+// The user's Qobuz favourite album ids, cached briefly (used to fill hearts on
+// library + search tiles). Also keeps each favourite's descend action so a
+// library album can be UN-favourited by id without re-walking the whole menu.
+let qobuzFavCache = { at: 0, ids: new Set(), byId: new Map() };
+const QOBUZ_FAV_TTL = 60 * 1000;
+async function qobuzFavorites(force) {
+  const player = state.players[0] && state.players[0].id;
+  if (!state.connected || !player || !state.lms.qobuzFavoriteAlbums) return qobuzFavCache;
+  if (!force && (Date.now() - qobuzFavCache.at) < QOBUZ_FAV_TTL) return qobuzFavCache;
+  const list = await state.lms.qobuzFavoriteAlbums(player).catch((e) => { log.debug("qobuz favourites failed:", e.message); return null; });
+  if (list) qobuzFavCache = { at: Date.now(), ids: new Set(list.map(a => a.id)), byId: new Map(list.map(a => [a.id, a])) };
+  return qobuzFavCache;
 }
 // Absolute remote cover → the existing "url-…" image_key form so /api/image
 // serves it through LMS's imageproxy (same as online-library album art).
@@ -2112,12 +2126,13 @@ async function searchQobuz(q, playerId, limit) {
   if (!state.lms || !state.lms.qobuzSearchAlbums || !playerId) return [];
   const rows = await state.lms.qobuzSearchAlbums(playerId, q, limit);
   return rows.map(r => ({
-    token:     qobuzActionPut(r.play, r.add),
+    token:     qobuzActionPut(r.play, r.add, r.go),
     title:     r.title || "",
     subtitle:  r.artist || "",
     source:    "qobuz",
     image_key: qobuzImageKey(r.image),
     can_queue: !!r.add,
+    can_favorite: !!r.go,
   }));
 }
 
@@ -2152,6 +2167,53 @@ app.post("/api/qobuz/play", async (req, res) => {
   if (!action) return res.status(400).json({ error: "action unavailable" });
   try { await state.lms.qobuzRunAction(zone_or_output_id, action); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The user's Qobuz favourite album ids — the UI fills a heart on any library
+// or search tile whose qobuz_id is in this set.
+app.get("/api/qobuz/favorites", async (req, res) => {
+  const fav = await qobuzFavorites(req.query.refresh === "1");
+  res.json({ ids: [...fav.ids] });
+});
+
+// Favourite / un-favourite a Qobuz SEARCH RESULT (heart on an album you don't
+// own). Favourite-only per design — no library rescan is triggered. The album's
+// menu node was captured at search time (token → go action).
+app.post("/api/qobuz/favorite", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { token, favorite } = req.body || {};
+  const player = state.players[0] && state.players[0].id;
+  if (!token)  return res.status(400).json({ error: "token required" });
+  if (!player) return res.status(503).json({ error: "No player available" });
+  const entry = qobuzActionStore.get(token);
+  if (!entry || (Date.now() - entry.at) > QOBUZ_ACTION_TTL) {
+    qobuzActionStore.delete(token);
+    return res.status(410).json({ error: "Search result expired — search again" });
+  }
+  if (!entry.go) return res.status(400).json({ error: "favourite unavailable for this result" });
+  try {
+    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.go, !!favorite);
+    qobuzFavCache.at = 0;                        // invalidate the cached set
+    res.json({ ok: true, favorite: nowFav });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Un-favourite a LIBRARY Qobuz album by its qobuz_id (the heart on an owned
+// album). Uses the descend action captured in the favourites listing.
+app.post("/api/qobuz/favorite-id", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { qobuz_id, favorite } = req.body || {};
+  const player = state.players[0] && state.players[0].id;
+  if (!qobuz_id) return res.status(400).json({ error: "qobuz_id required" });
+  if (!player)   return res.status(503).json({ error: "No player available" });
+  const fav = await qobuzFavorites(false);
+  const entry = fav.byId.get(String(qobuz_id));
+  if (!entry || !entry.go) return res.status(404).json({ error: "album menu not found — refresh favourites" });
+  try {
+    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.go, !!favorite);
+    qobuzFavCache.at = 0;
+    res.json({ ok: true, favorite: nowFav });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ---- Pitchfork magazine (browse + per-card library match) ----
