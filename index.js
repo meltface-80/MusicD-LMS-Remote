@@ -2150,7 +2150,24 @@ app.get("/api/qobuz/debug", async (req, res) => {
   const searchNode = (out.root && (out.root.item_loop || []).find(it =>
     it.type === "search" || /search/i.test(it.name || "") || /search/i.test(it.title || "")));
   out.searchNodeId = searchNode ? searchNode.id : null;
-  if (out.searchNodeId) await call("search", ["qobuz", "items", 0, 10, "item_id:" + out.searchNodeId, "search:" + q, "menu:1"]);
+  if (out.searchNodeId) {
+    await call("searchPrompt", ["qobuz", "items", 0, 10, "item_id:" + out.searchNodeId, "menu:1"]);
+    // The Search node returns a "New search" input template — run its go action
+    // with the query substituted for __TAGGEDINPUT__ to get the real results.
+    const items = (out.searchPrompt && out.searchPrompt.item_loop) || [];
+    const base = out.searchPrompt && out.searchPrompt.base;
+    const inp = items.find(it => {
+      const go = (it.actions && it.actions.go) || (base && base.actions && base.actions.go);
+      return go && go.params && /TAGGEDINPUT/i.test(String(go.params.search || ""));
+    });
+    if (inp) {
+      const go = inp.actions.go;
+      const p = { ...(base && base.actions && base.actions.go ? base.actions.go.params : {}), ...go.params, search: q };
+      delete p.menu;
+      const args = Object.entries(p).map(([k, v]) => k + ":" + v);
+      await call("searchResults", ["qobuz", "items", 0, 10, ...args, "menu:1"]);
+    }
+  }
   try { out.parsedSearch = await state.lms.qobuzSearchAlbums(player, q, 6); } catch (e) { out.parsedSearch = { error: e.message }; }
   try { out.parsedFavorites = await state.lms.qobuzFavoriteAlbums(player); } catch (e) { out.parsedFavorites = { error: e.message }; }
   res.json(out);
