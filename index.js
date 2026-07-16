@@ -2091,11 +2091,11 @@ app.post("/api/update/apply", async (req, res) => {
 // Play/add actions for Qobuz search results are kept SERVER-SIDE, keyed by an
 // opaque token the client echoes back to /api/qobuz/play — the client never
 // sees or submits a raw LMS command (which would be a command-injection hole).
-const qobuzActionStore = new Map();   // token -> { play, add, go, at }
+const qobuzActionStore = new Map();   // token -> { play, add, favItemId, at }
 const QOBUZ_ACTION_TTL = 30 * 60 * 1000;
-function qobuzActionPut(play, add, go) {
+function qobuzActionPut(play, add, favItemId) {
   const token = crypto.randomBytes(9).toString("base64url");
-  qobuzActionStore.set(token, { play, add, go, at: Date.now() });
+  qobuzActionStore.set(token, { play, add, favItemId, at: Date.now() });
   if (qobuzActionStore.size > 800) {   // opportunistic sweep of expired tokens
     const cut = Date.now() - QOBUZ_ACTION_TTL;
     for (const [k, v] of qobuzActionStore) if (v.at < cut) qobuzActionStore.delete(k);
@@ -2126,13 +2126,13 @@ async function searchQobuz(q, playerId, limit) {
   if (!state.lms || !state.lms.qobuzSearchAlbums || !playerId) return [];
   const rows = await state.lms.qobuzSearchAlbums(playerId, q, limit);
   return rows.map(r => ({
-    token:     qobuzActionPut(r.play, r.add, r.go),
+    token:     qobuzActionPut(r.play, r.add, r.favItemId),
     title:     r.title || "",
     subtitle:  r.artist || "",
     source:    "qobuz",
     image_key: qobuzImageKey(r.image),
     can_queue: !!r.add,
-    can_favorite: !!r.go,
+    can_favorite: r.favItemId != null,
   }));
 }
 
@@ -2210,9 +2210,9 @@ app.post("/api/qobuz/favorite", async (req, res) => {
     qobuzActionStore.delete(token);
     return res.status(410).json({ error: "Search result expired — search again" });
   }
-  if (!entry.go) return res.status(400).json({ error: "favourite unavailable for this result" });
+  if (entry.favItemId == null) return res.status(400).json({ error: "favourite unavailable for this result" });
   try {
-    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.go, !!favorite);
+    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.favItemId, !!favorite);
     qobuzFavCache.at = 0;                        // invalidate the cached set
     res.json({ ok: true, favorite: nowFav });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2228,9 +2228,9 @@ app.post("/api/qobuz/favorite-id", async (req, res) => {
   if (!player)   return res.status(503).json({ error: "No player available" });
   const fav = await qobuzFavorites(false);
   const entry = fav.byId.get(String(qobuz_id));
-  if (!entry || !entry.go) return res.status(404).json({ error: "album menu not found — refresh favourites" });
+  if (!entry || entry.itemId == null) return res.status(404).json({ error: "album menu not found — refresh favourites" });
   try {
-    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.go, !!favorite);
+    const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.itemId, !!favorite);
     qobuzFavCache.at = 0;
     res.json({ ok: true, favorite: nowFav });
   } catch (e) { res.status(500).json({ error: e.message }); }
