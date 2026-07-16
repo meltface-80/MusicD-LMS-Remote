@@ -2168,6 +2168,17 @@ app.get("/api/qobuz/debug", async (req, res) => {
       delete p.menu;
       const args = Object.entries(p).map(([k, v]) => k + ":" + v);
       await call("searchResults", ["qobuz", "items", 0, 10, ...args, "menu:1"]);
+      // Text search returns category groups (Releases/Artists/Songs/…). Descend
+      // into the albums group ("Releases"/"Albums" / albums icon) to show the
+      // actual album rows for parser confirmation.
+      const cats = (out.searchResults && out.searchResults.item_loop) || [];
+      const albCat = cats.find(it => {
+        const lbl = String(it.text || it.name || "");
+        return /\b(album|release)/i.test(lbl) || /albums\.png/i.test(String(it.icon || ""));
+      });
+      const catGo = albCat && albCat.actions && albCat.actions.go;
+      const catId = catGo && catGo.params && catGo.params.item_id;
+      if (catId != null) await call("albumRows", ["qobuz", "items", 0, 10, "item_id:" + catId, "menu:1"]);
     }
   }
   try { out.parsedSearch = await state.lms.qobuzSearchAlbums(player, q, 6); } catch (e) { out.parsedSearch = { error: e.message }; }
