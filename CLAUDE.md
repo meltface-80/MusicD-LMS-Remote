@@ -133,3 +133,9 @@ Layout section of README.md.
   hearts POST `/api/qobuz/favorite` (token → stored `go`); library-tile hearts
   POST `/api/qobuz/favorite-id` (qobuz_id → the favourites cache's `go`). Same
   live-server caveat — defensive + logged.
+- Qobuz menu-row fields (confirmed against a live plugin, v1.0.22): the display
+  label is `text` (NOT name/title), and a row's browse id lives in its
+  `actions.go.params.item_id` (NOT a top-level `id`) — use `qLabel()` and
+  `qobuzItemId()` in lib/lms.js, never `it.id`/`it.name`. Navigation stays on
+  `menu:1` via `qobuzNav()`. `GET /api/qobuz/debug?q=…` dumps the raw plugin
+  menu responses for when shapes differ again.
