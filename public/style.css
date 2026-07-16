@@ -2499,7 +2499,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 #qobuz-overlay, #tidal-overlay, #pitchfork-overlay { align-items: stretch; }
 #qobuz-overlay .qobuz-sheet,
 #tidal-overlay .qobuz-sheet,
-#pitchfork-overlay .qobuz-sheet {
+#pitchfork-overlay .qobuz-sheet,
+#qobuz-browse-overlay .qobuz-sheet {
   height: 100vh;   /* fallback for browsers without dvh support */
   height: 100dvh;
   max-height: none;
@@ -2515,7 +2516,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    pinned area. */
 #qobuz-overlay .qobuz-pin,
 #tidal-overlay .qobuz-pin,
-#pitchfork-overlay .qobuz-pin {
+#pitchfork-overlay .qobuz-pin,
+#qobuz-browse-overlay .qobuz-pin {
   position: sticky;
   top: 0;
   z-index: 5;
@@ -2523,6 +2525,23 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   padding-top: calc(10px + env(safe-area-inset-top));
   padding-bottom: 2px;
 }
+
+/* Native Qobuz browser */
+.qb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.qb-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qb-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 24px; }
+.qb-loading, .qb-empty { color: var(--text-dim); padding: 24px 4px; text-align: center; }
+.qb-nodes { display: flex; flex-direction: column; gap: 6px; }
+.qb-node {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 14px 14px; border: none; border-radius: 10px;
+  background: var(--bg-elev-2); color: var(--text);
+  font-family: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.qb-node:active { background: var(--bg-elev); }
+.qb-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qb-chevron { flex-shrink: 0; color: var(--text-faint); display: flex; }
+.qb-albums { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 
 /* Qobuz New Releases overlay list */
 .qobuz-nr-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 4px 0 8px; }

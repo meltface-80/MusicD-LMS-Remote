@@ -2272,6 +2272,26 @@ app.post("/api/qobuz/favorite-id", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Native Qobuz browser: walk the plugin's menu tree (New Releases, Bestsellers,
+// Genres, Playlists, …). Returns navigable `node`s and playable `album`s; albums
+// carry a token for /api/qobuz/play + /api/qobuz/favorite (same as search).
+app.get("/api/qobuz/browse", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const player = state.players[0] && state.players[0].id;
+  if (!player) return res.status(503).json({ error: "No player available" });
+  const itemId = req.query.item_id != null && req.query.item_id !== "" ? String(req.query.item_id) : null;
+  const start = Math.max(0, parseInt(req.query.start || "0", 10) || 0);
+  try {
+    const r = await state.lms.qobuzBrowse(player, itemId, start, 50);
+    const items = r.items.map(it => it.kind === "album"
+      ? { kind: "album", token: qobuzActionPut(it.play, it.add, it.favItemId), title: it.title,
+          subtitle: it.artist, source: "qobuz", image_key: qobuzImageKey(it.image),
+          can_queue: !!it.add, can_favorite: it.favItemId != null }
+      : { kind: "node", item_id: it.item_id, title: it.title });
+    res.json({ title: r.title, total: r.total, start, items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---- Pitchfork magazine (browse + per-card library match) ----
 // Browsable listing of recent album reviews or Best New Music (?type=latest|best).
 app.get("/api/pitchfork/reviews", async (req, res) => {

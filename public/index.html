@@ -682,6 +682,28 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     </div>
   </div>
 
+  <!-- Native Qobuz browser — walks the LMS Qobuz plugin's menu tree
+       (New Releases, Bestsellers, Genres, Playlists, …) in the app's own UI.
+       Driven by initQobuzBrowse() in app.js. -->
+  <div id="qobuz-browse-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Browse Qobuz">
+    <div class="settings-backdrop" data-qb-close></div>
+    <div class="settings-sheet qobuz-sheet">
+      <div class="qobuz-pin">
+        <div class="settings-grip"></div>
+        <div class="settings-head qb-head">
+          <button id="qb-back" class="icon-btn" type="button" aria-label="Back" hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2 id="qb-title">Browse Qobuz</h2>
+          <button id="qb-close" class="icon-btn" type="button" aria-label="Close" data-qb-close>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="qb-body" class="qb-body"></div>
+    </div>
+  </div>
+
   <div id="settings-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Settings">
     <div class="settings-backdrop" data-settings-close></div>
     <div class="settings-sheet">
