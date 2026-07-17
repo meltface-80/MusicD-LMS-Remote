@@ -1315,6 +1315,12 @@ function esc(s) {
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     if (favBtn && j.favorite != null) { favBtn.classList.toggle("is-fav", !!j.favorite); favBtn.textContent = j.favorite ? "♥ Favourited" : "♡ Favourite"; }
     const tracks = j.tracks || [];
+    if (j.notice) {   // re-auth / error prompt from the plugin — explain, don't show a blank list
+      trackWrap.classList.remove("hidden");
+      const d = document.createElement("li"); d.className = "qb-notice"; d.textContent = j.notice;
+      modalTracks.appendChild(d);
+      return;
+    }
     if (!tracks.length) { trackWrap.classList.add("hidden"); return; }
     tracks.forEach((t) => {
       const li = document.createElement("li"); li.className = "t-row";
@@ -2359,6 +2365,7 @@ function esc(s) {
           const j = await r.json();
           if (mySeq !== seq) return;
           if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+          if (j.notice && !(j.items || []).length) { msg("qb-empty", j.notice); return; }
           renderList(j.items || []);
         } catch (e) { if (mySeq === seq) msg("qb-empty", "Couldn't load: " + e.message); }
       }

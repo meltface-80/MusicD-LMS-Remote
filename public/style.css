@@ -2570,6 +2570,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .qb-track-meta { flex: 1; min-width: 0; }
 .qb-track-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qb-track-artist { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qb-notice { list-style: none; padding: 14px 8px; color: var(--text-dim); font-size: 14px; line-height: 1.5; }
 /* Qobuz albums reuse the shared album modal — hide the library-only Edit button
    and bio, and give the favourite pill its heart state. */
 .modal.qobuz-mode .modal-edit,
