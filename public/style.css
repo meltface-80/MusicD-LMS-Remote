@@ -2541,7 +2541,35 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .qb-node:active { background: var(--bg-elev); }
 .qb-node-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qb-chevron { flex-shrink: 0; color: var(--text-faint); display: flex; }
-.qb-albums { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+/* Album grid — mirrors the main album wall */
+.qb-grid {
+  display: grid; gap: 14px; margin-top: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+@media (max-width: 640px) { .qb-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
+.qb-tile { background: none; border: none; padding: 0; cursor: pointer; text-align: left; font-family: inherit; color: inherit; }
+/* Album detail (cover + tracks) */
+.qb-album-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
+.qb-album-cover { flex-shrink: 0; width: 40%; max-width: 220px; }
+.qb-album-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.qb-album-title { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.qb-album-artist { color: var(--text-dim); margin-top: 4px; font-size: 14px; }
+.qb-album-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.qb-act-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 16px; border: none; border-radius: 999px; cursor: pointer;
+  background: var(--accent); color: #fff; font-family: inherit; font-size: 14px; font-weight: 600;
+}
+.qb-act-btn svg { width: 18px; height: 18px; }
+.qb-act-btn.qb-album-heart { background: var(--bg-elev); color: var(--text); padding: 9px 12px; }
+.qb-act-btn.qb-album-heart.is-fav { color: #ff4d6d; }
+.qb-act-btn:disabled { opacity: .5; cursor: default; }
+.qb-tracks { display: flex; flex-direction: column; }
+.qb-track { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-top: 1px solid var(--line, rgba(128,128,128,.15)); }
+.qb-track-num { flex-shrink: 0; width: 22px; text-align: right; color: var(--text-faint); font-variant-numeric: tabular-nums; font-size: 13px; }
+.qb-track-meta { flex: 1; min-width: 0; }
+.qb-track-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qb-track-artist { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Qobuz New Releases overlay list */
 .qobuz-nr-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 4px 0 8px; }

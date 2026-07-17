@@ -2243,6 +2243,173 @@ function esc(s) {
       return items.length;
     }
 
+    // ----- Native Qobuz browser (grid tiles + tappable album detail) -----
+    // Same scope as qobuzPlay / qobuzFavPost / setHeart / showToast / TILE_IMG_SIZE.
+    (function initQobuzBrowse() {
+      const overlay = document.getElementById("qobuz-browse-overlay");
+      const body    = document.getElementById("qb-body");
+      const titleEl = document.getElementById("qb-title");
+      const backBtn = document.getElementById("qb-back");
+      if (!overlay || !body) return;
+      const favCache = new Map();     // fav_key → bool, persists heart state within the session
+      let stack = [];
+      let seq = 0;
+      const CHEVRON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+
+      function closeOverlay() { overlay.classList.add("hidden"); document.body.style.overflow = ""; }
+      overlay.querySelectorAll("[data-qb-close]").forEach(el => el.addEventListener("click", closeOverlay));
+      backBtn.addEventListener("click", () => { if (stack.length > 1) { stack.pop(); renderFrame(); } else closeOverlay(); });
+      const msg = (cls, text) => { body.innerHTML = ""; const d = document.createElement("div"); d.className = cls; d.textContent = text; body.appendChild(d); };
+
+      function renderFrame() {
+        const f = stack[stack.length - 1] || { kind: "list", item_id: null, title: "Browse Qobuz" };
+        titleEl.textContent = f.title || "Browse Qobuz";
+        backBtn.hidden = stack.length <= 1;
+        body.scrollTop = 0;
+        if (f.kind === "album") renderAlbum(f.album);
+        else loadList(f);
+      }
+
+      async function loadList(f) {
+        msg("qb-loading", "Loading…");
+        const mySeq = ++seq;
+        try {
+          const url = "/api/qobuz/browse" + (f.item_id != null ? "?item_id=" + encodeURIComponent(f.item_id) : "");
+          const r = await fetch(url, { cache: "no-store" });
+          const j = await r.json();
+          if (mySeq !== seq) return;
+          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+          renderList(j.items || []);
+        } catch (e) { if (mySeq === seq) msg("qb-empty", "Couldn't load: " + e.message); }
+      }
+
+      function renderList(items) {
+        body.innerHTML = "";
+        if (!items.length) { msg("qb-empty", "Nothing here."); return; }
+        const nodes  = items.filter(it => it.kind === "node");
+        const albums = items.filter(it => it.kind === "album");
+        if (nodes.length) {
+          const nl = document.createElement("div"); nl.className = "qb-nodes";
+          for (const n of nodes) {
+            const b = document.createElement("button"); b.type = "button"; b.className = "qb-node";
+            const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = n.title || "…";
+            const chev = document.createElement("span"); chev.className = "qb-chevron"; chev.innerHTML = CHEVRON;
+            b.appendChild(t); b.appendChild(chev);
+            b.addEventListener("click", () => { stack.push({ kind: "list", item_id: n.item_id, title: n.title }); renderFrame(); });
+            nl.appendChild(b);
+          }
+          body.appendChild(nl);
+        }
+        if (albums.length) {
+          const grid = document.createElement("div"); grid.className = "qb-grid";
+          for (const a of albums) grid.appendChild(albumTile(a));
+          body.appendChild(grid);
+        }
+      }
+
+      function albumTile(a) {
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "album qb-tile";
+        const artWrap = document.createElement("div"); artWrap.className = "album-art-wrap";
+        if (a.image_key) {
+          const img = document.createElement("img"); img.loading = "lazy"; img.alt = "";
+          img.src = `/api/image/${encodeURIComponent(a.image_key)}?size=${TILE_IMG_SIZE}`;
+          img.onerror = () => { artWrap.classList.add("no-image"); img.remove(); };
+          artWrap.appendChild(img);
+        } else { artWrap.classList.add("no-image"); }
+        if (a.can_favorite) {
+          const heart = document.createElement("button"); heart.type = "button"; heart.className = "album-fav-heart";
+          setHeart(heart, favCache.get(a.fav_key) === true);
+          heart.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(a, heart); });
+          artWrap.appendChild(heart);
+        }
+        const meta = document.createElement("div"); meta.className = "album-meta";
+        meta.innerHTML = '<div class="album-title"></div><div class="album-artist"></div>';
+        meta.querySelector(".album-title").textContent  = a.title || "Untitled";
+        meta.querySelector(".album-artist").textContent = a.subtitle || "";
+        btn.appendChild(artWrap); btn.appendChild(meta);
+        btn.addEventListener("click", () => { stack.push({ kind: "album", album: a, title: a.title }); renderFrame(); });
+        return btn;
+      }
+
+      async function toggleFav(a, btn) {
+        const want = !(favCache.get(a.fav_key) === true);
+        btn.disabled = true;
+        try {
+          const r = await fetch("/api/qobuz/favorite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: a.token, favorite: want }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+          if (a.fav_key) favCache.set(a.fav_key, j.favorite);
+          setHeart(btn, j.favorite);
+          showToast(j.favorite ? "Added to Qobuz favourites" : "Removed from Qobuz favourites");
+        } catch (e) { showToast(e.message, "error"); }
+        finally { btn.disabled = false; }
+      }
+
+      function actionBtn(cls, html, onClick) {
+        const b = document.createElement("button"); b.type = "button"; b.className = cls; b.innerHTML = html;
+        b.addEventListener("click", () => onClick(b));
+        return b;
+      }
+
+      async function renderAlbum(a) {
+        body.innerHTML = "";
+        const head = document.createElement("div"); head.className = "qb-album-head";
+        const cover = document.createElement("div"); cover.className = "album-art-wrap qb-album-cover";
+        if (a.image_key) { const img = document.createElement("img"); img.alt = ""; img.src = `/api/image/${encodeURIComponent(a.image_key)}?size=600`; img.onerror = () => { cover.classList.add("no-image"); img.remove(); }; cover.appendChild(img); } else cover.classList.add("no-image");
+        const meta = document.createElement("div"); meta.className = "qb-album-meta";
+        const t = document.createElement("div"); t.className = "qb-album-title"; t.textContent = a.title || "";
+        const s = document.createElement("div"); s.className = "qb-album-artist"; s.textContent = a.subtitle || "";
+        meta.appendChild(t); meta.appendChild(s);
+        const acts = document.createElement("div"); acts.className = "qb-album-actions";
+        acts.appendChild(actionBtn("qb-act-btn", QOBUZ_PLAY_SVG + "<span>Play</span>", (btn) => qobuzPlay(a.token, "play_now", btn)));
+        if (a.can_queue) acts.appendChild(actionBtn("qb-act-btn", QOBUZ_QUEUE_SVG + "<span>Queue</span>", (btn) => qobuzPlay(a.token, "queue", btn)));
+        if (a.can_favorite) {
+          const heart = document.createElement("button"); heart.type = "button"; heart.className = "qb-act-btn qb-album-heart ext-qobuz-heart";
+          setHeart(heart, favCache.get(a.fav_key) === true);
+          heart.addEventListener("click", () => toggleFav(a, heart));
+          acts.appendChild(heart);
+        }
+        meta.appendChild(acts);
+        head.appendChild(cover); head.appendChild(meta); body.appendChild(head);
+        const list = document.createElement("div"); list.className = "qb-tracks";
+        list.innerHTML = '<div class="qb-loading">Loading tracks…</div>';
+        body.appendChild(list);
+        const mySeq = ++seq;
+        try {
+          const r = await fetch("/api/qobuz/album?token=" + encodeURIComponent(a.token), { cache: "no-store" });
+          const j = await r.json();
+          if (mySeq !== seq) return;
+          if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+          if (j.favorite != null) { if (a.fav_key) favCache.set(a.fav_key, j.favorite); const h = acts.querySelector(".qb-album-heart"); if (h) setHeart(h, j.favorite); }
+          renderTracks(list, j.tracks || []);
+        } catch (e) { list.innerHTML = ""; const d = document.createElement("div"); d.className = "qb-empty"; d.textContent = "Couldn't load tracks: " + e.message; list.appendChild(d); }
+      }
+
+      function renderTracks(list, tracks) {
+        list.innerHTML = "";
+        if (!tracks.length) { const d = document.createElement("div"); d.className = "qb-empty"; d.textContent = "No track list."; list.appendChild(d); return; }
+        tracks.forEach((t, i) => {
+          const row = document.createElement("div"); row.className = "qb-track";
+          const num = document.createElement("span"); num.className = "qb-track-num"; num.textContent = String(i + 1);
+          const tx = document.createElement("div"); tx.className = "qb-track-meta";
+          const tt = document.createElement("div"); tt.className = "qb-track-title"; tt.textContent = t.title || "";
+          tx.appendChild(tt);
+          if (t.artist) { const ta = document.createElement("div"); ta.className = "qb-track-artist"; ta.textContent = t.artist; tx.appendChild(ta); }
+          const play = document.createElement("button"); play.type = "button"; play.className = "ext-qobuz-btn"; play.title = "Play now"; play.setAttribute("aria-label", "Play now"); play.innerHTML = QOBUZ_PLAY_SVG;
+          play.addEventListener("click", () => qobuzPlay(t.token, "play_now", play));
+          row.appendChild(num); row.appendChild(tx); row.appendChild(play);
+          list.appendChild(row);
+        });
+      }
+
+      window.__openQobuzBrowse = function () {
+        stack = [{ kind: "list", item_id: null, title: "Browse Qobuz" }];
+        overlay.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+        renderFrame();
+      };
+    })();
+
     // Pitchfork section: tapping a review deep-links to its detail view.
     function extPitchforkSection(frag, items) {
       if (!items || !items.length) return 0;
@@ -4820,78 +4987,6 @@ function esc(s) {
 /*  behaves naturally. Two views deep: a magazine list (tab) → a       */
 /*  review detail. Handler no-ops while the overlay is closed, so the  */
 /*  rest of the app is unaffected.                                     */
-/* ------------------------------------------------------------------ */
-// Native Qobuz browser — walks the LMS Qobuz plugin menu tree in the app's own
-// UI. Categories (New Releases / Bestsellers / Genres / Playlists / …) are
-// navigable rows; album leaves reuse the shared Qobuz row (window.__buildQobuzRow)
-// with Play / Queue / Heart. A nav stack drives the back button.
-(function initQobuzBrowse() {
-  const overlay = document.getElementById("qobuz-browse-overlay");
-  const body    = document.getElementById("qb-body");
-  const titleEl = document.getElementById("qb-title");
-  const backBtn = document.getElementById("qb-back");
-  if (!overlay || !body) return;
-  let stack = [];
-  let seq = 0;
-
-  function close() { overlay.classList.add("hidden"); document.body.style.overflow = ""; }
-  overlay.querySelectorAll("[data-qb-close]").forEach(el => el.addEventListener("click", close));
-  backBtn.addEventListener("click", () => { if (stack.length > 1) { stack.pop(); load(); } else close(); });
-
-  const msg = (cls, text) => { body.innerHTML = ""; const d = document.createElement("div"); d.className = cls; d.textContent = text; body.appendChild(d); };
-
-  async function load() {
-    const cur = stack[stack.length - 1] || { item_id: null, title: "Browse Qobuz" };
-    titleEl.textContent = cur.title || "Browse Qobuz";
-    backBtn.hidden = stack.length <= 1;
-    msg("qb-loading", "Loading…");
-    const mySeq = ++seq;
-    try {
-      const url = "/api/qobuz/browse" + (cur.item_id != null ? "?item_id=" + encodeURIComponent(cur.item_id) : "");
-      const r = await fetch(url, { cache: "no-store" });
-      const j = await r.json();
-      if (mySeq !== seq) return;
-      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-      render(j.items || []);
-    } catch (e) {
-      if (mySeq === seq) msg("qb-empty", "Couldn't load: " + e.message);
-    }
-  }
-
-  function render(items) {
-    body.innerHTML = "";
-    if (!items.length) { msg("qb-empty", "Nothing here."); return; }
-    const nodes  = items.filter(it => it.kind === "node");
-    const albums = items.filter(it => it.kind === "album");
-    if (nodes.length) {
-      const nl = document.createElement("div"); nl.className = "qb-nodes";
-      for (const n of nodes) {
-        const b = document.createElement("button"); b.type = "button"; b.className = "qb-node";
-        const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = n.title || "…";
-        b.appendChild(t);
-        const chev = document.createElement("span"); chev.className = "qb-chevron";
-        chev.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
-        b.appendChild(chev);
-        b.addEventListener("click", () => { stack.push({ item_id: n.item_id, title: n.title }); load(); });
-        nl.appendChild(b);
-      }
-      body.appendChild(nl);
-    }
-    if (albums.length && window.__buildQobuzRow) {
-      const al = document.createElement("div"); al.className = "qb-albums ext-search-wrap";
-      for (const a of albums) al.appendChild(window.__buildQobuzRow(a));
-      body.appendChild(al);
-    }
-  }
-
-  window.__openQobuzBrowse = function () {
-    stack = [{ item_id: null, title: "Browse Qobuz" }];
-    overlay.classList.remove("hidden");
-    document.body.style.overflow = "hidden";
-    load();
-  };
-})();
-
 (function initPitchfork() {
   const overlay  = document.getElementById("pitchfork-overlay");
   const trigger  = document.getElementById("pitchfork-toggle");

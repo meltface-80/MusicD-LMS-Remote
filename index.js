@@ -2139,6 +2139,7 @@ async function searchQobuz(q, playerId, limit) {
     image_key: qobuzImageKey(r.image),
     can_queue: !!r.add,
     can_favorite: r.favItemId != null,
+    fav_key:   r.favItemId || null,
   }));
 }
 
@@ -2184,7 +2185,18 @@ app.get("/api/qobuz/debug", async (req, res) => {
       });
       const catGo = albCat && albCat.actions && albCat.actions.go;
       const catId = catGo && catGo.params && catGo.params.item_id;
-      if (catId != null) await call("albumRows", ["qobuz", "items", 0, 10, "item_id:" + catId, "menu:1"]);
+      if (catId != null) {
+        await call("albumRows", ["qobuz", "items", 0, 10, "item_id:" + catId, "menu:1"]);
+        // Descend into the FIRST album to reveal its track-menu shape.
+        const arows = (out.albumRows && out.albumRows.item_loop) || [];
+        const a0 = arows.find(it => it.type === "playlist");
+        const aGo = a0 && ((a0.actions && a0.actions.go) || (out.albumRows.base && out.albumRows.base.actions && out.albumRows.base.actions.go));
+        const aId = a0 && a0.params && a0.params.item_id;
+        if (aId != null) {
+          await call("albumTracks", ["qobuz", "items", 0, 20, "item_id:" + aId, "menu:1"]);
+          try { out.parsedAlbumTracks = await state.lms.qobuzAlbumTracks(player, aId); } catch (e) { out.parsedAlbumTracks = { error: e.message }; }
+        }
+      }
     }
   }
   try { out.parsedSearch = await state.lms.qobuzSearchAlbums(player, q, 6); } catch (e) { out.parsedSearch = { error: e.message }; }
@@ -2286,9 +2298,27 @@ app.get("/api/qobuz/browse", async (req, res) => {
     const items = r.items.map(it => it.kind === "album"
       ? { kind: "album", token: qobuzActionPut(it.play, it.add, it.favItemId), title: it.title,
           subtitle: it.artist, source: "qobuz", image_key: qobuzImageKey(it.image),
-          can_queue: !!it.add, can_favorite: it.favItemId != null }
+          can_queue: !!it.add, can_favorite: it.favItemId != null, fav_key: it.favItemId || null }
       : { kind: "node", item_id: it.item_id, title: it.title });
     res.json({ title: r.title, total: r.total, start, items });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Track listing + favourite state for one Qobuz album (token from a browse /
+// search result). Per-track rows get their own play token for tap-to-play.
+app.get("/api/qobuz/album", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const player = state.players[0] && state.players[0].id;
+  const token = String(req.query.token || "");
+  const entry = qobuzActionStore.get(token);
+  if (!player) return res.status(503).json({ error: "No player available" });
+  if (!entry || (Date.now() - entry.at) > QOBUZ_ACTION_TTL) return res.status(410).json({ error: "expired — reopen" });
+  if (entry.favItemId == null) return res.status(400).json({ error: "album detail unavailable" });
+  try {
+    const r = await state.lms.qobuzAlbumTracks(player, entry.favItemId);
+    const tracks = r.tracks.map(t => ({ title: t.title, artist: t.artist, duration: t.duration,
+      token: qobuzActionPut(t.play, t.add, null), can_queue: !!t.add }));
+    res.json({ favorite: r.favorite, can_favorite: true, tracks });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
