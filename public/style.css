@@ -2571,6 +2571,12 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .qb-track-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qb-track-artist { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .qb-notice { list-style: none; padding: 14px 8px; color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+/* Qobuz re-auth / error notice shown in the album modal (in place of tracks). */
+.qb-modal-notice {
+  margin-top: 6px; padding: 16px 16px; border-radius: 12px;
+  background: var(--bg-elev-2, rgba(128,128,128,.12));
+  color: var(--text-dim); font-size: 14px; line-height: 1.55;
+}
 /* Qobuz albums reuse the shared album modal — hide the library-only Edit button
    and bio, and give the favourite pill its heart state. */
 .modal.qobuz-mode .modal-edit,

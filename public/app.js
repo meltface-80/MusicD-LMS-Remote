@@ -1219,6 +1219,8 @@ function esc(s) {
     tabsEl.classList.toggle("hidden", !isNP);
     modal.classList.toggle("np-mode", isNP);
     modal.classList.toggle("qobuz-mode", isQobuz);   // hides Edit / bio (library-only)
+    const oldNotice = document.querySelector(".qb-modal-notice");   // clear any prior Qobuz notice
+    if (oldNotice) oldNotice.remove();
     showTab("album");
 
     modalTitle.textContent = album.title || "Untitled";
@@ -1315,10 +1317,10 @@ function esc(s) {
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     if (favBtn && j.favorite != null) { favBtn.classList.toggle("is-fav", !!j.favorite); favBtn.textContent = j.favorite ? "♥ Favourited" : "♡ Favourite"; }
     const tracks = j.tracks || [];
-    if (j.notice) {   // re-auth / error prompt from the plugin — explain, don't show a blank list
-      trackWrap.classList.remove("hidden");
-      const d = document.createElement("li"); d.className = "qb-notice"; d.textContent = j.notice;
-      modalTracks.appendChild(d);
+    if (j.notice) {   // re-auth / error prompt from the plugin — clean message, not a "track"
+      trackWrap.classList.add("hidden");
+      const d = document.createElement("div"); d.className = "qb-modal-notice"; d.textContent = j.notice;
+      document.getElementById("tab-album").appendChild(d);
       return;
     }
     if (!tracks.length) { trackWrap.classList.add("hidden"); return; }
