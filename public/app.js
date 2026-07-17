@@ -2358,42 +2358,66 @@ function esc(s) {
         else loadList(f);
       }
 
-      async function loadList(f) {
-        msg("qb-loading", "Loading…");
-        const mySeq = ++seq;
+      // A big favourites / bestsellers list paginates — load page 0, then fetch
+      // more as the bottom sentinel scrolls into view (IntersectionObserver is
+      // robust to whichever element actually scrolls).
+      let list = null;   // { itemId, loaded, total, busy, mySeq, nodesEl, gridEl, io }
+      const browseUrl = (itemId, start) => "/api/qobuz/browse?start=" + start +
+        (itemId != null ? "&item_id=" + encodeURIComponent(itemId) : "");
+
+      function nodeRow(n) {
+        const b = document.createElement("button"); b.type = "button"; b.className = "qb-node";
+        const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = n.title || "…";
+        const chev = document.createElement("span"); chev.className = "qb-chevron"; chev.innerHTML = CHEVRON;
+        b.appendChild(t); b.appendChild(chev);
+        b.addEventListener("click", () => { stack.push({ kind: "list", item_id: n.item_id, title: n.title }); renderFrame(); });
+        return b;
+      }
+      function appendItems(items) {
+        if (!list) return;
+        for (const it of items) {
+          if (it.kind === "node") list.nodesEl.appendChild(nodeRow(it));
+          else list.gridEl.appendChild(albumTile(it));
+        }
+        list.loaded += items.length;
+      }
+      async function loadMore() {
+        const s = list;
+        if (!s || s.busy || s.loaded >= s.total) return;
+        s.busy = true;
         try {
-          const url = "/api/qobuz/browse" + (f.item_id != null ? "?item_id=" + encodeURIComponent(f.item_id) : "");
-          const r = await fetch(url, { cache: "no-store" });
+          const r = await fetch(browseUrl(s.itemId, s.loaded), { cache: "no-store" });
           const j = await r.json();
-          if (mySeq !== seq) return;
-          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-          if (j.notice && !(j.items || []).length) { msg("qb-empty", j.notice); return; }
-          renderList(j.items || []);
-        } catch (e) { if (mySeq === seq) msg("qb-empty", "Couldn't load: " + e.message); }
+          if (list !== s || s.mySeq !== seq) return;   // navigated away mid-fetch
+          if (r.ok) { s.total = j.total || s.total; appendItems(j.items || []); }
+        } catch (e) { /* keep what we have */ }
+        finally { if (list === s) s.busy = false; }
       }
 
-      function renderList(items) {
-        body.innerHTML = "";
+      async function loadList(f) {
+        if (list && list.io) { list.io.disconnect(); }
+        list = null;
+        msg("qb-loading", "Loading…");
+        const mySeq = ++seq;
+        let j;
+        try {
+          const r = await fetch(browseUrl(f.item_id, 0), { cache: "no-store" });
+          j = await r.json();
+          if (mySeq !== seq) return;
+          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+        } catch (e) { if (mySeq === seq) msg("qb-empty", "Couldn't load: " + e.message); return; }
+        const items = j.items || [];
+        if (j.notice && !items.length) { msg("qb-empty", j.notice); return; }
         if (!items.length) { msg("qb-empty", "Nothing here."); return; }
-        const nodes  = items.filter(it => it.kind === "node");
-        const albums = items.filter(it => it.kind === "album");
-        if (nodes.length) {
-          const nl = document.createElement("div"); nl.className = "qb-nodes";
-          for (const n of nodes) {
-            const b = document.createElement("button"); b.type = "button"; b.className = "qb-node";
-            const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = n.title || "…";
-            const chev = document.createElement("span"); chev.className = "qb-chevron"; chev.innerHTML = CHEVRON;
-            b.appendChild(t); b.appendChild(chev);
-            b.addEventListener("click", () => { stack.push({ kind: "list", item_id: n.item_id, title: n.title }); renderFrame(); });
-            nl.appendChild(b);
-          }
-          body.appendChild(nl);
-        }
-        if (albums.length) {
-          const grid = document.createElement("div"); grid.className = "qb-grid";
-          for (const a of albums) grid.appendChild(albumTile(a));
-          body.appendChild(grid);
-        }
+        body.innerHTML = "";
+        const nodesEl = document.createElement("div"); nodesEl.className = "qb-nodes";
+        const gridEl  = document.createElement("div"); gridEl.className = "qb-grid";
+        const sentinel = document.createElement("div"); sentinel.className = "qb-sentinel";
+        body.appendChild(nodesEl); body.appendChild(gridEl); body.appendChild(sentinel);
+        const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) loadMore(); });
+        io.observe(sentinel);
+        list = { itemId: f.item_id, loaded: 0, total: j.total || items.length, busy: false, mySeq, nodesEl, gridEl, io };
+        appendItems(items);
       }
 
       function albumTile(a) {
