@@ -2106,14 +2106,21 @@ function qobuzActionPut(play, add, favItemId) {
 // The user's Qobuz favourite album ids, cached briefly (used to fill hearts on
 // library + search tiles). Also keeps each favourite's descend action so a
 // library album can be UN-favourited by id without re-walking the whole menu.
-let qobuzFavCache = { at: 0, ids: new Set(), byId: new Map() };
+let qobuzFavCache = { at: 0, keys: new Set(), byKey: new Map() };
 const QOBUZ_FAV_TTL = 60 * 1000;
+// Favourite album rows have no id, so match library albums by title+artist.
+function qobuzFavKey(title, artist) {
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s*\(\d{4}\)\s*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
+  return norm(title) + "|" + norm(artist);
+}
 async function qobuzFavorites(force) {
   const player = state.players[0] && state.players[0].id;
   if (!state.connected || !player || !state.lms.qobuzFavoriteAlbums) return qobuzFavCache;
   if (!force && (Date.now() - qobuzFavCache.at) < QOBUZ_FAV_TTL) return qobuzFavCache;
   const list = await state.lms.qobuzFavoriteAlbums(player).catch((e) => { log.debug("qobuz favourites failed:", e.message); return null; });
-  if (list) qobuzFavCache = { at: Date.now(), ids: new Set(list.map(a => a.id)), byId: new Map(list.map(a => [a.id, a])) };
+  if (list) qobuzFavCache = { at: Date.now(),
+    keys: new Set(list.map(a => qobuzFavKey(a.title, a.artist))),
+    byKey: new Map(list.map(a => [qobuzFavKey(a.title, a.artist), a])) };
   return qobuzFavCache;
 }
 // Absolute remote cover → the existing "url-…" image_key form so /api/image
@@ -2241,7 +2248,7 @@ app.post("/api/qobuz/play", async (req, res) => {
 // or search tile whose qobuz_id is in this set.
 app.get("/api/qobuz/favorites", async (req, res) => {
   const fav = await qobuzFavorites(req.query.refresh === "1");
-  res.json({ ids: [...fav.ids] });
+  res.json({ keys: [...fav.keys] });
 });
 
 // Favourite / un-favourite a Qobuz SEARCH RESULT (heart on an album you don't
@@ -2270,13 +2277,17 @@ app.post("/api/qobuz/favorite", async (req, res) => {
 // album). Uses the descend action captured in the favourites listing.
 app.post("/api/qobuz/favorite-id", async (req, res) => {
   if (!state.connected) return notConnected(res);
-  const { qobuz_id, favorite } = req.body || {};
+  const { title, artist, favorite } = req.body || {};
   const player = state.players[0] && state.players[0].id;
-  if (!qobuz_id) return res.status(400).json({ error: "qobuz_id required" });
-  if (!player)   return res.status(503).json({ error: "No player available" });
+  if (!title)  return res.status(400).json({ error: "title required" });
+  if (!player) return res.status(503).json({ error: "No player available" });
   const fav = await qobuzFavorites(false);
-  const entry = fav.byId.get(String(qobuz_id));
-  if (!entry || entry.itemId == null) return res.status(404).json({ error: "album menu not found — refresh favourites" });
+  const entry = fav.byKey.get(qobuzFavKey(title, artist));
+  if (!entry || entry.itemId == null) {
+    // Not currently in the favourites list — nothing to remove (re-favouriting a
+    // library album isn't possible without its catalogue node; search to re-add).
+    return res.status(404).json({ error: "not found in your Qobuz favourites" });
+  }
   try {
     const nowFav = await state.lms.qobuzAlbumFavoriteToggle(player, entry.itemId, !!favorite);
     qobuzFavCache.at = 0;
