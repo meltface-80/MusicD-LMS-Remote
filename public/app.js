@@ -824,14 +824,14 @@ function esc(s) {
       artWrap.appendChild(badge);
     }
 
-    // Favourite heart for a Qobuz album that IS in the library (imported from a
-    // Qobuz favourite). Filled once the favourites set loads; tap un-favourites.
+    // Favourite heart for a Qobuz album that IS in the library. It was imported
+    // BECAUSE it's a Qobuz favourite, so the heart starts filled; a tap removes
+    // the favourite (matched by title+artist — favourite rows carry no id).
     if (a.source === "qobuz" && a.qobuz_id) {
       const heart = document.createElement("button");
       heart.type = "button"; heart.className = "album-fav-heart";
-      setHeart(heart, false);
-      ensureQobuzFavs().then(set => setHeart(heart, set.has(a.qobuz_id)));
-      heart.addEventListener("click", (e) => { e.stopPropagation(); qobuzFavPost("/api/qobuz/favorite-id", { qobuz_id: a.qobuz_id }, heart); });
+      setHeart(heart, true);
+      heart.addEventListener("click", (e) => { e.stopPropagation(); qobuzFavPost("/api/qobuz/favorite-id", { title: a.title, artist: a.subtitle }, heart); });
       artWrap.appendChild(heart);
     }
 
