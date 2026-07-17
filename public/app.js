@@ -1199,8 +1199,14 @@ function esc(s) {
     // genre filter is still active.
     currentDetailFilter = ("filter" in opts) ? opts.filter : activeFilter;
 
-    // Persist so the modal survives a Safari reload after tapping an external link
-    try {
+    // Qobuz catalogue album (not in the library): reuses this modal's chrome
+    // (cover, ambient, TRACKS, action pills) but loads tracks/actions from the
+    // Qobuz plugin via its opaque token instead of a library offset.
+    const isQobuz = !!(album && album.source === "qobuz" && album.token);
+
+    // Persist so the modal survives a Safari reload after tapping an external
+    // link — skip Qobuz albums (their token is short-lived / server-side).
+    if (!isQobuz) try {
       sessionStorage.setItem("rra-modal",
         JSON.stringify({ album, source: currentSource, zoneId: currentSourceZoneId,
                          filter: currentDetailFilter }));
@@ -1212,6 +1218,7 @@ function esc(s) {
     const tabsEl = document.getElementById("modal-tabs");
     tabsEl.classList.toggle("hidden", !isNP);
     modal.classList.toggle("np-mode", isNP);
+    modal.classList.toggle("qobuz-mode", isQobuz);   // hides Edit / bio (library-only)
     showTab("album");
 
     modalTitle.textContent = album.title || "Untitled";
@@ -1240,12 +1247,85 @@ function esc(s) {
       // The now-playing screen is driven live by the transport poll loop;
       // refresh it immediately from the latest zone state.
       if (typeof window.__refreshTransport === "function") window.__refreshTransport();
+    } else if (isQobuz) {
+      fetchQobuzAlbumDetail(album).catch(err => {
+        modalActs.innerHTML = `<div class="modal-error">${esc(err.message)}</div>`;
+      });
     } else {
       fetchAlbumDetail(album).catch(err => {
         modalActs.innerHTML = `<div class="modal-error">${esc(err.message)}</div>`;
       });
       fetchAlbumExtras(album).catch(() => { /* extras are non-critical — modal still opens */ });
     }
+  }
+  window.__openAlbum = openAlbum;
+
+  // Populate the shared album modal for a Qobuz catalogue album. Uses the same
+  // .action-btn pills and .t-row track rows as the library detail, so it inherits
+  // the full modal styling (centred cover, ambient wash, TRACKS section).
+  async function qobuzModalPlay(token, kind, btn) {
+    if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
+    const prev = btn.style.opacity; btn.style.opacity = ".6"; btn.disabled = true;
+    try {
+      const r = await fetch("/api/qobuz/play", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, zone_or_output_id: selectedZoneId, kind }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      showToast(`${kind === "queue" ? "Queued" : "Playing"} → ${zoneName(selectedZoneId)}`);
+    } catch (e) { showToast(e.message, "error"); }
+    finally { btn.style.opacity = prev; btn.disabled = false; }
+  }
+
+  async function fetchQobuzAlbumDetail(album) {
+    modalActs.innerHTML = "";
+    const play = document.createElement("button"); play.className = "action-btn primary"; play.type = "button"; play.textContent = "Play Now";
+    play.addEventListener("click", () => qobuzModalPlay(album.token, "play_now", play));
+    modalActs.appendChild(play);
+    if (album.can_queue !== false) {
+      const q = document.createElement("button"); q.className = "action-btn"; q.type = "button"; q.textContent = "Queue";
+      q.addEventListener("click", () => qobuzModalPlay(album.token, "queue", q));
+      modalActs.appendChild(q);
+    }
+    let favBtn = null;
+    if (album.can_favorite) {
+      favBtn = document.createElement("button"); favBtn.className = "action-btn qobuz-fav"; favBtn.type = "button";
+      const paint = (on) => { favBtn.classList.toggle("is-fav", !!on); favBtn.textContent = on ? "♥ Favourited" : "♡ Favourite"; };
+      paint(false);
+      favBtn.addEventListener("click", async () => {
+        const want = !favBtn.classList.contains("is-fav");
+        favBtn.disabled = true;
+        try {
+          const r = await fetch("/api/qobuz/favorite", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: album.token, favorite: want }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+          paint(j.favorite); showToast(j.favorite ? "Added to Qobuz favourites" : "Removed from Qobuz favourites");
+        } catch (e) { showToast(e.message, "error"); }
+        finally { favBtn.disabled = false; }
+      });
+      modalActs.appendChild(favBtn);
+    }
+
+    const trackWrap = document.querySelector(".track-list-wrap");
+    modalTracks.innerHTML = "";
+    trackWrap.classList.remove("hidden");
+    const r = await fetch("/api/qobuz/album?token=" + encodeURIComponent(album.token), { cache: "no-store" });
+    const j = await r.json();
+    if (album !== currentAlbum) return;                 // navigated away while loading
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    if (favBtn && j.favorite != null) { favBtn.classList.toggle("is-fav", !!j.favorite); favBtn.textContent = j.favorite ? "♥ Favourited" : "♡ Favourite"; }
+    const tracks = j.tracks || [];
+    if (!tracks.length) { trackWrap.classList.add("hidden"); return; }
+    tracks.forEach((t) => {
+      const li = document.createElement("li"); li.className = "t-row";
+      const tx = document.createElement("div"); tx.className = "t-text";
+      const ti = document.createElement("span"); ti.className = "t-title"; ti.textContent = t.title || "";
+      tx.appendChild(ti);
+      if (t.artist) { const su = document.createElement("span"); su.className = "t-sub"; su.textContent = t.artist; tx.appendChild(su); }
+      li.appendChild(tx);
+      li.addEventListener("click", () => qobuzModalPlay(t.token, "play_now", li));
+      modalTracks.appendChild(li);
+    });
   }
 
   function showTab(name) {
@@ -2327,7 +2407,9 @@ function esc(s) {
         meta.querySelector(".album-title").textContent  = a.title || "Untitled";
         meta.querySelector(".album-artist").textContent = a.subtitle || "";
         btn.appendChild(artWrap); btn.appendChild(meta);
-        btn.addEventListener("click", () => { stack.push({ kind: "album", album: a, title: a.title }); renderFrame(); });
+        // Open the SHARED album modal (same look as the main library) rather than
+        // a bespoke detail — it inherits the cover / ambient / TRACKS styling.
+        btn.addEventListener("click", () => { if (window.__openAlbum) window.__openAlbum(a, { source: "qobuz" }); });
         return btn;
       }
 
