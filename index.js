@@ -2311,7 +2311,7 @@ app.get("/api/qobuz/browse", async (req, res) => {
           subtitle: it.artist, source: "qobuz", image_key: qobuzImageKey(it.image),
           can_queue: !!it.add, can_favorite: it.favItemId != null, fav_key: it.favItemId || null }
       : { kind: "node", item_id: it.item_id, title: it.title });
-    res.json({ title: r.title, total: r.total, start, items });
+    res.json({ title: r.title, total: r.total, start, items, notice: r.notice || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2329,7 +2329,7 @@ app.get("/api/qobuz/album", async (req, res) => {
     const r = await state.lms.qobuzAlbumTracks(player, entry.favItemId);
     const tracks = r.tracks.map(t => ({ title: t.title, artist: t.artist, duration: t.duration,
       token: qobuzActionPut(t.play, t.add, null), can_queue: !!t.add }));
-    res.json({ favorite: r.favorite, can_favorite: true, tracks });
+    res.json({ favorite: r.favorite, can_favorite: true, tracks, notice: r.notice || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
