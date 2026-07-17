@@ -2548,6 +2548,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 640px) { .qb-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; } }
 .qb-tile { background: none; border: none; padding: 0; cursor: pointer; text-align: left; font-family: inherit; color: inherit; }
+.qb-sentinel { height: 1px; }
 /* Album detail (cover + tracks) */
 .qb-album-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 18px; }
 .qb-album-cover { flex-shrink: 0; width: 40%; max-width: 220px; }
