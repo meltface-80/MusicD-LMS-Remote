@@ -15,11 +15,6 @@
    background (they differ on light palettes, where accent fills need white). */
 :root,
 [data-theme="dark"][data-palette="classic"] {
-  /* Album-modal panel tints (Tracks / About / Queue). Home used to share
-     these; it is flat now, so they belong to the modal alone. */
-  --panel-tracks-bg: #24322e;
-  --panel-about-bg:  #2f2a38;
-  --panel-queue-bg:  #2b3037;
   --font-sans: "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system,
                "Segoe UI", Roboto, sans-serif;
 
@@ -36,17 +31,12 @@
   --on-accent:    #0b1418;
   --bg-translucent: rgba(14,16,18,.85);
   --danger:       #e06464;
-  --panel-hairline: rgba(255,255,255,.07);  /* row separators on tinted panels */
+  --panel-hairline: rgba(255,255,255,.07);  /* separators on RAISED surfaces (sheets) */
   --shadow-card:  0 2px 6px rgba(0,0,0,.45), 0 10px 24px rgba(0,0,0,.35);
   --shadow-modal: 0 24px 64px rgba(0,0,0,.6);
 }
 
 [data-theme="light"] {
-  /* Album-modal panel tints (Tracks / About / Queue). Home used to share
-     these; it is flat now, so they belong to the modal alone. */
-  --panel-tracks-bg: #d6f0e4;
-  --panel-about-bg:  #ece0f7;
-  --panel-queue-bg:  #d9e8fb;
   --bg:           #f6f5f2;
   --bg-elev:      #ffffff;
   --bg-elev-2:    #fbfaf7;
@@ -59,18 +49,13 @@
   --accent-soft:  rgba(31,143,193,.12);
   --on-accent:    #ffffff;
   --bg-translucent: rgba(246,245,242,.85);
-  --panel-hairline: rgba(26,39,64,.12);     /* row separators on tinted panels */
+  --panel-hairline: rgba(26,39,64,.12);     /* separators on RAISED surfaces (sheets) */
   --danger:       #c0392b;
   --shadow-card:  0 1px 2px rgba(0,0,0,.06), 0 6px 16px rgba(0,0,0,.08);
   --shadow-modal: 0 24px 64px rgba(0,0,0,.18);
 }
 
 [data-theme="dark"][data-palette="copper"] {
-  /* Album-modal panel tints (Tracks / About / Queue). Home used to share
-     these; it is flat now, so they belong to the modal alone. */
-  --panel-tracks-bg: #2c3029;
-  --panel-about-bg:  #342a2c;
-  --panel-queue-bg:  #332c26;
   --bg:           #12100e;
   --bg-elev:      #1b1815;
   --bg-elev-2:    #23201c;
@@ -90,11 +75,6 @@
 }
 
 [data-theme="light"][data-palette="copper"] {
-  /* Album-modal panel tints (Tracks / About / Queue). Home used to share
-     these; it is flat now, so they belong to the modal alone. */
-  --panel-tracks-bg: #e2e8d8;
-  --panel-about-bg:  #efe0dc;
-  --panel-queue-bg:  #efe4d3;
   --bg:           #f7f3ec;
   --bg-elev:      #fffdf9;
   --bg-elev-2:    #fbf6ee;
@@ -3012,20 +2992,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .home-section-link:hover::after { transform: translateX(3px); }
 .home-section-link:focus-visible { outline: 2px solid var(--accent, #4a90d9); outline-offset: 3px; border-radius: 4px; }
 
-/* HOME IS FLAT (v1.0.39): the Home sections used to sit in softly-tinted,
-   watermarked panels. The MusicD Remote (Roon) extension presents them as
-   plain rows separated only by a hairline under each section title, and this
-   app now matches it — no panel fill, no radius, no motif, so the artwork
-   carries the page. The album modal's Tracks (.track-list-wrap), About
-   (#album-bio-section) and Queue (#tab-queue) panels KEEP the tinted-panel
-   recipe below: they're a different screen, and flattening them was not part
-   of this change. */
-.track-list-wrap,
-#album-bio-section,
-#tab-queue {
-  border-radius: 16px;
-  padding: 14px 14px 12px;
-}
+/* THE WHOLE UI IS FLAT (v1.0.39 Home, v1.0.42 everywhere else). Sections and
+   panels used to sit in softly-tinted, watermarked blocks. The MusicD Remote
+   (Roon) extension has no panel fills anywhere — content is separated by
+   hairlines and whitespace alone, so the artwork carries the page — and this
+   app now matches it throughout: Home rows, the album modal's Tracks and
+   About panels, and the Queue. No fill, no radius, no motif. Rows keep their
+   `border-bottom: 1px solid var(--border)` separators; that IS the structure
+   now, so don't reintroduce a background to "group" anything. */
 /* The two below-the-fold sections skip rendering until scrolled near — on a
    phone the first paint only lays out the unplayed + random rows. The
    intrinsic size reserves roughly one carousel row so the scrollbar doesn't
@@ -3036,54 +3010,6 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   contain-intrinsic-size: auto 320px;
 }
 
-/* Faint themed watermark for a section's panel — a large, rotated, SOLID-fill
-   line-art motif CROPPED by the panel's top-left corner (overflow:hidden) so it
-   reads as a bold cut-off detail contained entirely WITHIN the coloured section
-   (never spilling onto the page). Each section carries a motif matching its theme:
-   "Not played in 6 months" -> a clock (time gone by); "Random albums" -> a vinyl
-   record; "Label of the week" -> a price/luggage tag; "Browse by genre" -> a
-   beamed music note. Solid silhouettes (not thin outlines) so they stand out.
-   The art sits behind the title + carousel (z-index:0 vs 1), never intercepts
-   taps (pointer-events:none), and — thanks to overflow:hidden — can never
-   produce a scrollbar. Shared placement lives in the grouped rules; only the
-   mask-image differs per section, and background-color differs per theme —
-   each motif ships ONE opaque-white SVG used as a mask (not a background
-   image), so the theme swap is a color change rather than a second SVG. */
-.track-list-wrap,
-#album-bio-section,
-#tab-queue { position: relative; overflow: hidden; }
-.track-list-wrap > *,
-#album-bio-section > *,
-#tab-queue > * { position: relative; z-index: 1; }
-.track-list-wrap::before,
-#album-bio-section::before,
-#tab-queue::before {
-  content: "";
-  position: absolute;
-  top: -92px;
-  left: -84px;
-  width: 400px;
-  height: 400px;
-  transform: rotate(-14deg);
-  -webkit-mask-position: center; mask-position: center;
-  -webkit-mask-size: contain;    mask-size: contain;
-  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
-  background-color: #ffffff;
-  opacity: .11;
-  pointer-events: none;
-  z-index: 0;
-}
-[data-theme="light"] .track-list-wrap::before,
-[data-theme="light"] #album-bio-section::before,
-[data-theme="light"] #tab-queue::before {
-  opacity: .14;
-  background-color: #1a2740;
-}
-/* Album modal Tracks panel — vinyl record. */
-.track-list-wrap::before {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M100%2028%20a72%2072%200%201%200%200%20144%20a72%2072%200%201%200%200%20-144%20Z%20M100%2075%20a25%2025%200%201%200%200%2050%20a25%2025%200%201%200%200%20-50%20Z'%2F%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M100%2081%20a19%2019%200%201%200%200%2038%20a19%2019%200%201%200%200%20-38%20Z%20M100%2095.5%20a4.5%204.5%200%201%200%200%209%20a4.5%204.5%200%201%200%200%20-9%20Z'%2F%3E%3C%2Fsvg%3E");
-          mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M100%2028%20a72%2072%200%201%200%200%20144%20a72%2072%200%201%200%200%20-144%20Z%20M100%2075%20a25%2025%200%201%200%200%2050%20a25%2025%200%201%200%200%20-50%20Z'%2F%3E%3Cpath%20fill-rule%3D'evenodd'%20d%3D'M100%2081%20a19%2019%200%201%200%200%2038%20a19%2019%200%201%200%200%20-38%20Z%20M100%2095.5%20a4.5%204.5%200%201%200%200%209%20a4.5%204.5%200%201%200%200%20-9%20Z'%2F%3E%3C%2Fsvg%3E");
-}
 .home-carousel {
   display: grid;
   grid-auto-flow: column;
@@ -3225,46 +3151,15 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .modal.np-mode .modal-ambient { display: none; }
 .modal.np-mode.tab-queue .modal-ambient { display: block; }
 
-/* 2 — Home-style tinted panels. The panel shell, watermark placement, theme
-   flip, and the Tracks panel's vinyl motif are all SHARED with the Home
-   section rules (grouped selectors around line 2460) — only the deltas live
-   here. Tracks reuses the Random-albums teal (vinyl motif matches it);
-   About this album reuses the Label-of-the-week violet; the Queue tab
-   reuses the Not-played blue-grey. */
-.track-list-wrap    { background: var(--panel-tracks-bg); }
-#album-bio-section  { background: var(--panel-about-bg); }
-#tab-queue          { background: var(--panel-queue-bg); }
+/* 2 — (was: tinted panels + watermarks; removed in v1.0.42, see above) */
 
-/* Watermarks sit under dense text here (unlike Home's tile rows), so run
-   them fainter than Home's .11 dark / .14 light. Same specificity as the
-   shared rules, later in the file — these win by source order. */
-.track-list-wrap::before,
-#album-bio-section::before,
-#tab-queue::before { opacity: .07; }
-[data-theme="light"] .track-list-wrap::before,
-[data-theme="light"] #album-bio-section::before,
-[data-theme="light"] #tab-queue::before { opacity: .08; }
 
-/* About this album — oversized quotation marks (editorial voice). */
-#album-bio-section::before {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Cpath%20d%3D'M62%2058%20C44%2058%2030%2072%2030%2092%20C30%20112%2044%20124%2060%20124%20C61%20124%2062%20124%2063%20124%20C58%20138%2046%20146%2034%20148%20L34%20162%20C64%20158%2088%20136%2088%2098%20C88%2074%2077%2058%2062%2058%20Z%20M142%2058%20C124%2058%20110%2072%20110%2092%20C110%20112%20124%20124%20140%20124%20C141%20124%20142%20124%20143%20124%20C138%20138%20126%20146%20114%20148%20L114%20162%20C144%20158%20168%20136%20168%2098%20C168%2074%20157%2058%20142%2058%20Z'%2F%3E%3C%2Fsvg%3E");
-          mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Cpath%20d%3D'M62%2058%20C44%2058%2030%2072%2030%2092%20C30%20112%2044%20124%2060%20124%20C61%20124%2062%20124%2063%20124%20C58%20138%2046%20146%2034%20148%20L34%20162%20C64%20158%2088%20136%2088%2098%20C88%2074%2077%2058%2062%2058%20Z%20M142%2058%20C124%2058%20110%2072%20110%2092%20C110%20112%20124%20124%20140%20124%20C141%20124%20142%20124%20143%20124%20C138%20138%20126%20146%20114%20148%20L114%20162%20C144%20158%20168%20136%20168%2098%20C168%2074%20157%2058%20142%2058%20Z'%2F%3E%3C%2Fsvg%3E");
-}
-
-/* 3 — Track rows: translucent hairlines instead of the solid --border,
-   which fights the tinted background; the framing border-top goes — the
-   panel itself now frames the list. Last row keeps the panel's bottom
-   padding clean. */
-.track-list-wrap .track-list { border-top: 0; }
-.track-list-wrap .track-list li { border-bottom: 1px solid var(--panel-hairline); }
+/* 3 — Track rows. With the panel gone (v1.0.42) the hairlines ARE the
+   structure, so they use the full --border rather than the translucent
+   on-tint variant, and the list keeps its framing top rule. */
+.track-list-wrap .track-list li { border-bottom: 1px solid var(--border); }
 .track-list-wrap .track-list li:last-child { border-bottom: 0; }
 
-/* 4 — Queue tab (np-mode): same panel language as the Tracks/About panels.
-   Motif: a play queue — stacked list bars with a play triangle. */
-#tab-queue::before {
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Crect%20x%3D'28'%20y%3D'46'%20width%3D'144'%20height%3D'16'%20rx%3D'8'%2F%3E%3Crect%20x%3D'28'%20y%3D'90'%20width%3D'144'%20height%3D'16'%20rx%3D'8'%2F%3E%3Crect%20x%3D'28'%20y%3D'134'%20width%3D'76'%20height%3D'16'%20rx%3D'8'%2F%3E%3Cpath%20d%3D'M128%20118%20L174%20143%20L128%20168%20Z'%2F%3E%3C%2Fsvg%3E");
-          mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20200%20200'%20fill%3D'%23ffffff'%3E%3Crect%20x%3D'28'%20y%3D'46'%20width%3D'144'%20height%3D'16'%20rx%3D'8'%2F%3E%3Crect%20x%3D'28'%20y%3D'90'%20width%3D'144'%20height%3D'16'%20rx%3D'8'%2F%3E%3Crect%20x%3D'28'%20y%3D'134'%20width%3D'76'%20height%3D'16'%20rx%3D'8'%2F%3E%3Cpath%20d%3D'M128%20118%20L174%20143%20L128%20168%20Z'%2F%3E%3C%2Fsvg%3E");
-}
 /* 5 — Selectable tracks (v1.6.10): each row in the Tracks panel expands on
    tap to reveal Play now / Queue for that single track. Hover/selection
    washes are translucent to sit on the tinted panel. The buttons ARE
@@ -3300,7 +3195,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    border is restated below it. (The q-divider row needs no restatement:
    its border-bottom-STYLE stays `none` from the base rule — a color on a
    none-style border paints nothing.) */
-#tab-queue .queue-list li { border-bottom-color: var(--panel-hairline); }
+#tab-queue .queue-list li { border-bottom-color: var(--border); }
 #tab-queue .queue-list li.is-now { border-bottom-color: transparent; }
 #tab-queue .q-divider-line { background: rgba(255,255,255,.10); }
 #tab-queue .queue-list li.is-tappable:hover { background: rgba(255,255,255,.05); }
@@ -3309,7 +3204,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    flash `.queue-list li.is-tappable:active` (0,3,1). --accent-soft is
    themed, so one rule covers both themes. */
 #tab-queue .queue-list li.is-tappable:active { background: var(--accent-soft); }
-[data-theme="light"] #tab-queue .q-divider-line { background: rgba(26,39,64,.15); }
+[data-theme="light"] #tab-queue .q-divider-line { background: var(--border); }
 [data-theme="light"] #tab-queue .queue-list li.is-tappable:hover { background: rgba(26,39,64,.06); }
 [data-theme="light"] #tab-queue .queue-list li.is-tappable:active { background: var(--accent-soft); }
 
