@@ -29,6 +29,7 @@ const { createLms, discover } = require("./lib/lms");
 const { assertPublicUrl } = require("./lib/urlguard");
 const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
+const makeLivePlaylists = require("./lib/liveplaylists");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -2243,6 +2244,106 @@ app.get("/api/library/facets", async (req, res) => {
       // Listening facet entirely rather than offering filters that match all.
       hasPlays: playsLog.getPlayedTitlesSince(0).size > 0,
     });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------------------------------------------------------------------------
+// Live Playlists — saved Library views, re-evaluated on every open.
+//
+// A Live Playlist stores ONLY the sort+focus query, never a track list, so it
+// keeps itself current: albums join and leave as the library grows and as play
+// history ages. Expanding one is literally libraryView() with the saved
+// parameters, which means it inherits the same ordering rules, the same
+// facet semantics and the same memoisation as the Library wall — there is no
+// second query engine to keep in step.
+// ---------------------------------------------------------------------------
+const livePlaylists = makeLivePlaylists({
+  dataDir: DATA_DIR,
+  // The vocabulary comes from the Library itself so a saved rule can never
+  // reference a sort or filter the Library doesn't implement.
+  sorts:   [...LIB_SORTS],
+  playeds: ["any", "never", "6", "12"],
+});
+
+// Up to four covers for a playlist's mosaic tile, plus how many albums it
+// currently resolves to. Both are computed live — that IS the feature.
+function livePlaylistSummary(rec) {
+  let albums = [];
+  // A rule that somehow can't be evaluated must not take the whole list down
+  // — the row just loses its count and mosaic.
+  try { albums = libraryView(rec.view); } catch (e) { albums = []; }
+  // Up to four DISTINCT covers, walked in the playlist's own order so the
+  // mosaic shows what Play Now would actually start with. Distinct because a
+  // rule that resolves to one artist would otherwise show one sleeve x4.
+  const art = [];
+  for (const a of albums) {
+    if (a.image_key && !art.includes(a.image_key)) art.push(a.image_key);
+    if (art.length === 4) break;
+  }
+  return { id: rec.id, name: rec.name, view: rec.view, total: albums.length, art };
+}
+
+app.get("/api/live-playlists", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    await ensureIndex();
+    res.json({ playlists: livePlaylists.list().map(livePlaylistSummary), max: livePlaylists.MAX });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Create, or update in place when an id is supplied — updating by id is what
+// lets a playlist be renamed without forking a duplicate.
+app.post("/api/live-playlists", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { id, name, view } = req.body || {};
+  if (!String(name || "").trim()) return res.status(400).json({ error: "name required" });
+  try {
+    await ensureIndex();
+    const rec = livePlaylists.put({ id, name, view });
+    if (!rec) return res.status(409).json({ error: "You can have at most " + livePlaylists.MAX + " Live Playlists" });
+    res.json({ ok: true, playlist: livePlaylistSummary(rec) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/live-playlists/delete", (req, res) => {
+  const id = (req.body || {}).id;
+  if (!id) return res.status(400).json({ error: "id required" });
+  if (!livePlaylists.remove(id)) return res.status(404).json({ error: "Unknown playlist" });
+  res.json({ ok: true });
+});
+
+// One playlist's albums, paged. Deliberately album-paged rather than
+// track-paged: this app is album-centric everywhere else, and resolving every
+// album's tracks up front would mean an LMS round-trip per album just to draw
+// a list the user may not scroll.
+app.get("/api/live-playlist", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const rec = livePlaylists.get(req.query.id);
+  if (!rec) return res.status(404).json({ error: "Unknown playlist" });
+  try {
+    await ensureIndex();
+    const view   = libraryView(rec.view);
+    const total  = view.length;
+    const offset = Math.max(0, Math.min(total, parseInt(req.query.offset || "0", 10) || 0));
+    const count  = Math.max(1, Math.min(200, parseInt(req.query.count || "60", 10) || 60));
+    res.json({ id: rec.id, name: rec.name, view: rec.view, total, offset,
+      albums: view.slice(offset, offset + count).map(albumOut) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Every album offset in a playlist, for Play Now / Queue on the whole thing.
+// Capped because "play all" on a 5,000-album rule would otherwise hand LMS a
+// playlistcontrol call per album; the client says when it has been truncated.
+app.get("/api/live-playlist/albums", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const rec = livePlaylists.get(req.query.id);
+  if (!rec) return res.status(404).json({ error: "Unknown playlist" });
+  try {
+    await ensureIndex();
+    const max  = Math.max(1, Math.min(500, parseInt(req.query.max || "200", 10) || 200));
+    const view = libraryView(rec.view);
+    res.json({ total: view.length, truncated: view.length > max,
+      offsets: view.slice(0, max).map(a => a.offset) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
