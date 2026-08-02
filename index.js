@@ -1117,6 +1117,41 @@ app.post("/api/play-track", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Play/queue SEVERAL tracks from one album in a single call.
+// body { offset, tracks: [index], zone_or_output_id, kind }
+//
+// Track identity on the client is (album offset, array index) — LMS track ids
+// are never sent to the browser — so, exactly as /api/play-track does, the
+// album is re-read here and the indices are resolved positionally. The order
+// LMS receives is the order asked for (playlistcontrol keeps track_id order),
+// and indices that no longer resolve are skipped rather than failing the whole
+// batch: a rescan between opening the modal and hitting Play shouldn't lose the
+// tracks that are still valid. Only a batch where NOTHING resolves is an error.
+app.post("/api/play-tracks", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { offset, tracks: idxs, zone_or_output_id, kind } = req.body || {};
+  if (!Number.isFinite(offset)) return res.status(400).json({ error: "offset required" });
+  if (!Array.isArray(idxs) || !idxs.length) return res.status(400).json({ error: "tracks required" });
+  if (!idxs.every(i => Number.isInteger(i) && i >= 0)) return res.status(400).json({ error: "track indices must be non-negative integers" });
+  if (!zone_or_output_id) return res.status(400).json({ error: "zone_or_output_id required" });
+  const mode = KIND_TO_MODE[kind];
+  if (!mode) return res.status(400).json({ error: "kind must be play_now, queue or play_next" });
+  const rec = index.byOffset.get(offset);
+  if (!rec) return res.status(404).json({ error: "Unknown album offset" });
+  try {
+    const tracks = await state.lms.albumTracks(rec.id);
+    const ids = [];
+    let missing = 0;
+    for (const i of idxs) {
+      const t = tracks[i];
+      if (t) ids.push(t.id); else missing++;
+    }
+    if (!ids.length) return res.status(409).json({ error: "Those tracks are no longer in this album (library changed?)" });
+    await state.lms.playTracks(zone_or_output_id, ids, mode);
+    res.json({ ok: true, action: kind, played: ids.length, missing });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post("/api/play-from-here", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const { zone_or_output_id, queue_item_id } = req.body || {};
