@@ -161,6 +161,21 @@ Layout section of README.md.
   as with e/E, because which one carries genre varies by LMS version; a
   multi-genre album keeps its FIRST genre). An album LMS gives no genre for
   simply drops out of the genre facet — never throws.
+- Live Playlists (`lib/liveplaylists.js`) store a saved LIBRARY VIEW, never a
+  track list — opening one re-runs `libraryView()`, so there is no second query
+  engine. The rule vocabulary is INJECTED from `LIB_SORTS` so a saved rule can
+  never name a sort the Library doesn't implement, and every record is
+  re-sanitised on READ (not just on write) so an old or hand-edited file
+  degrades instead of breaking. Facet values are STRINGS end to end.
+  Three traps, all pinned by tests: (a) the edit target must be a PARAMETER of
+  `openLibFocusSheet`, never module state, or an abandoned edit silently
+  overwrites the next playlist you save — and the Focus pill must call
+  `() => openLibFocusSheet(null)`, since a bare handler receives a click Event
+  that would arrive as an edit target; (b) opening Edit must apply the saved
+  rules WITHOUT persisting them, restoring the user's own view on any dismissal
+  (X, backdrop, or a footer button that doesn't commit); (c) saving under an
+  existing NAME with no id is a save-over, not a new playlist, and the 50-item
+  cap applies only to genuinely new records so edits still work when full.
 - The UI is FLAT everywhere (Home v1.0.39, album modal + Queue v1.0.42). No
   section or panel carries a background fill, radius, padding or watermark
   motif — structure comes from hairline separators and whitespace only, so the

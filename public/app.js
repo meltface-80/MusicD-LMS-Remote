@@ -805,12 +805,15 @@ function esc(s) {
     libControls.appendChild(dir);
 
     const n = libFocusCount();
-    libControls.appendChild(pill("Focus", n ? n + " active" : "None", n > 0, openLibFocusSheet));
+    // () => openLibFocusSheet(null), NOT the bare function: a click handler is
+    // called with an Event, which would arrive as an edit target and make the
+    // next save overwrite a playlist chosen at random.
+    libControls.appendChild(pill("Focus", n ? n + " active" : "None", n > 0, () => openLibFocusSheet(null)));
   }
 
   // Shared bottom-sheet builder — every Library picker is built with this so
   // they can't drift apart visually.
-  function openLibSheet(title, buildBody, footer) {
+  function openLibSheet(title, buildBody, footer, onClose) {
     const backdrop = document.createElement("div");
     backdrop.className = "lib-sheet-backdrop";
     const sheet = document.createElement("div");
@@ -824,7 +827,10 @@ function esc(s) {
     head.appendChild(h); head.appendChild(x);
     const body = document.createElement("div"); body.className = "lib-sheet-body";
     sheet.appendChild(head); sheet.appendChild(body);
-    const close = () => { backdrop.remove(); document.body.style.overflow = ""; };
+    // Must fire for the X, the backdrop AND any footer button that calls
+    // close() — a dismissal path that skips it is how an abandoned edit
+    // stays armed.
+    const close = () => { backdrop.remove(); document.body.style.overflow = ""; if (onClose) onClose(); };
     x.addEventListener("click", close);
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
     if (footer) {
@@ -887,8 +893,21 @@ function esc(s) {
     });
   }
 
-  function openLibFocusSheet() {
-    openLibSheet("Focus", (body) => {
+  // `editTarget` is a PARAMETER, never module state: scoped to exactly one
+  // sheet-open lifecycle, so an edit the user abandons cannot still be armed
+  // when they later save something unrelated from this same sheet.
+  function openLibFocusSheet(editTarget) {
+    editTarget = (editTarget && editTarget.id) ? editTarget : null;   // ignore stray Events
+    // Editing loads the playlist's rules into the live view WITHOUT persisting
+    // them: opening Edit and closing again must leave the user's own Library
+    // sort/focus exactly as they left it.
+    const viewBefore = currentLibViewSnapshot();
+    let committed = false;
+    if (editTarget && editTarget.view) {
+      applyViewToLibView(editTarget.view);
+      renderLibraryControls();
+    }
+    openLibSheet(editTarget ? "Edit rules" : "Focus", (body) => {
       const paint = () => {
         body.innerHTML = "";
         const f = libFacets || {};
@@ -967,16 +986,96 @@ function esc(s) {
       clear.type = "button"; clear.className = "action-btn";
       clear.textContent = "Clear all";
       clear.addEventListener("click", () => {
+        committed = true;
         libView.decade = []; libView.source = []; libView.genre = []; libView.played = "any";
         close(); applyLibView();
+      });
+      // Saving the CURRENT sort+focus as a Live Playlist. When the sheet was
+      // opened by "Edit" on an existing playlist, this writes back to that id
+      // rather than forking a copy.
+      const save = document.createElement("button");
+      save.type = "button"; save.className = "action-btn";
+      save.textContent = editTarget ? "Save changes" : "Save as Live Playlist";
+      save.addEventListener("click", () => {
+        committed = true;
+        close();
+        saveLivePlaylistPrompt(editTarget);
       });
       const done = document.createElement("button");
       done.type = "button"; done.className = "action-btn primary";
       done.textContent = "Show albums";
-      done.addEventListener("click", close);
-      foot.appendChild(clear); foot.appendChild(done);
+      done.addEventListener("click", () => { committed = true; close(); });
+      foot.appendChild(clear); foot.appendChild(save); foot.appendChild(done);
+    }, () => {
+      // Abandoned (X or backdrop) while editing a saved playlist — put the
+      // user's own view back. It was never persisted, so there is nothing on
+      // disk to undo, only the live view and the controls.
+      if (editTarget && !committed) { applyViewToLibView(viewBefore); applyLibView(); }
     });
   }
+
+  // ----- Live Playlists: saving / editing the current view -----
+  // A Live Playlist stores the QUERY, not a track list, so it re-evaluates on
+  // every open. The rules are exactly the Library's sort + focus, which is why
+  // this lives next to them rather than in the Live Playlists overlay.
+  // Copy a saved view into the live one. Facet values are normalised to
+  // STRINGS because every comparison on the client is against String(value) —
+  // a numeric decade would render its chip as off and toggling would push a
+  // duplicate rather than clearing it.
+  function applyViewToLibView(v) {
+    if (!v) return;
+    libView = {
+      sort: v.sort || "album", dir: v.dir === "desc" ? "desc" : "asc", seed: v.seed || 1,
+      decade: (v.decade || []).map(String), source: (v.source || []).map(String),
+      genre: (v.genre || []).map(String), played: v.played || "any",
+    };
+  }
+
+  const currentLibViewSnapshot = () => ({
+    sort: libView.sort, dir: libView.dir, seed: libView.seed,
+    decade: libView.decade.slice(), source: libView.source.slice(),
+    genre: libView.genre.slice(), played: libView.played,
+  });
+
+  async function saveLivePlaylistPrompt(existing) {
+    const suggested = (existing && existing.name) || suggestLivePlaylistName();
+    const name = window.prompt(existing ? "Rename this Live Playlist" : "Name this Live Playlist", suggested);
+    if (name === null) return;                       // cancelled
+    const trimmed = String(name).trim();
+    if (!trimmed) { showToast("Give it a name first", "error"); return; }
+    try {
+      const r = await fetch("/api/live-playlists", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: existing && existing.id, name: trimmed, view: currentLibViewSnapshot() })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      const n = j.playlist ? j.playlist.total : 0;
+      showToast("Saved “" + trimmed + "” — " + n + " album" + (n === 1 ? "" : "s") + " right now");
+      if (window.__refreshLivePlaylists) window.__refreshLivePlaylists();
+    } catch (e) { showToast(e.message, "error"); }
+  }
+
+  // A name built from the active rules beats "My playlist" as a starting point.
+  function suggestLivePlaylistName() {
+    const bits = [];
+    if (libView.played === "never") bits.push("Never played");
+    else if (libView.played !== "any") bits.push("Unplayed " + libView.played + "m");
+    if (libView.decade.length) bits.push(libView.decade.slice().sort().map(d => d + "s").join(" + "));
+    if (libView.genre.length)  bits.push(libView.genre.join(" + "));
+    if (libView.source.length && !bits.length) bits.push(libView.source.join(" + "));
+    return bits.length ? bits.join(" ") : "My Live Playlist";
+  }
+
+  // Called by the Live Playlists overlay's Edit button: load the saved rules
+  // into the Library view, show the wall, and open Focus armed to write back.
+  // Edit deliberately does NOT touch libView here — the sheet applies the
+  // playlist's rules itself, unpersisted, and restores them if abandoned.
+  window.__editLivePlaylist = function (pl) {
+    if (!pl || !pl.id) return;
+    showLibraryWall().then(() => openLibFocusSheet(pl));
+  };
+  window.__saveLivePlaylistFromView = () => saveLivePlaylistPrompt(null);
 
   // Header taps: Not played → full unplayed grid; Random albums → full random
   // wall; Label of the week → label view; Library → the browsable library.
@@ -3880,9 +3979,33 @@ function esc(s) {
   if (albumActionCancelBtn) albumActionCancelBtn.addEventListener("click", exitAlbumSelectMode);
 
   window.__openAlbum = openAlbum;
-  window.__buildAlbumTile = (a) => buildAlbumTile(a);
+  // Forward the optional onClick — callers that supply one (Live Playlists,
+  // any future wall) need their tiles to open unfiltered, not fall back to
+  // openAlbum's default filter handling.
+  window.__buildAlbumTile = (a, onClick) => buildAlbumTile(a, onClick);
   window.__loadRandom = loadRandom;
   window.__showToast = (msg, kind) => showToast(msg, kind);
+  window.__confirmDialog = (msg) => confirmDialog(msg);
+  // Play or queue a set of album offsets — the same batch path the album
+  // multi-select bar uses, so there is one place that talks to /api/play-multi.
+  window.__playOffsets = async (offsets, kind, truncatedTotal) => {
+    if (!offsets || !offsets.length) return false;
+    if (!selectedZoneId) { showToast("Pick a zone first", "error"); return false; }
+    try {
+      const r = await fetch("/api/play-multi", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offsets, zone_or_output_id: selectedZoneId, kind })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      const n = offsets.length;
+      const verb = kind === "play_now" ? "Playing" : "Queued";
+      showToast(verb + " " + n + " album" + (n === 1 ? "" : "s") +
+        (truncatedTotal ? " (first " + n + " of " + truncatedTotal + ")" : "") +
+        " → " + zoneName(selectedZoneId));
+      return true;
+    } catch (e) { showToast(e.message, "error"); return false; }
+  };
 
   async function bootstrap() {
     // Instant open: paint the last Home from cache before we've reconnected, so
@@ -6694,5 +6817,253 @@ function esc(s) {
     } catch (e) {
       if (window.__showToast) window.__showToast(e.message, "error");
     }
+  }
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Live Playlists — rule-based playlists that re-evaluate on open.     */
+/*                                                                     */
+/*  A Live Playlist stores the Library's sort+focus QUERY, never a      */
+/*  track list, so it gains and loses albums by itself as the library   */
+/*  and the play history change. Creating/editing the rules happens in  */
+/*  the Library's Focus sheet (see __editLivePlaylist); this overlay is */
+/*  the browse/play/manage surface.                                     */
+/*                                                                     */
+/*  Albums route through the shared window.__openAlbum, exactly as the  */
+/*  Library wall does, so there is no second album-detail path to drift */
+/*  out of step with the real one.                                      */
+/* ------------------------------------------------------------------ */
+(function initLivePlaylists() {
+  const openBtn = document.getElementById("live-playlists-toggle");
+  const overlay = document.getElementById("live-playlists-overlay");
+  const body    = document.getElementById("lp-body");
+  const titleEl = document.getElementById("lp-title");
+  const backBtn = document.getElementById("lp-back");
+  if (!openBtn || !overlay || !body) return;
+
+  let stack = [];      // [{kind:"list"} | {kind:"detail", id, name}]
+  let seq = 0;
+  const PAGE = 60;
+
+  const msg = (cls, text) => {
+    body.innerHTML = "";
+    const d = document.createElement("div");
+    d.className = cls; d.textContent = text;
+    body.appendChild(d);
+  };
+  function closeOverlay() { overlay.classList.add("hidden"); document.body.style.overflow = ""; }
+  overlay.querySelectorAll("[data-lp-close]").forEach(el => el.addEventListener("click", closeOverlay));
+  backBtn.addEventListener("click", () => { if (stack.length > 1) { stack.pop(); render(); } else closeOverlay(); });
+
+  function open() {
+    overlay.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    stack = [{ kind: "list" }];
+    render();
+  }
+  openBtn.addEventListener("click", open);
+  window.__openLivePlaylists = open;
+  // The Focus sheet calls this after a save so the wall is never stale behind
+  // an open overlay.
+  window.__refreshLivePlaylists = () => {
+    if (!overlay.classList.contains("hidden") && stack.length && stack[stack.length - 1].kind === "list") render();
+  };
+
+  function render() {
+    const f = stack[stack.length - 1] || { kind: "list" };
+    backBtn.hidden = stack.length <= 1;
+    titleEl.textContent = f.kind === "detail" ? (f.name || "Live Playlist") : "Live Playlists";
+    body.scrollTop = 0;
+    if (f.kind === "detail") loadDetail(f);
+    else loadList();
+  }
+
+  // ---- The wall of playlists ----
+  async function loadList() {
+    msg("qb-loading", "Loading…");
+    const mine = ++seq;
+    let j;
+    try {
+      const r = await fetch("/api/live-playlists", { cache: "no-store" });
+      j = await r.json();
+      if (mine !== seq) return;
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { if (mine === seq) msg("qb-empty", "Couldn’t load: " + e.message); return; }
+
+    const list = (j && j.playlists) || [];
+    body.innerHTML = "";
+    const intro = document.createElement("div");
+    intro.className = "lp-intro";
+    intro.textContent = list.length
+      ? "These update themselves — albums join and leave as your library and listening change."
+      : "A Live Playlist is a saved set of rules, not a fixed list, so it keeps itself up to date.";
+    body.appendChild(intro);
+
+    if (!list.length) {
+      const how = document.createElement("div");
+      how.className = "qb-empty";
+      how.textContent = "To make one: open Library, set Sort and Focus how you want, then tap “Save as Live Playlist”.";
+      body.appendChild(how);
+      return;
+    }
+    const grid = document.createElement("div");
+    grid.className = "lp-grid";
+    for (const pl of list) grid.appendChild(tile(pl));
+    body.appendChild(grid);
+  }
+
+  // A 2x2 mosaic of the first four covers — a Live Playlist has no artwork of
+  // its own, so it borrows from whatever it currently resolves to.
+  function tile(pl) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "lp-tile";
+    const art = document.createElement("div");
+    art.className = "lp-mosaic" + (pl.art && pl.art.length ? "" : " no-image");
+    for (const key of (pl.art || []).slice(0, 4)) {
+      const img = document.createElement("img");
+      img.loading = "lazy"; img.alt = "";
+      img.src = "/api/image/" + encodeURIComponent(key) + "?size=300";
+      img.onerror = () => img.remove();
+      art.appendChild(img);
+    }
+    const meta = document.createElement("div");
+    meta.className = "lp-meta";
+    const nm = document.createElement("div");
+    nm.className = "lp-name"; nm.textContent = pl.name;
+    const ct = document.createElement("div");
+    ct.className = "lp-count";
+    ct.textContent = pl.total + (pl.total === 1 ? " album" : " albums") + " · " + ruleSummary(pl.view);
+    meta.appendChild(nm); meta.appendChild(ct);
+    btn.appendChild(art); btn.appendChild(meta);
+    btn.addEventListener("click", () => { stack.push({ kind: "detail", id: pl.id, name: pl.name }); render(); });
+    return btn;
+  }
+
+  // Human-readable rules, so a tile says what it actually does.
+  const SORT_LABEL = { album: "A–Z", artist: "by artist", genre: "by genre", year: "by year",
+                       plays: "most played", lastplayed: "last played", random: "shuffled" };
+  const PLAYED_LABEL = { never: "never played", 6: "not in 6 months", 12: "not in 12 months" };
+  function ruleSummary(v) {
+    if (!v) return "";
+    const bits = [];
+    if (v.genre && v.genre.length) bits.push(v.genre.join("/"));
+    if (v.decade && v.decade.length) bits.push(v.decade.slice().sort().map(d => d + "s").join("/"));
+    if (v.source && v.source.length) bits.push(v.source.join("/"));
+    if (v.played && v.played !== "any") bits.push(PLAYED_LABEL[v.played] || v.played);
+    bits.push(SORT_LABEL[v.sort] || v.sort);
+    return bits.join(", ");
+  }
+
+  // ---- One playlist ----
+  async function loadDetail(frame) {
+    msg("qb-loading", "Loading…");
+    const mine = ++seq;
+    let j;
+    try {
+      const r = await fetch("/api/live-playlist?id=" + encodeURIComponent(frame.id) + "&offset=0&count=" + PAGE, { cache: "no-store" });
+      j = await r.json();
+      if (mine !== seq) return;
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { if (mine === seq) msg("qb-empty", "Couldn’t load: " + e.message); return; }
+
+    body.innerHTML = "";
+    const head = document.createElement("div");
+    head.className = "lp-detail-head";
+    const rules = document.createElement("div");
+    rules.className = "lp-rules";
+    rules.textContent = ruleSummary(j.view);
+    const count = document.createElement("div");
+    count.className = "lp-count";
+    count.textContent = j.total + (j.total === 1 ? " album" : " albums") + " right now";
+    head.appendChild(count); head.appendChild(rules);
+    body.appendChild(head);
+
+    const acts = document.createElement("div");
+    acts.className = "modal-actions lp-actions";
+    acts.appendChild(actionBtn("Play Now", true, () => playAll(frame.id, "play_now")));
+    acts.appendChild(actionBtn("Queue", false, () => playAll(frame.id, "queue")));
+    acts.appendChild(actionBtn("Edit rules", false, () => {
+      closeOverlay();
+      if (window.__editLivePlaylist) window.__editLivePlaylist({ id: frame.id, name: j.name, view: j.view });
+    }));
+    acts.appendChild(actionBtn("Delete", false, () => del(frame.id, j.name)));
+    body.appendChild(acts);
+
+    const grid = document.createElement("div");
+    grid.className = "album-grid lp-albums";
+    body.appendChild(grid);
+
+    const state = { loaded: 0, total: j.total, busy: false };
+    const appendAlbums = (albums) => {
+      for (const a of albums) {
+        const tileEl = window.__buildAlbumTile
+          ? window.__buildAlbumTile(a, () => window.__openAlbum(a, { source: "home", filter: null }))
+          : null;
+        if (tileEl) grid.appendChild(tileEl);
+      }
+      state.loaded += albums.length;
+    };
+    appendAlbums(j.albums || []);
+
+    // Same sentinel-driven paging as the Qobuz browser.
+    const sentinel = document.createElement("div");
+    sentinel.className = "qb-sentinel";
+    body.appendChild(sentinel);
+    const io = new IntersectionObserver(async (entries) => {
+      if (!entries[0].isIntersecting || state.busy || state.loaded >= state.total) return;
+      if (mine !== seq) { io.disconnect(); return; }
+      state.busy = true;
+      try {
+        const r = await fetch("/api/live-playlist?id=" + encodeURIComponent(frame.id) +
+          "&offset=" + state.loaded + "&count=" + PAGE, { cache: "no-store" });
+        const more = await r.json();
+        if (mine !== seq) { io.disconnect(); return; }
+        if (r.ok) appendAlbums(more.albums || []);
+      } catch (e) { /* keep what we have */ }
+      finally { state.busy = false; }
+    });
+    io.observe(sentinel);
+
+    if (!j.total) {
+      const none = document.createElement("div");
+      none.className = "qb-empty";
+      none.textContent = "Nothing matches these rules right now. That can change as your library grows.";
+      body.appendChild(none);
+    }
+  }
+
+  function actionBtn(label, primary, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "action-btn" + (primary ? " primary" : "");
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  async function playAll(id, kind) {
+    try {
+      const r = await fetch("/api/live-playlist/albums?id=" + encodeURIComponent(id) + "&max=200", { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      const offsets = j.offsets || [];
+      if (!offsets.length) { window.__showToast("Nothing matches these rules right now", "error"); return; }
+      if (window.__playOffsets) await window.__playOffsets(offsets, kind, j.truncated ? j.total : 0);
+    } catch (e) { window.__showToast(e.message, "error"); }
+  }
+
+  async function del(id, name) {
+    const prompt = "Delete “" + name + "”? Only the rules go — your albums and files are untouched.";
+    const yes = window.__confirmDialog ? await window.__confirmDialog(prompt) : window.confirm(prompt);
+    if (!yes) return;
+    try {
+      const r = await fetch("/api/live-playlists/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id })
+      });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ("HTTP " + r.status)); }
+      window.__showToast("Deleted “" + name + "”");
+      stack = [{ kind: "list" }];
+      render();
+    } catch (e) { window.__showToast(e.message, "error"); }
   }
 })();
