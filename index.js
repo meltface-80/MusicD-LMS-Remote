@@ -1926,6 +1926,165 @@ app.get("/api/filters/decades", async (req, res) => {
     res.json({ decades });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ---------------------------------------------------------------------------
+// Library view — the ordered, paginated, faceted browse behind the Library
+// wall's Sort/Focus controls. Everything else in this app samples the library
+// randomly (/api/random-albums); this is the one deterministic view, so paging
+// must be stable: the same query always yields the same order, page after page.
+//
+// Semantics deliberately mirror the sibling Roon build so both apps behave
+// identically: values OR within a facet group, groups AND together; `dir`
+// means literally "reverse the comparator" for every sort; ties always break
+// on sortTitle so equal-ranked albums can't shuffle between pages.
+// ---------------------------------------------------------------------------
+const LIB_SORTS = new Set(["album", "artist", "year", "genre", "plays", "lastplayed", "random"]);
+
+// Deterministic shuffle: paging must not reshuffle between requests, so the
+// order is a pure function of (album, seed) rather than Math.random(). No
+// permutation is stored anywhere — the same seed simply re-derives the order.
+function seededRank(str, seed) {
+  let h = seed >>> 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+// A sorted+filtered view is memoised per parameter combination (NOT per page),
+// so scrolling a long library re-slices one cached array instead of re-sorting
+// thousands of records for every page. `index.builtAt` is part of the key, so a
+// reindex invalidates every entry without an explicit clear.
+const libraryViewCache = new Map();
+const LIBRARY_VIEW_CACHE_MAX = 8;
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+function libraryView(q) {
+  const sort  = LIB_SORTS.has(String(q.sort || "")) ? String(q.sort) : "album";
+  const desc  = String(q.dir || "asc") === "desc";
+  const seed  = parseInt(q.seed, 10) || 1;
+  const asList = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).map(String).filter(Boolean);
+  const decades = asList(q.decade).map(d => parseInt(d, 10)).filter(Number.isFinite);
+  const sources = asList(q.source);
+  const genres  = asList(q.genre);
+  const played  = String(q.played || "any");
+
+  const sig = [index.builtAt, sort, desc, seed, decades.join(","),
+               sources.join(","), genres.join(","), played].join("|");
+  const hit = libraryViewCache.get(sig);
+  if (hit) return hit;
+
+  let list = index.records;
+  if (decades.length) {
+    // A decade value is its START YEAR (1990, not "1990s"); an album with no
+    // known year is UNKNOWN and matches no decade rather than falling in 0s.
+    list = list.filter(r => r.year != null && decades.some(d => r.year >= d && r.year < d + 10));
+  }
+  if (sources.length) {
+    // "local" is the absence of an online-library extid, so it needs a sentinel.
+    list = list.filter(r => sources.includes(r.source || "local"));
+  }
+  if (genres.length) {
+    const want = new Set(genres.map(g => g.toLowerCase()));
+    list = list.filter(r => r.genre && want.has(String(r.genre).toLowerCase()));
+  }
+  if (played !== "any") {
+    // Titles played within the window (or ever, for "never"). Matching is by
+    // title — see lib/plays.js for why, and the caveat that carries.
+    const months = parseInt(played, 10);
+    const seen = played === "never"
+      ? playsLog.getPlayedTitlesSince(0)
+      : playsLog.getPlayedTitlesSince(Date.now() - (Number.isFinite(months) && months > 0 ? months : 6) * MONTH_MS);
+    list = list.filter(r => !seen.has(String(r.title || "").toLowerCase().trim()));
+  }
+
+  const stats = (sort === "plays" || sort === "lastplayed") ? playsLog.getPlayStats() : null;
+  const statOf = (r) => stats.get(String(r.title || "").toLowerCase().trim());
+  const byTitle = (a, b) => a.sortTitle.localeCompare(b.sortTitle);
+  const cmp = {
+    album:  (a, b) => byTitle(a, b) || a.sortArtist.localeCompare(b.sortArtist),
+    artist: (a, b) => a.sortArtist.localeCompare(b.sortArtist) || byTitle(a, b),
+    genre:  (a, b) => String(a.genre || "").toLowerCase().localeCompare(String(b.genre || "").toLowerCase()) || byTitle(a, b),
+    year:   (a, b) => (a.year - b.year) || byTitle(a, b),
+    plays:      (a, b) => ((statOf(a) || {}).count  || 0) - ((statOf(b) || {}).count  || 0) || byTitle(a, b),
+    lastplayed: (a, b) => ((statOf(a) || {}).lastTs || 0) - ((statOf(b) || {}).lastTs || 0) || byTitle(a, b),
+    random: (a, b) => seededRank(a.nTitle + a.nArtist, seed) - seededRank(b.nTitle + b.nArtist, seed),
+  }[sort];
+
+  let out;
+  if (sort === "year") {
+    // An album whose year LMS never supplied is UNKNOWN, not year zero. Hold
+    // those out of the ordering entirely and append them, so flipping to
+    // newest-first can't float every undated album to the top of the library.
+    const known = [], unknown = [];
+    for (const r of list) (r.year == null ? unknown : known).push(r);
+    known.sort(cmp);
+    if (desc) known.reverse();
+    unknown.sort(byTitle);
+    out = known.concat(unknown);
+  } else {
+    out = list.slice().sort(cmp);
+    if (desc) out.reverse();
+  }
+
+  if (libraryViewCache.size >= LIBRARY_VIEW_CACHE_MAX) {
+    libraryViewCache.delete(libraryViewCache.keys().next().value);   // FIFO evict
+  }
+  libraryViewCache.set(sig, out);
+  return out;
+}
+
+app.get("/api/library/albums", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    await ensureIndex();
+    const view   = libraryView(req.query);
+    const total  = view.length;
+    // Clamp to `total`, not total-1: asking past the end is legal and returns
+    // an empty page, which is how the client's infinite scroll detects the end.
+    const offset = Math.max(0, Math.min(total, parseInt(req.query.offset || "0", 10) || 0));
+    const count  = Math.max(1, Math.min(200, parseInt(req.query.count || "60", 10) || 60));
+    res.json({ albums: view.slice(offset, offset + count).map(albumOut), offset, total });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Facet lists for the Focus sheet. Counts are of the WHOLE library, never
+// scoped to the currently-active filters — the chips are a map of what exists,
+// so they must not shift underfoot as you tick them.
+app.get("/api/library/facets", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    await ensureIndex();
+    const decades = new Map(), sources = new Map(), genres = new Map();
+    let dated = 0, genred = 0;
+    for (const r of index.records) {
+      if (r.year != null && r.year >= 1000) {
+        dated++;
+        const d = Math.floor(r.year / 10) * 10;
+        decades.set(d, (decades.get(d) || 0) + 1);
+      }
+      const s = r.source || "local";
+      sources.set(s, (sources.get(s) || 0) + 1);
+      if (r.genre) { genred++; genres.set(r.genre, (genres.get(r.genre) || 0) + 1); }
+    }
+    const SRC_LABEL = { local: "Local files", qobuz: "Qobuz", tidal: "TIDAL" };
+    res.json({
+      total: index.records.length,
+      // Coverage counts: LMS doesn't always carry a year or a genre, so the
+      // sheet can say "N of M albums have a release year" rather than showing
+      // a decade list that quietly doesn't add up to the library.
+      dated, genred,
+      decades: [...decades.entries()].sort((a, b) => b[0] - a[0])
+        .map(([d, n]) => ({ value: d, label: d + "s", count: n })),
+      sources: ["local", "qobuz", "tidal"].filter(s => sources.get(s))
+        .map(s => ({ value: s, label: SRC_LABEL[s] || s, count: sources.get(s) })),
+      genres: [...genres.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([g, n]) => ({ value: g, label: g, count: n })),
+      // Whether any play history exists at all — the client hides the
+      // Listening facet entirely rather than offering filters that match all.
+      hasPlays: playsLog.getPlayedTitlesSince(0).size > 0,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ---------------------------------------------------------------------------
 // Wall display (/display). The page polls /api/settings/display to honour the
 // toggle live; /api/display/content assembles the per-album rotation extras.
