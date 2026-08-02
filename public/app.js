@@ -46,6 +46,11 @@ function esc(s) {
   const albumPlayNowBtn      = document.getElementById("album-play-now-btn");
   const albumQueueBtn        = document.getElementById("album-queue-btn");
   const albumActionCancelBtn = document.getElementById("album-action-cancel-btn");
+  const trackActionBar       = document.getElementById("track-action-bar");
+  const trackActionInfo      = document.getElementById("track-action-info");
+  const trackPlayNowBtn      = document.getElementById("track-play-now-btn");
+  const trackQueueBtn        = document.getElementById("track-queue-btn");
+  const trackActionCancelBtn = document.getElementById("track-action-cancel-btn");
 
   let currentAlbum = null;         // {offset,title,subtitle,image_key}
   let zones = [];
@@ -275,6 +280,7 @@ function esc(s) {
   function showHome() {
     unplayedWallActive = false;
     exitLibraryWall();   // retire the Sort/Focus bar with the wall it drove
+    exitAlbumSelectMode();   // never strand the selection bar over Home
     if (window.__clearSearchIfActive) window.__clearSearchIfActive();  // drop stale search results
     if (window.__exitLabels) window.__exitLabels();   // leave the labels browser if active
     if (window.__exitArtistView) window.__exitArtistView();   // leave the artist view if active
@@ -525,6 +531,7 @@ function esc(s) {
   async function showUnplayedWall() {
     unplayedWallActive = true;
     exitLibraryWall();
+    exitAlbumSelectMode();
     if (window.__exitLabels) window.__exitLabels();
     if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
     if (homeView) homeView.classList.add("hidden");
@@ -716,6 +723,7 @@ function esc(s) {
   async function showLibraryWall() {
     unplayedWallActive = false;
     libraryWallActive = true;
+    exitAlbumSelectMode();
     if (window.__exitLabels) window.__exitLabels();
     if (window.__exitArtistView) window.__exitArtistView();
     if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
@@ -735,6 +743,7 @@ function esc(s) {
   function exitLibraryWall() {
     if (!libraryWallActive) return;
     libraryWallActive = false;
+    exitAlbumSelectMode();
     libWall.seq++;
     if (libControls) libControls.classList.add("hidden");
   }
@@ -1343,6 +1352,8 @@ function esc(s) {
     if (albumQueueBtn)   albumQueueBtn.disabled   = n === 0;
   }
 
+  window.__exitAlbumSelectMode = exitAlbumSelectMode;
+
   function handleAlbumTileSelect(btn, a) {
     const idx = albumSelected.findIndex(x => x.offset === a.offset);
     if (idx === -1) { albumSelected.push(a); btn.classList.add("is-selected"); }
@@ -1655,6 +1666,9 @@ function esc(s) {
 
   function openAlbum(album, opts) {
     opts = opts || {};
+    // Opening a different album invalidates any live track selection — the
+    // indices only mean anything against the album they were picked in.
+    exitTrackSelectMode();
     currentAlbum = album;
     window.__currentAlbum = album;
     currentSource = opts.source || "random";
@@ -2011,6 +2025,9 @@ function esc(s) {
     modal.classList.add("hidden");
     modal.classList.remove("np-mode", "tab-album", "tab-queue");
     document.body.style.overflow = "";
+    // Track selection only means anything for the album that's open — never
+    // let its bar (or a set of indices) survive the modal it belongs to.
+    exitTrackSelectMode();
     currentAlbum = null;
     window.__currentAlbum = null;
     try { sessionStorage.removeItem("rra-modal"); } catch (e) {} // sessionStorage optional
@@ -2109,14 +2126,103 @@ function esc(s) {
         su.appendChild(artistLinkNodes(t.subtitle, "t-artist-link"));
         tx.appendChild(ti); tx.appendChild(su);
         li.appendChild(tx);
+        li.dataset.trackIdx = String(idx);
         li.addEventListener("click", (e) => {
           if (e.target.closest(".t-actions")) return;   // taps on the buttons themselves
+          if (e.target.closest(".t-artist-link")) return;   // artist links keep working
+          // Mirrors the album grid: once selecting, a tap always toggles
+          // selection rather than doing the row's normal thing.
+          if (trackSelectMode) { handleTrackSelect(li, idx); return; }
           toggleTrackActions(li, t, idx);
+        });
+        // Long-press enters track select mode. Only library rows get this —
+        // fetchQobuzAlbumDetail() builds its own rows and is left alone, so
+        // catalogue tracks (which have no album offset) can't be selected.
+        addLongPress(li, () => {
+          if (!trackSelectMode) enterTrackSelectMode();
+          handleTrackSelect(li, idx);
         });
         modalTracks.appendChild(li);
       });
     }
   }
+
+  // ----- Track multi-select (album modal) -----
+  // Selection is (album offset, track index) because the client is never given
+  // LMS track ids — see /api/play-tracks, which re-resolves indices defensively.
+  let trackSelectMode = false;
+  let trackSelected = [];          // array of track indices, in tap order
+  let trackSelectOffset = null;    // the album the selection belongs to
+
+  function enterTrackSelectMode() {
+    trackSelectMode = true;
+    trackSelectOffset = currentAlbum ? currentAlbum.offset : null;
+    // A row can't be both "expanded with Play/Queue buttons" and "picked" —
+    // collapse whatever was open before switching interaction models.
+    const open = modalTracks.querySelector("li.is-open");
+    if (open) closeTrackRow(open);
+    modalTracks.classList.add("is-selecting");
+    if (trackActionBar) trackActionBar.classList.remove("hidden");
+    updateTrackActionBar();
+  }
+  function exitTrackSelectMode() {
+    trackSelectMode = false;
+    trackSelected = [];
+    trackSelectOffset = null;
+    modalTracks.classList.remove("is-selecting");
+    modalTracks.querySelectorAll("li.t-row.is-picked").forEach(li => li.classList.remove("is-picked"));
+    if (trackActionBar) trackActionBar.classList.add("hidden");
+  }
+  function updateTrackActionBar() {
+    const n = trackSelected.length;
+    if (trackActionInfo) trackActionInfo.textContent = n === 0
+      ? "Tap tracks to select" : n + " track" + (n === 1 ? "" : "s") + " selected";
+    if (trackPlayNowBtn) trackPlayNowBtn.disabled = n === 0;
+    if (trackQueueBtn)   trackQueueBtn.disabled   = n === 0;
+  }
+  function handleTrackSelect(li, idx) {
+    const at = trackSelected.indexOf(idx);
+    if (at === -1) { trackSelected.push(idx); li.classList.add("is-picked"); }
+    else           { trackSelected.splice(at, 1); li.classList.remove("is-picked"); }
+    updateTrackActionBar();
+  }
+
+  async function invokeTrackMulti(kind) {
+    if (!trackSelected.length) return;
+    if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
+    if (trackSelectSufficient() === false) { showToast("Album changed — reopen it and try again", "error"); return; }
+    if (trackPlayNowBtn) trackPlayNowBtn.disabled = true;
+    if (trackQueueBtn)   trackQueueBtn.disabled   = true;
+    const n = trackSelected.length;
+    try {
+      const r = await fetch("/api/play-tracks", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offset: trackSelectOffset, tracks: trackSelected.slice(),
+          zone_or_output_id: selectedZoneId, kind })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      const verb = kind === "play_now" ? "Playing" : "Queued";
+      const played = typeof j.played === "number" ? j.played : n;
+      showToast(verb + " " + played + " track" + (played === 1 ? "" : "s") +
+        (j.missing ? " (" + j.missing + " no longer in the album)" : "") + " → " + zoneName(selectedZoneId));
+      exitTrackSelectMode();
+    } catch (e) {
+      showToast(e.message, "error");
+      updateTrackActionBar();
+    }
+  }
+  // Guard against the modal having moved on to a different album underneath a
+  // live selection (shouldn't happen — closing resets — but the offsets must
+  // agree before we send indices that are only meaningful for one album).
+  function trackSelectSufficient() {
+    if (trackSelectOffset == null) return false;
+    return !currentAlbum || currentAlbum.offset === trackSelectOffset;
+  }
+
+  if (trackPlayNowBtn)      trackPlayNowBtn.addEventListener("click", () => invokeTrackMulti("play_now"));
+  if (trackQueueBtn)        trackQueueBtn.addEventListener("click",   () => invokeTrackMulti("queue"));
+  if (trackActionCancelBtn) trackActionCancelBtn.addEventListener("click", exitTrackSelectMode);
 
   // Expand/collapse the per-track action row. Only one row is open at a time.
   function closeTrackRow(li) {
@@ -6136,6 +6242,10 @@ function esc(s) {
   function exitArtistView() {
     if (!artistViewActive) return;
     artistViewActive = false;
+    // The restored grid is the SAME live nodes, so any .is-selected classes
+    // would come back with it — clear the selection rather than restoring a
+    // highlighted set the action bar no longer describes.
+    if (window.__exitAlbumSelectMode) window.__exitAlbumSelectMode();
     // Restore exactly the screen the artist view was opened from (the Home
     // landing, or an album wall) so Back doesn't dump the user somewhere else.
     if (saved) {

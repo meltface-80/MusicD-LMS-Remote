@@ -3410,3 +3410,31 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   border: 1px solid var(--border); overflow: hidden; display: flex;
 }
 .theme-swatch i { display: block; width: 50%; height: 100%; }
+
+/* ------------------------------------------------------------------ */
+/*  Track multi-select (v1.0.40). Long-press a track row in the album  */
+/*  modal to enter select mode; tapping then picks rows instead of     */
+/*  expanding them. Deliberately does NOT reuse .album.is-selected —   */
+/*  that selector is shared with the labels-merge flow, and reusing it */
+/*  would cross-wire two unrelated selection systems.                  */
+/* ------------------------------------------------------------------ */
+.track-list li.t-row.is-picked {
+  background: var(--accent-soft);
+  border-radius: 10px;
+  border-bottom-color: transparent;
+  padding-left: 8px; padding-right: 8px;
+}
+/* Swap the track number for a tick while the row is picked, so the
+   selection reads at a glance without shifting the row's layout. */
+.track-list li.t-row.is-picked::before {
+  content: "✓";
+  color: var(--accent-text);
+  font-weight: 700;
+}
+/* While selecting, rows are pickable — kill the tap-to-expand affordance so
+   the two interaction models never look simultaneously available. */
+.track-list.is-selecting li.t-row:hover { background: var(--accent-soft); }
+
+/* The track bar must clear the album modal (z-index 50) and the Qobuz-mode
+   modal (95); the album bar's z-index 75 would be buried under both. */
+.track-action-bar { z-index: 96; }

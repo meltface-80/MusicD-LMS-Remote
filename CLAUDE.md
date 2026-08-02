@@ -105,6 +105,23 @@ Layout section of README.md.
   interpolated client-side). `/api/zone-state` hits LMS live per call, so
   concurrent app+display polls are coalesced server-side (`playerStatusShared`).
   Don't reintroduce fixed fast polls.
+- Multi-select is TWO independent systems. Albums: `albumSelectMode` +
+  `.album.is-selected` + `#album-action-bar`, entered by long-press, and a tap
+  in select mode ALWAYS toggles selection even on tiles with a custom onClick
+  (Home carousels, Library wall). It must be cleared on every view change —
+  `showHome`/`showLibraryWall`/`exitLibraryWall`/`showUnplayedWall`/
+  `exitArtistView`/search/labels — or the bar strands over the next screen.
+  Tracks: `trackSelectMode` + `.t-row.is-picked` + `#track-action-bar`, scoped
+  to the open album modal and reset by `closeModal()` AND `openAlbum()`.
+  Deliberately NOT `.is-selected` — that selector is shared with the
+  labels-merge `.label-tile.is-first-selected` flow. Long-press only on rows
+  built by `fetchAlbumDetail()`; `fetchQobuzAlbumDetail()` rows share `.t-row`
+  but have no album offset, so they must stay unselectable.
+- The client is never given LMS track ids — track identity is (album `offset`,
+  array index). `/api/play-track` and `/api/play-tracks` therefore re-read the
+  album and resolve indices POSITIONALLY, with a 409 when nothing resolves; the
+  batch endpoint skips indices that have gone out of range rather than failing
+  the whole request (a rescan mid-selection must not lose the valid tracks).
 - The Library wall (`/api/library/albums`, `/api/library/facets`) is the ONLY
   deterministic browse — every other wall is a random sample. Semantics mirror
   the Roon build: facet values OR within a group, groups AND together; `dir`
