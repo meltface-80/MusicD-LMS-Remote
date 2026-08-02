@@ -1152,6 +1152,132 @@ app.post("/api/play-tracks", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------------------------------------------------------------------------
+// Stored playlists. These are LMS's SAVED playlists, NOT the live player queue.
+//
+// The one awkward bit: Lyrion has no bulk "add these tracks to this playlist"
+// command. `playlists edit cmd:add` appends ONE track, addressed by title+url,
+// so adding a selection is N sequential calls. The alternative (fill a player's
+// queue with playlistcontrol, then `playlist save`) would clobber whatever is
+// currently playing, so it isn't used — a slower append that never disturbs
+// playback is the right trade here.
+// ---------------------------------------------------------------------------
+app.get("/api/playlists", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    const r = await state.lms.playlists({ search: req.query.q || undefined });
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/api/playlist/tracks", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const id = req.query.playlist_id;
+  if (!id) return res.status(400).json({ error: "playlist_id required" });
+  try {
+    const r = await state.lms.playlistTracks(id);
+    res.json({
+      total: r.total,
+      tracks: r.tracks.map((t, i) => ({
+        index: i, title: t.title, subtitle: t.artist || "",
+        album: t.album || "", duration: t.duration, image_key: t.coverId || null,
+      })),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/playlists/create", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const name = String((req.body && req.body.name) || "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  try {
+    const r = await state.lms.playlistCreate(name);
+    // created:false means the name already existed and LMS created nothing —
+    // report it honestly so the client can say "added to the existing one".
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/playlists/delete", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const id = req.body && req.body.playlist_id;
+  if (!id) return res.status(400).json({ error: "playlist_id required" });
+  try { await state.lms.playlistDelete(id); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/playlists/rename", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { playlist_id, name } = req.body || {};
+  const nm = String(name || "").trim();
+  if (!playlist_id) return res.status(400).json({ error: "playlist_id required" });
+  if (!nm) return res.status(400).json({ error: "name required" });
+  try { await state.lms.playlistRename(playlist_id, nm); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Add a selection to a playlist. Accepts EITHER whole albums (offsets) or
+// specific tracks of one album (offset + track indices) — the two things the
+// UI can have selected — and resolves both to a flat, ordered track list.
+// body { playlist_id? , name? , offsets?: [], offset?, tracks?: [idx] }
+// Exactly one of playlist_id / name: name creates (or reuses) a playlist first.
+app.post("/api/playlists/add", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { playlist_id, name, offsets, offset, tracks: trackIdxs } = req.body || {};
+  const wantName = String(name || "").trim();
+  if (!playlist_id && !wantName) return res.status(400).json({ error: "playlist_id or name required" });
+  try {
+    await ensureIndex();
+    // Resolve the selection to concrete tracks, preserving the order asked for.
+    const picked = [];
+    if (Array.isArray(offsets) && offsets.length) {
+      for (const off of offsets) {
+        const rec = index.byOffset.get(off);
+        if (!rec) continue;
+        const ts = await state.lms.albumTracks(rec.id);
+        for (const t of ts) picked.push(t);
+      }
+    } else if (Number.isFinite(offset) && Array.isArray(trackIdxs) && trackIdxs.length) {
+      const rec = index.byOffset.get(offset);
+      if (!rec) return res.status(404).json({ error: "Unknown album offset" });
+      const ts = await state.lms.albumTracks(rec.id);
+      for (const i of trackIdxs) { if (ts[i]) picked.push(ts[i]); }
+    } else {
+      return res.status(400).json({ error: "offsets, or offset + tracks, required" });
+    }
+    if (!picked.length) return res.status(409).json({ error: "Nothing to add (library changed?)" });
+
+    let id = playlist_id, created = false;
+    if (!id) {
+      const made = await state.lms.playlistCreate(wantName);
+      id = made.id; created = made.created;
+    }
+    // No bulk add exists — append one at a time, in order. A track LMS gave no
+    // URL for can't be added; count those rather than aborting the whole batch.
+    let added = 0, skipped = 0;
+    for (const t of picked) {
+      if (!t.url) { skipped++; continue; }
+      try { await state.lms.playlistAddTrack(id, { title: t.title, url: t.url }); added++; }
+      catch (e) { skipped++; log.debug("playlist add failed for", t.title, "-", e.message); }
+    }
+    if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
+    res.json({ ok: true, playlist_id: String(id), created, added, skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/playlist/play", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { playlist_id, zone_or_output_id, kind } = req.body || {};
+  if (!playlist_id) return res.status(400).json({ error: "playlist_id required" });
+  if (!zone_or_output_id) return res.status(400).json({ error: "zone_or_output_id required" });
+  const mode = KIND_TO_MODE[kind];
+  if (!mode) return res.status(400).json({ error: "kind must be play_now, queue or play_next" });
+  try {
+    await state.lms.playPlaylist(zone_or_output_id, playlist_id, mode);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post("/api/play-from-here", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const { zone_or_output_id, queue_item_id } = req.body || {};
