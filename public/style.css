@@ -3384,3 +3384,26 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .lp-rules { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; }
 .lp-actions { margin-bottom: 16px; }
 .lp-albums { margin-top: 4px; }
+
+/* ------------------------------------------------------------------ */
+/*  Playlist tiles in an album grid (v1.0.44). A playlist has no cover  */
+/*  of its own, so it borrows a 2x2 of the first four DISTINCT album    */
+/*  covers its tracks come from. This turns .album-art-wrap into the    */
+/*  mosaic container, so playlist tiles size, hover and clip exactly    */
+/*  like album tiles — same grid, same rhythm.                          */
+/* ------------------------------------------------------------------ */
+.album-art-wrap.is-mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+}
+.album-art-wrap.is-mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* One cover shouldn't sit in a single quarter with three empty cells;
+   two read better as halves than as a half-empty 2x2. Three deliberately
+   leave the last cell empty rather than stretching one to fit. */
+.album-art-wrap.is-mosaic[data-mosaic="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.album-art-wrap.is-mosaic[data-mosaic="2"] { grid-template-rows: 1fr; }
+/* A playlist tile's "artist" line carries the track count, which should read
+   as metadata rather than a name. */
+.album.is-playlist .album-artist { color: var(--text-faint); }
