@@ -44,7 +44,14 @@ Layout section of README.md.
 - Develop on the designated `claude/…` branch; after a PR merges, restart
   the same branch from `origin/main` (`git checkout -B <branch>
   origin/main`) — never stack onto merged history.
-- Don't create PRs unless asked; the owner merges.
+- **Land every finished build yourself** (owner decision, v1.0.38). Once
+  `npm test` and the end-to-end checks are green and the version is bumped:
+  push the branch, open the PR, and merge it. Don't wait to be asked, and
+  don't leave `main` sitting behind a finished build — the merge IS the
+  release (§4 above), so an unmerged bump means no install gets the update.
+- Never push straight to `main`; changes reach it only through a merged PR,
+  so the history keeps a reviewable record of each release.
+- Report the merged version back to the owner so they know what's live.
 
 ## Gotchas worth remembering
 
@@ -98,6 +105,32 @@ Layout section of README.md.
   interpolated client-side). `/api/zone-state` hits LMS live per call, so
   concurrent app+display polls are coalesced server-side (`playerStatusShared`).
   Don't reintroduce fixed fast polls.
+- The Library wall (`/api/library/albums`, `/api/library/facets`) is the ONLY
+  deterministic browse — every other wall is a random sample. Semantics mirror
+  the Roon build: facet values OR within a group, groups AND together; `dir`
+  literally reverses the comparator for every sort; ties break on `sortTitle`
+  so equal-ranked albums can't reshuffle between pages. TRAPS: (a) `year` must
+  NOT be a plain reverse — undated albums are held out, sorted separately and
+  appended, or "newest first" floats every undated album to the top; (b)
+  `random` uses `seededRank()` (a pure hash of title+artist+seed), never
+  Math.random(), so paging is stable with no stored permutation; (c) offset
+  clamps to `total`, not total-1 — asking past the end returns an empty page,
+  which is how the client's infinite scroll detects the end (it never does
+  offset+count<total arithmetic). Sorted views are memoised per parameter
+  combination, keyed partly on `index.builtAt` so a reindex invalidates them.
+- `search.sortKey()` powers A-Z ordering ("The Beatles" files under B) and is
+  DISTINCT from `normalize()` (search matching) and `artistKey()` (identity
+  folding) — don't collapse them. `sortTitle`/`sortArtist` are precomputed at
+  index time and must be recomputed in `reindexRecord()` when an owner edit
+  renames an album, or it stays filed under its old name.
+- Play history (`lib/plays.js`) is a title-keyed JSON log capped at ~13 months
+  / 5000 rows, so "Most played" / "Last played" are approximations over recent
+  history, NOT all-time, and two albums sharing a title share a bucket. The
+  Library sort notes say so — keep any new UI equally honest.
+- Album genre comes from LMS tags g/G via `albumGenre()` (both letters sent,
+  as with e/E, because which one carries genre varies by LMS version; a
+  multi-genre album keeps its FIRST genre). An album LMS gives no genre for
+  simply drops out of the genre facet — never throws.
 - Theming is TWO axes on `<html>`: `data-theme` (dark|light) x `data-palette`
   (classic|copper) = 4 themes (Dark, Light, Copper dark, Brass light), matching
   the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a

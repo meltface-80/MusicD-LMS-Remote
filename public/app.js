@@ -255,6 +255,8 @@ function esc(s) {
   const homeRandom   = document.getElementById("home-random");
   const homeLotw     = document.getElementById("home-lotw");
   const homeGenres   = document.getElementById("home-genres");
+  const homeLibrary  = document.getElementById("home-library");
+  const libControls  = document.getElementById("library-controls");
   const topbarBack   = document.getElementById("topbar-back");
   const topbarRefresh = document.getElementById("topbar-refresh");
   const topbarSearch  = document.getElementById("topbar-search");
@@ -272,6 +274,7 @@ function esc(s) {
   // Show the Home landing (hide the wall). The wall loads lazily when entered.
   function showHome() {
     unplayedWallActive = false;
+    exitLibraryWall();   // retire the Sort/Focus bar with the wall it drove
     if (window.__clearSearchIfActive) window.__clearSearchIfActive();  // drop stale search results
     if (window.__exitLabels) window.__exitLabels();   // leave the labels browser if active
     if (window.__exitArtistView) window.__exitArtistView();   // leave the artist view if active
@@ -307,6 +310,7 @@ function esc(s) {
     // ready on the first visit — retry each visit until it populates, then stop.
     if (!homeLotwLoaded) loadHomeLabelOfWeek();
     if (!homeSectionsLoaded) loadHomeGenres();
+    if (!rowHasContent(homeLibrary)) loadHomeLibrary();
   }
   // Reveal the album wall. opts.loadIfEmpty loads a fresh wall only when it has
   // no content yet (so passive reveals — opening an overlay from the menu —
@@ -314,6 +318,7 @@ function esc(s) {
   // own content, e.g. labels/search).
   function showWall(opts) {
     unplayedWallActive = false;
+    exitLibraryWall();
     if (window.__clearSearchIfActive) window.__clearSearchIfActive();  // drop stale search results
     if (window.__exitArtistView) window.__exitArtistView();   // leave the artist view if active
     if (homeView) homeView.classList.add("hidden");
@@ -519,6 +524,7 @@ function esc(s) {
   // unfiltered, like the Home row) and shows a Back button to Home.
   async function showUnplayedWall() {
     unplayedWallActive = true;
+    exitLibraryWall();
     if (window.__exitLabels) window.__exitLabels();
     if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
     if (homeView) homeView.classList.add("hidden");
@@ -554,9 +560,422 @@ function esc(s) {
     }
   }
 
-  // Header taps: Not played → full unplayed grid; Random albums → full random
-  // wall; Label of the week → label view.
+  // ----- Library: ordered, paginated browse with Sort + Focus -------------
+  // Every other wall in this app is a random SAMPLE; this is the one place the
+  // whole library is browsable in a deterministic order, so the view state
+  // (sort, direction, facets) is persisted and paging is stable.
+  const LIB_PAGE = 60;
+  const LIB_VIEW_KEY = "rra-library-view-v1";
+  const LIB_SORT_OPTIONS = [
+    { id: "album",  label: "Album name",   asc: "A → Z", desc: "Z → A" },
+    { id: "artist", label: "Artist",       asc: "A → Z", desc: "Z → A" },
+    { id: "genre",  label: "Genre",        asc: "A → Z", desc: "Z → A",
+      note: "from the genre LMS reports for each album" },
+    { id: "year",   label: "Release year", asc: "Oldest first", desc: "Newest first",
+      note: "albums with no year are listed last" },
+    { id: "plays",  label: "Most played",  asc: "Least played first", desc: "Most played first",
+      note: "from plays this app has seen — roughly the last year" },
+    { id: "lastplayed", label: "Last played", asc: "Longest ago first", desc: "Most recent first",
+      note: "from plays this app has seen — roughly the last year" },
+    { id: "random", label: "Random" },
+  ];
+  const LIB_PLAYED_OPTIONS = [
+    { id: "any",   label: "Any" },
+    { id: "never", label: "Never played" },
+    { id: "6",     label: "Not in 6 months" },
+    { id: "12",    label: "Not in 12 months" },
+  ];
+  // Alphabetical sorts read A→Z by default; quantitative ones read biggest-first.
+  const libSortHasDir     = (id) => id !== "random";
+  const libSortDefaultDir = (id) => (id === "year" || id === "plays" || id === "lastplayed") ? "desc" : "asc";
+  const libNextSeed = () => 1 + Math.floor(Math.random() * 100000);
+
+  let libView = { sort: "album", dir: "asc", seed: 1, decade: [], source: [], genre: [], played: "any" };
+  let libraryWallActive = false;
+  let libFacets = null;
+  const libWall = { seq: 0, offset: 0, loading: false, done: false, total: 0 };
+
+  (function loadLibView() {
+    try {
+      const v = JSON.parse(localStorage.getItem(LIB_VIEW_KEY) || "null");
+      if (v && typeof v === "object") {
+        const arr = (x) => Array.isArray(x) ? x.map(String) : [];
+        libView = {
+          sort:   LIB_SORT_OPTIONS.some(o => o.id === v.sort) ? v.sort : "album",
+          dir:    v.dir === "desc" ? "desc" : "asc",
+          seed:   Number.isFinite(v.seed) && v.seed > 0 ? v.seed : 1,
+          decade: arr(v.decade), source: arr(v.source), genre: arr(v.genre),
+          played: LIB_PLAYED_OPTIONS.some(o => o.id === v.played) ? v.played : "any",
+        };
+      }
+    } catch (e) {} // corrupt/absent — defaults are fine
+  })();
+  const saveLibView = () => { try { localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(libView)); } catch (e) {} };
+  const libFocusCount = () => libView.decade.length + libView.source.length + libView.genre.length +
+    (libView.played !== "any" ? 1 : 0);
+  const libSortLabel = () => (LIB_SORT_OPTIONS.find(o => o.id === libView.sort) || LIB_SORT_OPTIONS[0]).label;
+  function libDirLabel() {
+    const o = LIB_SORT_OPTIONS.find(x => x.id === libView.sort) || LIB_SORT_OPTIONS[0];
+    return libView.dir === "desc" ? (o.desc || "Descending") : (o.asc || "Ascending");
+  }
+  function libViewQuery() {
+    const p = new URLSearchParams();
+    p.set("sort", libView.sort);
+    p.set("dir", libView.dir);
+    if (libView.sort === "random") p.set("seed", String(libView.seed));
+    for (const d of libView.decade) p.append("decade", d);
+    for (const s of libView.source) p.append("source", s);
+    for (const g of libView.genre)  p.append("genre", g);
+    if (libView.played !== "any") p.set("played", libView.played);
+    return p.toString();
+  }
+
+  async function loadHomeLibrary() {
+    if (!homeLibrary) return;
+    try {
+      const r = await fetch("/api/library/albums?offset=0&count=30&sort=album&dir=asc", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json();
+      const albums = (j && j.albums) || [];
+      if (!albums.length) return;
+      homeLibrary.innerHTML = "";
+      const frag = document.createDocumentFragment();
+      for (const a of albums) frag.appendChild(homeTile(a));
+      homeLibrary.appendChild(frag);
+      saveHomeCache({ library: albums });
+    } catch (e) {
+      // Transient — keep whatever the cache hydrated rather than blanking it.
+    }
+  }
+
+  async function fetchLibraryPage(mySeq, first) {
+    if (libWall.loading || libWall.done) return;
+    libWall.loading = true;
+    try {
+      const r = await fetch("/api/library/albums?offset=" + libWall.offset + "&count=" + LIB_PAGE +
+        "&" + libViewQuery(), { cache: "no-store" });
+      if (mySeq !== libWall.seq) return;                  // a newer view superseded us
+      if (r.status === 503) {
+        const j = await r.json().catch(() => ({}));
+        setBanner(j.error || "Waiting for LMS. Check the server connection in Settings.", true);
+        libWall.done = true; return;
+      }
+      const j = await r.json();
+      if (mySeq !== libWall.seq) return;
+      const albums = (j && j.albums) || [];
+      if (first) {
+        grid.innerHTML = "";
+        if (!albums.length) {
+          setBanner(libFocusCount()
+            ? "Nothing matches this focus — try clearing a filter."
+            : "Nothing here yet.", false);
+          libWall.done = true;
+          setCountText("Library");
+          return;
+        }
+        setBanner(null);
+      }
+      const frag = document.createDocumentFragment();
+      for (const a of albums) frag.appendChild(homeTile(a));
+      grid.appendChild(frag);
+      libWall.offset += albums.length;
+      // End of library = a short (or empty) page. `total` is display only, so a
+      // mid-scroll change to it can't strand the loop.
+      libWall.done = albums.length < LIB_PAGE;
+      libWall.total = (j && typeof j.total === "number") ? j.total : libWall.offset;
+      setCountText((libFocusCount() ? "Library · " + libWall.total + " matching" : "Library · " + libWall.total) +
+        (libWall.total === 1 ? " album" : " albums"));
+    } catch (e) {
+      if (mySeq === libWall.seq && first) { grid.innerHTML = ""; setBanner("Couldn’t load: " + e.message, true); }
+      libWall.done = true;
+    } finally {
+      if (mySeq === libWall.seq) libWall.loading = false;
+    }
+  }
+
+  async function applyLibView() {
+    saveLibView();
+    renderLibraryControls();
+    libWall.seq++;
+    const mySeq = libWall.seq;
+    libWall.offset = 0; libWall.loading = false; libWall.done = false;
+    renderSkeletons(computeAlbumCount());
+    await fetchLibraryPage(mySeq, true);
+    // A wide desktop grid can swallow the first page without ever overflowing,
+    // which would leave infinite scroll with nothing to trigger it — keep
+    // filling until the page actually scrolls.
+    const m = document.querySelector("main");
+    while (libraryWallActive && mySeq === libWall.seq && !libWall.done && !libWall.loading &&
+           m && m.scrollHeight <= m.clientHeight + 200) {
+      const before = libWall.offset;
+      await fetchLibraryPage(mySeq, false);
+      if (libWall.offset === before) break;
+    }
+  }
+
+  async function showLibraryWall() {
+    unplayedWallActive = false;
+    libraryWallActive = true;
+    if (window.__exitLabels) window.__exitLabels();
+    if (window.__exitArtistView) window.__exitArtistView();
+    if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
+    if (homeView) homeView.classList.add("hidden");
+    if (homeSections) homeSections.classList.remove("hidden");
+    grid.classList.remove("hidden");
+    clearWallGridSizing();
+    setTopbarNav(true, false, false);
+    setCountText("Library");
+    const m = document.querySelector("main");
+    if (m) m.scrollTop = 0;
+    if (!libFacets) loadLibFacets();
+    await applyLibView();
+  }
+  // Any other view taking over the grid must retire the Library's controls and
+  // stop its infinite scroll, or a stale sort bar outlives the wall it drove.
+  function exitLibraryWall() {
+    if (!libraryWallActive) return;
+    libraryWallActive = false;
+    libWall.seq++;
+    if (libControls) libControls.classList.add("hidden");
+  }
+  window.__exitLibraryWall = exitLibraryWall;
+  window.__showLibraryWall = showLibraryWall;
+
+  async function loadLibFacets() {
+    try {
+      const r = await fetch("/api/library/facets", { cache: "no-store" });
+      if (r.ok) libFacets = await r.json();
+    } catch (e) {} // Focus sheet degrades to whatever groups it can show
+  }
+
   {
+    const mainEl = document.querySelector("main");
+    if (mainEl) mainEl.addEventListener("scroll", () => {
+      if (!libraryWallActive || libWall.loading || libWall.done) return;
+      if (mainEl.scrollTop + mainEl.clientHeight >= mainEl.scrollHeight - 600) {
+        fetchLibraryPage(libWall.seq, false);
+      }
+    }, { passive: true });
+  }
+
+  // --- Library controls: [Sort pill] [direction] [Focus pill] ---
+  function renderLibraryControls() {
+    if (!libControls) return;
+    libControls.classList.toggle("hidden", !libraryWallActive);
+    if (!libraryWallActive) return;
+    libControls.innerHTML = "";
+
+    const pill = (label, value, active, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lib-pill" + (active ? " is-active" : "");
+      const l = document.createElement("span"); l.className = "lib-pill-label"; l.textContent = label;
+      const v = document.createElement("span"); v.className = "lib-pill-value"; v.textContent = value;
+      b.appendChild(l); b.appendChild(v);
+      b.addEventListener("click", onClick);
+      return b;
+    };
+    libControls.appendChild(pill("Sort", libSortLabel(), false, openLibSortSheet));
+
+    const dir = document.createElement("button");
+    dir.type = "button";
+    dir.className = "lib-dir-btn";
+    if (!libSortHasDir(libView.sort)) {
+      // Random has no meaningful direction — offer a reshuffle instead.
+      dir.textContent = "⟳";
+      dir.title = "Shuffle again";
+      dir.setAttribute("aria-label", "Shuffle again");
+      dir.addEventListener("click", () => { libView.seed = libNextSeed(); applyLibView(); });
+    } else {
+      const desc = libView.dir === "desc";
+      dir.textContent = desc ? "↓" : "↑";
+      dir.title = libDirLabel();
+      dir.setAttribute("aria-label", "Reverse order — currently " + libDirLabel());
+      dir.addEventListener("click", () => { libView.dir = desc ? "asc" : "desc"; applyLibView(); });
+    }
+    libControls.appendChild(dir);
+
+    const n = libFocusCount();
+    libControls.appendChild(pill("Focus", n ? n + " active" : "None", n > 0, openLibFocusSheet));
+  }
+
+  // Shared bottom-sheet builder — every Library picker is built with this so
+  // they can't drift apart visually.
+  function openLibSheet(title, buildBody, footer) {
+    const backdrop = document.createElement("div");
+    backdrop.className = "lib-sheet-backdrop";
+    const sheet = document.createElement("div");
+    sheet.className = "lib-sheet";
+    const head = document.createElement("div");
+    head.className = "lib-sheet-head";
+    const h = document.createElement("h2"); h.textContent = title;
+    const x = document.createElement("button");
+    x.type = "button"; x.className = "icon-btn"; x.textContent = "✕";
+    x.setAttribute("aria-label", "Close");
+    head.appendChild(h); head.appendChild(x);
+    const body = document.createElement("div"); body.className = "lib-sheet-body";
+    sheet.appendChild(head); sheet.appendChild(body);
+    const close = () => { backdrop.remove(); document.body.style.overflow = ""; };
+    x.addEventListener("click", close);
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
+    if (footer) {
+      const foot = document.createElement("div"); foot.className = "lib-sheet-foot";
+      footer(foot, close);
+      sheet.appendChild(foot);
+    }
+    backdrop.appendChild(sheet);
+    document.body.appendChild(backdrop);
+    document.body.style.overflow = "hidden";
+    buildBody(body, close);
+    return close;
+  }
+
+  function openLibSortSheet() {
+    openLibSheet("Sort by", (body) => {
+      const paint = () => {
+        body.innerHTML = "";
+        for (const opt of LIB_SORT_OPTIONS) {
+          const on = libView.sort === opt.id;
+          const row = document.createElement("button");
+          row.type = "button";
+          row.className = "lib-sort-row" + (on ? " is-on" : "");
+          const arrow = document.createElement("span");
+          arrow.className = "lib-sort-arrow";
+          // Only the selected row shows an arrow, so every label stays aligned.
+          arrow.textContent = on ? (libSortHasDir(opt.id) ? (libView.dir === "desc" ? "↓" : "↑") : "⟳") : "";
+          const txt = document.createElement("span");
+          const lab = document.createElement("div"); lab.className = "lib-sort-label"; lab.textContent = opt.label;
+          txt.appendChild(lab);
+          if (on && libSortHasDir(opt.id)) {
+            const d = document.createElement("div"); d.className = "lib-sort-note"; d.textContent = libDirLabel();
+            txt.appendChild(d);
+          } else if (opt.note) {
+            const nt = document.createElement("div"); nt.className = "lib-sort-note"; nt.textContent = opt.note;
+            txt.appendChild(nt);
+          }
+          row.appendChild(arrow); row.appendChild(txt);
+          row.addEventListener("click", () => {
+            if (on) {
+              // Tapping the current sort reverses it (Roon's pattern — no
+              // separate direction control inside the sheet).
+              if (libSortHasDir(opt.id)) libView.dir = libView.dir === "desc" ? "asc" : "desc";
+              else libView.seed = libNextSeed();
+            } else {
+              libView.sort = opt.id;
+              libView.dir = libSortDefaultDir(opt.id);
+              if (!libSortHasDir(opt.id)) libView.seed = libNextSeed();
+            }
+            paint();
+            applyLibView();
+          });
+          body.appendChild(row);
+        }
+      };
+      paint();
+    });
+  }
+
+  function openLibFocusSheet() {
+    openLibSheet("Focus", (body) => {
+      const paint = () => {
+        body.innerHTML = "";
+        const f = libFacets || {};
+        const group = (label, note) => {
+          const sec = document.createElement("div");
+          sec.style.marginBottom = "16px";
+          const l = document.createElement("div");
+          l.className = "lib-sheet-section-label"; l.textContent = label;
+          sec.appendChild(l);
+          const wrap = document.createElement("div"); wrap.className = "lib-chips";
+          sec.appendChild(wrap);
+          if (note) {
+            const n = document.createElement("div"); n.className = "lib-facet-note"; n.textContent = note;
+            sec.appendChild(n);
+          }
+          body.appendChild(sec);
+          return wrap;
+        };
+        const chip = (host, label, on, toggle) => {
+          const c = document.createElement("button");
+          c.type = "button";
+          c.className = "lib-chip" + (on ? " is-on" : "");
+          c.textContent = label;
+          c.addEventListener("click", () => { toggle(); paint(); applyLibView(); });
+          host.appendChild(c);
+        };
+        const multi = (arr, v) => {
+          const i = arr.indexOf(v);
+          if (i === -1) arr.push(v); else arr.splice(i, 1);
+        };
+
+        if ((f.sources || []).length) {
+          const w = group("Source");
+          for (const s of f.sources) {
+            chip(w, s.label + " (" + s.count + ")", libView.source.includes(String(s.value)),
+              () => multi(libView.source, String(s.value)));
+          }
+        }
+        if ((f.genres || []).length) {
+          const shown = f.genres.slice(0, 40);
+          const missing = f.total != null && f.genred != null && f.genred < f.total
+            ? f.genred.toLocaleString() + " of " + f.total.toLocaleString() + " albums have a genre"
+            : null;
+          const w = group("Genre", missing);
+          for (const g of shown) {
+            chip(w, g.label + " (" + g.count + ")", libView.genre.includes(String(g.value)),
+              () => multi(libView.genre, String(g.value)));
+          }
+        }
+        if ((f.decades || []).length) {
+          const missing = f.total != null && f.dated != null && f.dated < f.total
+            ? f.dated.toLocaleString() + " of " + f.total.toLocaleString() + " albums have a release year"
+            : null;
+          const w = group("Decade", missing);
+          for (const d of f.decades) {
+            chip(w, d.label + " (" + d.count + ")", libView.decade.includes(String(d.value)),
+              () => multi(libView.decade, String(d.value)));
+          }
+        }
+        if (f.hasPlays) {
+          const w = group("Listening", "Based on plays this app has seen, matched by album title.");
+          for (const p of LIB_PLAYED_OPTIONS) {
+            chip(w, p.label, libView.played === p.id, () => { libView.played = p.id; });
+          }
+        }
+        if (!body.children.length) {
+          const e = document.createElement("div");
+          e.className = "lib-facet-note";
+          e.textContent = "No filters available yet — the library is still being indexed.";
+          body.appendChild(e);
+        }
+      };
+      paint();
+    }, (foot, close) => {
+      const clear = document.createElement("button");
+      clear.type = "button"; clear.className = "action-btn";
+      clear.textContent = "Clear all";
+      clear.addEventListener("click", () => {
+        libView.decade = []; libView.source = []; libView.genre = []; libView.played = "any";
+        close(); applyLibView();
+      });
+      const done = document.createElement("button");
+      done.type = "button"; done.className = "action-btn primary";
+      done.textContent = "Show albums";
+      done.addEventListener("click", close);
+      foot.appendChild(clear); foot.appendChild(done);
+    });
+  }
+
+  // Header taps: Not played → full unplayed grid; Random albums → full random
+  // wall; Label of the week → label view; Library → the browsable library.
+  {
+    const libraryTitle = document.getElementById("home-library-title");
+    if (libraryTitle) {
+      libraryTitle.addEventListener("click", showLibraryWall);
+      libraryTitle.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showLibraryWall(); }
+      });
+    }
     const unplayedTitle = document.getElementById("home-unplayed-title");
     if (unplayedTitle) {
       unplayedTitle.addEventListener("click", showUnplayedWall);
@@ -703,6 +1122,10 @@ function esc(s) {
     if (c.random   && homeRandom)   { renderHomeRandom(c.random);                              painted = rowHasContent(homeRandom)   || painted; }
     if (c.lotw     && homeLotw)     { renderHomeLotw(c.lotw.label, c.lotw.albums); }
     if (c.genres   && homeGenres)   { renderHomeGenres(c.genres); }
+    if (c.library  && homeLibrary)  {
+      homeLibrary.innerHTML = "";
+      for (const a of c.library) homeLibrary.appendChild(homeTile(a));
+    }
     if (!painted) return false;
     if (typeof c.unplayedAt === "number" && typeof c.randomAt === "number") {
       homeRowsLoadedAt = Math.min(c.unplayedAt, c.randomAt);   // honour the TTL across reopens
