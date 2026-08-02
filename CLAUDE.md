@@ -161,6 +161,12 @@ Layout section of README.md.
   as with e/E, because which one carries genre varies by LMS version; a
   multi-genre album keeps its FIRST genre). An album LMS gives no genre for
   simply drops out of the genre facet — never throws.
+- The UI is FLAT everywhere (Home v1.0.39, album modal + Queue v1.0.42). No
+  section or panel carries a background fill, radius, padding or watermark
+  motif — structure comes from hairline separators and whitespace only, so the
+  artwork carries the page. This matches the Roon extension exactly; don't
+  reintroduce a tint to "group" anything. `--panel-hairline` survives only for
+  genuinely RAISED surfaces (bottom sheets); flat content uses `--border`.
 - Theming is TWO axes on `<html>`: `data-theme` (dark|light) x `data-palette`
   (classic|copper) = 4 themes (Dark, Light, Copper dark, Brass light), matching
   the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
