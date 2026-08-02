@@ -44,7 +44,14 @@ Layout section of README.md.
 - Develop on the designated `claude/…` branch; after a PR merges, restart
   the same branch from `origin/main` (`git checkout -B <branch>
   origin/main`) — never stack onto merged history.
-- Don't create PRs unless asked; the owner merges.
+- **Land every finished build yourself** (owner decision, v1.0.38). Once
+  `npm test` and the end-to-end checks are green and the version is bumped:
+  push the branch, open the PR, and merge it. Don't wait to be asked, and
+  don't leave `main` sitting behind a finished build — the merge IS the
+  release (§4 above), so an unmerged bump means no install gets the update.
+- Never push straight to `main`; changes reach it only through a merged PR,
+  so the history keeps a reviewable record of each release.
+- Report the merged version back to the owner so they know what's live.
 
 ## Gotchas worth remembering
 
