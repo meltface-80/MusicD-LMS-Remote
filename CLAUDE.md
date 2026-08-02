@@ -135,6 +135,28 @@ Layout section of README.md.
   album and resolve indices POSITIONALLY, with a 409 when nothing resolves; the
   batch endpoint skips indices that have gone out of range rather than failing
   the whole request (a rescan mid-selection must not lose the valid tracks).
+- Cold-open cost is dominated by the INDEX, not the connection. The built
+  index is cached to `data/index-cache.json`, keyed on LMS's own `lastScan` +
+  album count, so a restart doesn't re-page the library; pages are fetched with
+  bounded concurrency; and `lib/lms.js` uses ONE pooled keep-alive agent (Node's
+  default is keepAlive:false, so every call was a fresh TCP handshake). The
+  2.5s poll already self-heals, so "the connection never dies" — don't add a
+  reconnect layer, cut work instead.
+- "Date added" has NO album-level LMS tag, and `sort:new` is capped by the
+  server's `browseagelimit` pref (default 100 albums — rows AND count), so it
+  cannot drive a full-library sort. `addedAt` is derived by sweeping the TRACK
+  table (`titles` tags `e`+`D`) and taking the EARLIEST added time per album,
+  mirroring LMS's own MIN(tracks_persistent.added). The sweep runs in the
+  BACKGROUND (never blocks first paint) and is cached in `data/added-times.json`
+  under the same signature as the index cache. Unknown `addedAt` is held out of
+  the ordering exactly like an unknown `year`.
+- Album of the Day / Label of the Week are PERSISTED (`lib/homepicks.js`,
+  `data/home-picks.json`) keyed by date / ISO week. Both used to be positional
+  (`pool[hash(period) % pool.length]`) over an in-memory array rebuilt on every
+  restart, and the label's cache invalidated whenever the label map GREW — which
+  the background scan does for as long as it runs. Store the stable IDENTITY
+  (album id, label key), never the position, and re-validate on read so a pick
+  that no longer exists is re-picked rather than returned.
 - The Library wall (`/api/library/albums`, `/api/library/facets`) is the ONLY
   deterministic browse — every other wall is a random sample. Semantics mirror
   the Roon build: facet values OR within a group, groups AND together; `dir`

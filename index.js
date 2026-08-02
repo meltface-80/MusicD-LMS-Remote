@@ -30,6 +30,7 @@ const { assertPublicUrl } = require("./lib/urlguard");
 const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
 const makeLivePlaylists = require("./lib/liveplaylists");
+const makeHomePicks = require("./lib/homepicks");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -77,6 +78,9 @@ function saveSettings(patch) {
 // app's SQLite table (no native deps in this repo).
 // ---------------------------------------------------------------------------
 const playsLog = makePlaysLog(path.join(DATA_DIR, "plays.json"));
+// Remembers the day's album and the week's label so a restart can't re-roll
+// them mid-period — see lib/homepicks.js for why they used to move.
+const homePicks = makeHomePicks({ dataDir: DATA_DIR });
 
 // Per-player "what's currently playing, and did it already qualify as a play"
 // state, keyed by player id. Mirrors the sibling's scrobbleUpdate(), but
@@ -523,14 +527,17 @@ async function refreshConnectionInner() {
     state.server = ss;
     state.players = ss.players;
     // Refresh per-player status (cheap for a handful of players).
-    for (const p of ss.players) {
+    // Poll every player at once rather than one after another: this tick runs
+    // every 2.5s forever, and serialising it made the whole tick as slow as the
+    // SUM of its players. One unreachable player still must not fail the rest.
+    await Promise.all(ss.players.map(async (p) => {
       try {
         const st = await state.lms.playerStatus(p.id);
         state.statuses.set(p.id, st);
         scrobbleUpdate(p.id, st);
       }
       catch (e) { /* a single player being unreachable is non-fatal */ }
-    }
+    }));
     if (!wasConnected) {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
@@ -552,16 +559,91 @@ async function refreshConnectionInner() {
 const INDEX_PAGE = 500;
 const INDEX_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
+// The built index is cached to disk so a restart doesn't re-page the entire
+// library out of LMS before the Home screen can answer anything. That rebuild
+// was the dominant cost of a cold open: nothing was persisted, so every
+// container restart paid for the whole library again.
+//
+// Validity is keyed on LMS's OWN last-scan timestamp plus the album count, so
+// the cache is used only while the server's library is demonstrably unchanged;
+// a rescan (or any change in album count) invalidates it automatically. RAW
+// LMS rows are cached — owner edits and rescued artwork are layered on at
+// build time, so those stay live and are never frozen into the cache.
+const INDEX_CACHE_FILE = path.join(DATA_DIR, "index-cache.json");
+
+function indexCacheSig(total) {
+  const scan = state.server && state.server.lastScan;
+  // No lastScan (older/odd servers) → no signature we can trust, so no cache.
+  if (scan == null) return null;
+  return String(scan) + "|" + String(total);
+}
+
+function readIndexCache(sig) {
+  if (!sig) return null;
+  try {
+    const j = JSON.parse(fs.readFileSync(INDEX_CACHE_FILE, "utf8"));
+    if (!j || j.sig !== sig || !Array.isArray(j.rows) || !j.rows.length) return null;
+    return j.rows;
+  } catch (e) { return null; }   // absent/corrupt → just rebuild
+}
+
+function writeIndexCache(sig, rows) {
+  if (!sig || !rows.length) return;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    // Write-then-rename so a crash mid-write can't leave a half file that
+    // parses as valid JSON.
+    const tmp = INDEX_CACHE_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(), rows }));
+    fs.renameSync(tmp, INDEX_CACHE_FILE);
+  } catch (e) {
+    if (DEBUG) console.error("[index] cache write failed:", e.message);
+  }
+}
+
+// How many album pages to have in flight at once. The pages were fetched
+// strictly one after another, which on a big library meant dozens of serial
+// round trips before ANY of the Home rows could answer — the single biggest
+// contributor to a slow cold open. Kept modest so a rebuild doesn't monopolise
+// the server (the keep-alive agent in lib/lms.js caps sockets at 8 anyway).
+const INDEX_FETCH_CONCURRENCY = 4;
+
+async function fetchAlbumPages(total) {
+  const starts = [];
+  for (let start = 0; start < total; start += INDEX_PAGE) starts.push(start);
+  const pages = new Array(starts.length);
+  let next = 0, done = 0;
+  async function worker() {
+    for (;;) {
+      const i = next++;
+      if (i >= starts.length) return;
+      const { albums } = await state.lms.listAlbums({ start: starts[i], count: INDEX_PAGE });
+      pages[i] = albums || [];
+      done++;
+      indexProgress = starts.length ? Math.min(1, done / starts.length) : 1;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(INDEX_FETCH_CONCURRENCY, starts.length) }, worker));
+  // Concatenate in PAGE ORDER, not completion order — `offset` is a position in
+  // this list and is the client's album identity, so it must be deterministic.
+  const rows = [];
+  for (const page of pages) { if (page) rows.push(...page); }
+  return rows;
+}
+
 async function buildIndex() {
   if (!state.lms) throw new Error("Not connected to LMS");
   indexProgress = 0;
   const total = await state.lms.countAlbums();
-  const rows = [];
-  for (let start = 0; start < total; start += INDEX_PAGE) {
-    const { albums } = await state.lms.listAlbums({ start, count: INDEX_PAGE });
-    if (!albums.length) break;
-    rows.push(...albums);
-    indexProgress = total ? Math.min(1, rows.length / total) : 1;
+  const sig = indexCacheSig(total);
+  let rows = readIndexCache(sig);
+  const fromCache = !!rows;
+  if (fromCache) {
+    indexProgress = 1;
+    if (DEBUG) console.log("[index] reusing cached rows (" + rows.length + " albums, sig " + sig + ")");
+  } else {
+    rows = await fetchAlbumPages(total);
+    writeIndexCache(sig, rows);
   }
   // Layer owner edits (title/artist/year/artwork overrides) and any
   // previously-rescued artwork onto the raw LMS rows before indexing — both
@@ -575,7 +657,14 @@ async function buildIndex() {
   }
   search.loadRecords(index, rows);
   indexProgress = 1;
-  if (DEBUG) console.log("[index] built", index.records.length, "albums");
+  // "Date added" is derived from the TRACK table (LMS exposes no album-level
+  // added time, and sort:new is capped at browseagelimit ~100 albums, so it
+  // can't drive a full-library sort). That sweep is a second pass over the
+  // whole track table, so it runs in the BACKGROUND and patches records in
+  // place — the Library is usable immediately and simply lacks that one sort
+  // until it lands. Cached with the index so a restart doesn't repeat it.
+  applyAddedTimes(sig, rows.length);
+  if (DEBUG) console.log("[index] built", index.records.length, "albums" + (fromCache ? " (from cache)" : ""));
   // Background sweep: fetch + store covers for local albums that still have
   // none. Best-effort, rate-limited (MusicBrainz), mutates records in place so
   // tiles/modals pick the new art up on their next fetch. Never blocks build.
@@ -588,6 +677,57 @@ async function buildIndex() {
   try { labels.onAlbumIndexRebuilt(); } catch (e) { if (DEBUG) console.error("[labels] reseed:", e.message); }
   labels.runScan().catch(e => { if (DEBUG) console.error("[labels] scan:", e.message); });
   return index;
+}
+
+const ADDED_CACHE_FILE = path.join(DATA_DIR, "added-times.json");
+let addedSweeping = false;
+
+function readAddedCache(sig) {
+  if (!sig) return null;
+  try {
+    const j = JSON.parse(fs.readFileSync(ADDED_CACHE_FILE, "utf8"));
+    if (!j || j.sig !== sig || !j.added) return null;
+    return new Map(Object.entries(j.added));
+  } catch (e) { return null; }
+}
+function writeAddedCache(sig, map) {
+  if (!sig || !map.size) return;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = ADDED_CACHE_FILE + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(), added: Object.fromEntries(map) }));
+    fs.renameSync(tmp, ADDED_CACHE_FILE);
+  } catch (e) { if (DEBUG) console.error("[index] added-time cache write failed:", e.message); }
+}
+
+function stampAddedTimes(map) {
+  let hit = 0;
+  for (const rec of index.records) {
+    const at = map.get(String(rec.id));
+    if (at != null) { rec.addedAt = at; hit++; }
+  }
+  // The sorted-view memo is keyed partly on index.builtAt; nudge it so views
+  // built before the sweep landed don't serve a stale "date added" ordering.
+  if (hit) { index.builtAt = Date.now(); libraryViewCache.clear(); }
+  return hit;
+}
+
+async function applyAddedTimes(sig, albumCount) {
+  const cached = readAddedCache(sig);
+  if (cached) { stampAddedTimes(cached); return; }
+  if (addedSweeping || !state.lms) return;
+  addedSweeping = true;
+  try {
+    const map = await state.lms.albumAddedTimes();
+    const hit = stampAddedTimes(map);
+    writeAddedCache(sig, map);
+    if (DEBUG) console.log("[index] added times for", hit, "of", albumCount, "albums");
+  } catch (e) {
+    // Always warn, not just under DEBUG: a failed sweep means the "Date added"
+    // sort silently has nothing to sort by, which is exactly the kind of thing
+    // that hides behind a quiet catch.
+    console.warn("[index] added-time sweep failed — Date added sort unavailable:", e.message);
+  } finally { addedSweeping = false; }
 }
 
 function ensureIndex() {
@@ -1163,11 +1303,48 @@ app.post("/api/play-tracks", async (req, res) => {
 // currently playing, so it isn't used — a slower append that never disturbs
 // playback is the right trade here.
 // ---------------------------------------------------------------------------
+// Cover mosaics for stored playlists. A playlist has no artwork of its own, so
+// each tile borrows the first four DISTINCT album covers its tracks come from.
+// That costs one extra LMS call per playlist, so it's cached — keyed on the
+// playlist id AND its track count, so adding tracks refreshes the tile but a
+// mere re-open doesn't re-walk every playlist.
+const playlistArtCache = new Map();   // id -> { art, tracks, at }
+const PLAYLIST_ART_TTL_MS = 10 * 60 * 1000;
+const PLAYLIST_ART_CONCURRENCY = 3;
+
+async function playlistArtFor(id) {
+  const hit = playlistArtCache.get(String(id));
+  if (hit && (Date.now() - hit.at) < PLAYLIST_ART_TTL_MS) return hit;
+  const { art, total } = await state.lms.playlistArt(id);
+  const rec = { art, tracks: total, at: Date.now() };
+  playlistArtCache.set(String(id), rec);
+  return rec;
+}
+
 app.get("/api/playlists", async (req, res) => {
   if (!state.connected) return notConnected(res);
   try {
     const r = await state.lms.playlists({ search: req.query.q || undefined });
-    res.json(r);
+    const rows = r.playlists || [];
+    // Bounded concurrency: a library with many playlists shouldn't open one
+    // LMS request per playlist all at once.
+    const out = new Array(rows.length);
+    let next = 0;
+    const worker = async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= rows.length) return;
+        const pl = rows[i];
+        try {
+          const { art, tracks } = await playlistArtFor(pl.id);
+          out[i] = { ...pl, art, tracks };
+        } catch (e) {
+          out[i] = { ...pl, art: [], tracks: null };   // art is decoration, never fatal
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PLAYLIST_ART_CONCURRENCY, rows.length) }, worker));
+    res.json({ total: r.total, playlists: out });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1942,7 +2119,17 @@ app.get("/api/home/album-of-the-day", async (req, res) => {
     // exact format the sibling app hashes, so picks stay in step).
     const now = new Date();
     const dstr = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
-    const rec = pool[fnv1aHash(dstr) % pool.length];
+    // Remember the choice for the day by LMS album ID, not by array position.
+    // The hash pick is positional, so a restart that rebuilds the index (or any
+    // change in album count) would otherwise land on a different album for the
+    // same date. Re-picks only if the remembered album has actually gone.
+    const pickedId = homePicks.stable(
+      "aotd", dstr,
+      (id) => index.byId.has(String(id)),
+      () => { const r = pool[fnv1aHash(dstr) % pool.length]; return r ? String(r.id) : null; }
+    );
+    const rec = pickedId != null ? index.byId.get(String(pickedId)) : null;
+    if (!rec) return res.json({ album: null });
     // Played today? Plays log records album titles lowercased/trimmed.
     const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
     const heard = playsLog.getPlayedTitlesSince(midnight.getTime());
@@ -1971,7 +2158,21 @@ app.get("/api/home/label-of-the-week", (req, res) => {
       lotwCache = { weekKey: wk, at: Date.now(), count, data: empty };
       return res.json(empty);
     }
-    const entry = get(keys[fnv1aHash(wk) % keys.length]);
+    // Same problem, worse: `keys` GROWS while the background label scan runs,
+    // and the old cache invalidated on exactly that growth — so the featured
+    // label could change several times during a week. Remember the chosen key
+    // for the week and keep it, re-picking only if it stops qualifying.
+    const pickedKey = homePicks.stable(
+      "lotw", wk,
+      (k) => keys.includes(k),
+      () => keys[fnv1aHash(wk) % keys.length]
+    );
+    const entry = pickedKey != null ? get(pickedKey) : null;
+    if (!entry) {
+      const empty = { label: null, albums: [] };
+      lotwCache = { weekKey: wk, at: Date.now(), count, data: empty };
+      return res.json(empty);
+    }
     const albums = entry.albums.slice(0, 24).map(a => ({
       offset: a.offset, title: a.title || "", subtitle: a.subtitle || "", image_key: a.image_key || null, source: a.source || null
     }));
@@ -2100,7 +2301,7 @@ app.get("/api/filters/decades", async (req, res) => {
 // means literally "reverse the comparator" for every sort; ties always break
 // on sortTitle so equal-ranked albums can't shuffle between pages.
 // ---------------------------------------------------------------------------
-const LIB_SORTS = new Set(["album", "artist", "year", "genre", "plays", "lastplayed", "random"]);
+const LIB_SORTS = new Set(["album", "artist", "year", "genre", "added", "plays", "lastplayed", "random"]);
 
 // Deterministic shuffle: paging must not reshuffle between requests, so the
 // order is a pure function of (album, seed) rather than Math.random(). No
@@ -2166,18 +2367,20 @@ function libraryView(q) {
     artist: (a, b) => a.sortArtist.localeCompare(b.sortArtist) || byTitle(a, b),
     genre:  (a, b) => String(a.genre || "").toLowerCase().localeCompare(String(b.genre || "").toLowerCase()) || byTitle(a, b),
     year:   (a, b) => (a.year - b.year) || byTitle(a, b),
+    added:  (a, b) => (a.addedAt - b.addedAt) || byTitle(a, b),
     plays:      (a, b) => ((statOf(a) || {}).count  || 0) - ((statOf(b) || {}).count  || 0) || byTitle(a, b),
     lastplayed: (a, b) => ((statOf(a) || {}).lastTs || 0) - ((statOf(b) || {}).lastTs || 0) || byTitle(a, b),
     random: (a, b) => seededRank(a.nTitle + a.nArtist, seed) - seededRank(b.nTitle + b.nArtist, seed),
   }[sort];
 
   let out;
-  if (sort === "year") {
+  if (sort === "year" || sort === "added") {
     // An album whose year LMS never supplied is UNKNOWN, not year zero. Hold
     // those out of the ordering entirely and append them, so flipping to
     // newest-first can't float every undated album to the top of the library.
     const known = [], unknown = [];
-    for (const r of list) (r.year == null ? unknown : known).push(r);
+    const missing = sort === "year" ? (r) => r.year == null : (r) => r.addedAt == null;
+    for (const r of list) (missing(r) ? unknown : known).push(r);
     known.sort(cmp);
     if (desc) known.reverse();
     unknown.sort(byTitle);

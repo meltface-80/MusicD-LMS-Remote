@@ -580,6 +580,8 @@ function esc(s) {
       note: "from the genre LMS reports for each album" },
     { id: "year",   label: "Release year", asc: "Oldest first", desc: "Newest first",
       note: "albums with no year are listed last" },
+    { id: "added",  label: "Date added",   asc: "Oldest first", desc: "Newest first",
+      note: "when the album reached your library, from LMS" },
     { id: "plays",  label: "Most played",  asc: "Least played first", desc: "Most played first",
       note: "from plays this app has seen — roughly the last year" },
     { id: "lastplayed", label: "Last played", asc: "Longest ago first", desc: "Most recent first",
@@ -594,7 +596,8 @@ function esc(s) {
   ];
   // Alphabetical sorts read A→Z by default; quantitative ones read biggest-first.
   const libSortHasDir     = (id) => id !== "random";
-  const libSortDefaultDir = (id) => (id === "year" || id === "plays" || id === "lastplayed") ? "desc" : "asc";
+  const libSortDefaultDir = (id) =>
+    (id === "year" || id === "added" || id === "plays" || id === "lastplayed") ? "desc" : "asc";
   const libNextSeed = () => 1 + Math.floor(Math.random() * 100000);
 
   let libView = { sort: "album", dir: "asc", seed: 1, decade: [], source: [], genre: [], played: "any" };
@@ -1372,7 +1375,21 @@ function esc(s) {
 
     const artWrap = document.createElement("div");
     artWrap.className = "album-art-wrap";
-    if (a.image_key) {
+    // A playlist tile has no cover of its own, so it borrows a 2x2 of the
+    // first four DISTINCT album covers its tracks come from (a.art). Anything
+    // with a single image_key renders as an ordinary album cover.
+    const mosaic = Array.isArray(a.art) ? a.art.filter(Boolean).slice(0, 4) : [];
+    if (mosaic.length) {
+      artWrap.classList.add("is-mosaic");
+      artWrap.dataset.mosaic = String(mosaic.length);
+      for (const key of mosaic) {
+        const img = document.createElement("img");
+        img.loading = "lazy"; img.alt = "";
+        img.src = `/api/image/${encodeURIComponent(key)}?size=${TILE_IMG_SIZE}`;
+        img.onerror = () => img.remove();
+        artWrap.appendChild(img);
+      }
+    } else if (a.image_key) {
       const img = document.createElement("img");
       img.loading = "lazy"; img.alt = "";
       img.src = `/api/image/${encodeURIComponent(a.image_key)}?size=${TILE_IMG_SIZE}`;
@@ -4020,7 +4037,11 @@ function esc(s) {
         const j = await r.json();
         if (j.paired) {
           setBanner(null);
-          await loadZones();
+          // Deliberately NOT awaited: zones and the Home rows are independent,
+          // and awaiting this put a whole round trip in front of ANY content
+          // appearing. showHome()'s loaders fire immediately; the zone picker
+          // fills itself in a moment later.
+          loadZones();
 
           // Home is the landing view; the album wall loads lazily when the
           // user enters it (menu → Random albums / a genre / filter / labels).
@@ -6665,18 +6686,20 @@ function esc(s) {
       msg("qb-empty", "No playlists yet. Select some albums or tracks and use “Add to playlist”.");
       return;
     }
-    const wrap = document.createElement("div"); wrap.className = "qb-nodes";
+    // Album-grid tiles, not a list of rows: a playlist reads as a thing with
+    // artwork, and its cover is a mosaic of the albums its tracks come from.
+    const grid = document.createElement("div"); grid.className = "album-grid";
     for (const pl of list) {
-      const b = document.createElement("button");
-      b.type = "button"; b.className = "qb-node";
-      const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = pl.title || "Untitled";
-      const chev = document.createElement("span"); chev.className = "qb-chevron";
-      chev.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
-      b.appendChild(t); b.appendChild(chev);
-      b.addEventListener("click", () => { stack.push({ kind: "playlist", id: pl.id, title: pl.title }); render(); });
-      wrap.appendChild(b);
+      const n = pl.tracks;
+      const tile = window.__buildAlbumTile({
+        title: pl.title || "Untitled",
+        subtitle: n == null ? "" : n + (n === 1 ? " track" : " tracks"),
+        art: pl.art || [],
+      }, () => { stack.push({ kind: "playlist", id: pl.id, title: pl.title }); render(); });
+      tile.classList.add("is-playlist");
+      grid.appendChild(tile);
     }
-    body.appendChild(wrap);
+    body.appendChild(grid);
   }
 
   async function loadPlaylist(f) {
@@ -6907,35 +6930,22 @@ function esc(s) {
       return;
     }
     const grid = document.createElement("div");
-    grid.className = "lp-grid";
+    grid.className = "album-grid";
     for (const pl of list) grid.appendChild(tile(pl));
     body.appendChild(grid);
   }
 
   // A 2x2 mosaic of the first four covers — a Live Playlist has no artwork of
   // its own, so it borrows from whatever it currently resolves to.
+  // The same album tile the rest of the app uses, so Live Playlists sit in a
+  // real album grid rather than a lookalike of one.
   function tile(pl) {
-    const btn = document.createElement("button");
-    btn.type = "button"; btn.className = "lp-tile";
-    const art = document.createElement("div");
-    art.className = "lp-mosaic" + (pl.art && pl.art.length ? "" : " no-image");
-    for (const key of (pl.art || []).slice(0, 4)) {
-      const img = document.createElement("img");
-      img.loading = "lazy"; img.alt = "";
-      img.src = "/api/image/" + encodeURIComponent(key) + "?size=300";
-      img.onerror = () => img.remove();
-      art.appendChild(img);
-    }
-    const meta = document.createElement("div");
-    meta.className = "lp-meta";
-    const nm = document.createElement("div");
-    nm.className = "lp-name"; nm.textContent = pl.name;
-    const ct = document.createElement("div");
-    ct.className = "lp-count";
-    ct.textContent = pl.total + (pl.total === 1 ? " album" : " albums") + " · " + ruleSummary(pl.view);
-    meta.appendChild(nm); meta.appendChild(ct);
-    btn.appendChild(art); btn.appendChild(meta);
-    btn.addEventListener("click", () => { stack.push({ kind: "detail", id: pl.id, name: pl.name }); render(); });
+    const btn = window.__buildAlbumTile({
+      title: pl.name,
+      subtitle: pl.total + (pl.total === 1 ? " album" : " albums") + " · " + ruleSummary(pl.view),
+      art: pl.art || [],
+    }, () => { stack.push({ kind: "detail", id: pl.id, name: pl.name }); render(); });
+    btn.classList.add("is-playlist");
     return btn;
   }
 
