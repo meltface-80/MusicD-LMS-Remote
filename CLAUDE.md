@@ -105,6 +105,19 @@ Layout section of README.md.
   interpolated client-side). `/api/zone-state` hits LMS live per call, so
   concurrent app+display polls are coalesced server-side (`playerStatusShared`).
   Don't reintroduce fixed fast polls.
+- STORED playlists (`playlists …` CLI) are a different namespace from the live
+  player queue (`playlist …` / `playlistcontrol`). Every `playlists` command is
+  server-global — pass `""` as the player id, NOT a real one. In
+  `playlistcontrol`, `playlist_id:` is a SOURCE filter (load that playlist onto
+  a player) and never edits the saved list.
+- Lyrion has NO bulk playlist add: `playlists edit cmd:add` appends ONE track
+  addressed by title+URL (there is no track_id form), so `/api/playlists/add`
+  loops. That's why TRACK_TAGS carries `u` — the url is the only handle. The
+  rejected alternative was playlistcontrol-into-the-queue + `playlist save`,
+  which clobbers whatever is playing. A track with no url is skipped and
+  counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
+  returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
+  say "added to the existing one" instead of implying a new playlist.
 - Multi-select is TWO independent systems. Albums: `albumSelectMode` +
   `.album.is-selected` + `#album-action-bar`, entered by long-press, and a tap
   in select mode ALWAYS toggles selection even on tiles with a custom onClick

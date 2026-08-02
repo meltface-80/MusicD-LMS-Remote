@@ -839,6 +839,9 @@ function esc(s) {
     return close;
   }
 
+  window.__openLibSheet = openLibSheet;
+  window.__selectedZoneId = () => selectedZoneId;
+
   function openLibSortSheet() {
     openLibSheet("Sort by", (body) => {
       const paint = () => {
@@ -1350,6 +1353,8 @@ function esc(s) {
     if (albumActionInfo) albumActionInfo.textContent = n === 0 ? "Tap albums to select" : n + " album" + (n === 1 ? "" : "s") + " selected";
     if (albumPlayNowBtn) albumPlayNowBtn.disabled = n === 0;
     if (albumQueueBtn)   albumQueueBtn.disabled   = n === 0;
+    const plBtn = document.getElementById("album-playlist-btn");
+    if (plBtn) plBtn.disabled = n === 0;
   }
 
   window.__exitAlbumSelectMode = exitAlbumSelectMode;
@@ -2179,6 +2184,8 @@ function esc(s) {
       ? "Tap tracks to select" : n + " track" + (n === 1 ? "" : "s") + " selected";
     if (trackPlayNowBtn) trackPlayNowBtn.disabled = n === 0;
     if (trackQueueBtn)   trackQueueBtn.disabled   = n === 0;
+    const tplBtn = document.getElementById("track-playlist-btn");
+    if (tplBtn) tplBtn.disabled = n === 0;
   }
   function handleTrackSelect(li, idx) {
     const at = trackSelected.indexOf(idx);
@@ -2220,6 +2227,15 @@ function esc(s) {
     return !currentAlbum || currentAlbum.offset === trackSelectOffset;
   }
 
+  const trackPlaylistBtn = document.getElementById("track-playlist-btn");
+  if (trackPlaylistBtn) trackPlaylistBtn.addEventListener("click", () => {
+    if (!trackSelected.length || !window.__addToPlaylistSheet) return;
+    const n = trackSelected.length;
+    window.__afterPlaylistAdd = exitTrackSelectMode;
+    window.__addToPlaylistSheet(
+      { offset: trackSelectOffset, tracks: trackSelected.slice() },
+      n + " selected track" + (n === 1 ? "" : "s") + ".");
+  });
   if (trackPlayNowBtn)      trackPlayNowBtn.addEventListener("click", () => invokeTrackMulti("play_now"));
   if (trackQueueBtn)        trackQueueBtn.addEventListener("click",   () => invokeTrackMulti("queue"));
   if (trackActionCancelBtn) trackActionCancelBtn.addEventListener("click", exitTrackSelectMode);
@@ -3850,6 +3866,15 @@ function esc(s) {
     }
   }
 
+  const albumPlaylistBtn = document.getElementById("album-playlist-btn");
+  if (albumPlaylistBtn) albumPlaylistBtn.addEventListener("click", () => {
+    if (!albumSelected.length || !window.__addToPlaylistSheet) return;
+    const n = albumSelected.length;
+    window.__afterPlaylistAdd = exitAlbumSelectMode;
+    window.__addToPlaylistSheet(
+      { offsets: albumSelected.map(a => a.offset) },
+      "Every track from " + n + " selected album" + (n === 1 ? "" : "s") + ".");
+  });
   if (albumPlayNowBtn)      albumPlayNowBtn.addEventListener("click",      () => invokeAlbumMulti("play_now"));
   if (albumQueueBtn)        albumQueueBtn.addEventListener("click",        () => invokeAlbumMulti("queue"));
   if (albumActionCancelBtn) albumActionCancelBtn.addEventListener("click", exitAlbumSelectMode);
@@ -6453,4 +6478,221 @@ function esc(s) {
       }
     });
   });
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Playlists — LMS stored playlists, plus the shared "add selection to */
+/*  a playlist" sheet used by both the album and track action bars.     */
+/*                                                                      */
+/*  Lyrion has no bulk add: `playlists edit cmd:add` appends ONE track   */
+/*  by title+url, so the server loops. That's why adding a big selection */
+/*  reports how many landed rather than pretending it's atomic.          */
+/* ------------------------------------------------------------------ */
+(function initPlaylists() {
+  const openBtn = document.getElementById("playlists-toggle");
+  const overlay = document.getElementById("playlists-overlay");
+  const body    = document.getElementById("pl-body");
+  const titleEl = document.getElementById("pl-title");
+  const backBtn = document.getElementById("pl-back");
+  if (!openBtn || !overlay || !body) return;
+
+  let stack = [];     // [{kind:"list"} | {kind:"playlist", id, title}]
+  let seq = 0;
+
+  const msg = (cls, text) => {
+    body.innerHTML = "";
+    const d = document.createElement("div"); d.className = cls; d.textContent = text;
+    body.appendChild(d);
+  };
+  function close() { overlay.classList.add("hidden"); document.body.style.overflow = ""; }
+  overlay.querySelectorAll("[data-pl-close]").forEach(el => el.addEventListener("click", close));
+  backBtn.addEventListener("click", () => { if (stack.length > 1) { stack.pop(); render(); } else close(); });
+
+  function open() {
+    overlay.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    stack = [{ kind: "list", title: "Playlists" }];
+    render();
+  }
+  openBtn.addEventListener("click", open);
+  window.__openPlaylists = open;
+
+  function render() {
+    const f = stack[stack.length - 1] || { kind: "list", title: "Playlists" };
+    titleEl.textContent = f.title || "Playlists";
+    backBtn.hidden = stack.length <= 1;
+    body.scrollTop = 0;
+    if (f.kind === "playlist") loadPlaylist(f);
+    else loadList();
+  }
+
+  async function loadList() {
+    msg("qb-loading", "Loading…");
+    const mine = ++seq;
+    let j;
+    try {
+      const r = await fetch("/api/playlists", { cache: "no-store" });
+      j = await r.json();
+      if (mine !== seq) return;
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { if (mine === seq) msg("qb-empty", "Couldn’t load: " + e.message); return; }
+    const list = (j && j.playlists) || [];
+    body.innerHTML = "";
+    if (!list.length) {
+      msg("qb-empty", "No playlists yet. Select some albums or tracks and use “Add to playlist”.");
+      return;
+    }
+    const wrap = document.createElement("div"); wrap.className = "qb-nodes";
+    for (const pl of list) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "qb-node";
+      const t = document.createElement("span"); t.className = "qb-node-title"; t.textContent = pl.title || "Untitled";
+      const chev = document.createElement("span"); chev.className = "qb-chevron";
+      chev.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
+      b.appendChild(t); b.appendChild(chev);
+      b.addEventListener("click", () => { stack.push({ kind: "playlist", id: pl.id, title: pl.title }); render(); });
+      wrap.appendChild(b);
+    }
+    body.appendChild(wrap);
+  }
+
+  async function loadPlaylist(f) {
+    msg("qb-loading", "Loading…");
+    const mine = ++seq;
+    let j;
+    try {
+      const r = await fetch("/api/playlist/tracks?playlist_id=" + encodeURIComponent(f.id), { cache: "no-store" });
+      j = await r.json();
+      if (mine !== seq) return;
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { if (mine === seq) msg("qb-empty", "Couldn’t load: " + e.message); return; }
+    const tracks = (j && j.tracks) || [];
+    body.innerHTML = "";
+
+    const acts = document.createElement("div");
+    acts.className = "modal-actions";
+    const mk = (label, kind, primary) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "action-btn" + (primary ? " primary" : "");
+      b.textContent = label;
+      b.addEventListener("click", () => playPlaylist(f, kind, b));
+      return b;
+    };
+    acts.appendChild(mk("Play Now", "play_now", true));
+    acts.appendChild(mk("Queue", "queue", false));
+    body.appendChild(acts);
+
+    if (!tracks.length) {
+      const e = document.createElement("div"); e.className = "qb-empty";
+      e.textContent = "This playlist is empty.";
+      body.appendChild(e);
+      return;
+    }
+    const ol = document.createElement("ol"); ol.className = "track-list";
+    for (const t of tracks) {
+      const li = document.createElement("li");
+      const tx = document.createElement("div"); tx.className = "t-text";
+      const ti = document.createElement("span"); ti.className = "t-title"; ti.textContent = t.title || "";
+      tx.appendChild(ti);
+      if (t.subtitle) {
+        const su = document.createElement("span"); su.className = "t-sub"; su.textContent = t.subtitle;
+        tx.appendChild(su);
+      }
+      li.appendChild(tx);
+      ol.appendChild(li);
+    }
+    body.appendChild(ol);
+  }
+
+  async function playPlaylist(f, kind, btn) {
+    const zone = window.__selectedZoneId && window.__selectedZoneId();
+    if (!zone) { if (window.__showToast) window.__showToast("Pick a zone first", "error"); return; }
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/playlist/play", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: f.id, zone_or_output_id: zone, kind })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      if (window.__showToast) window.__showToast((kind === "play_now" ? "Playing " : "Queued ") + (f.title || "playlist"));
+    } catch (e) {
+      if (window.__showToast) window.__showToast(e.message, "error");
+    } finally { btn.disabled = false; }
+  }
+
+  // ---- Shared "add this selection to a playlist" sheet ----
+  // payload is whatever /api/playlists/add accepts: {offsets:[…]} for albums,
+  // or {offset, tracks:[…]} for tracks within one album.
+  window.__addToPlaylistSheet = function (payload, describe) {
+    let close = null;
+    close = window.__openLibSheet("Add to playlist", (sheetBody) => {
+      const note = document.createElement("div");
+      note.className = "lib-facet-note";
+      note.textContent = describe || "";
+      note.style.marginBottom = "10px";
+      sheetBody.appendChild(note);
+
+      const newRow = document.createElement("button");
+      newRow.type = "button"; newRow.className = "lib-sort-row";
+      const plus = document.createElement("span"); plus.className = "lib-sort-arrow"; plus.textContent = "+";
+      const nl = document.createElement("span"); nl.className = "lib-sort-label"; nl.textContent = "New playlist…";
+      newRow.appendChild(plus); newRow.appendChild(nl);
+      newRow.addEventListener("click", () => {
+        const name = window.prompt("Name the new playlist");
+        if (name == null) return;
+        const trimmed = String(name).trim();
+        if (!trimmed) return;
+        send({ ...payload, name: trimmed }, close);
+      });
+      sheetBody.appendChild(newRow);
+
+      const listWrap = document.createElement("div");
+      sheetBody.appendChild(listWrap);
+      (async () => {
+        try {
+          const r = await fetch("/api/playlists", { cache: "no-store" });
+          const j = await r.json();
+          const list = (j && j.playlists) || [];
+          if (!list.length) return;
+          const lbl = document.createElement("div");
+          lbl.className = "lib-sheet-section-label";
+          lbl.style.marginTop = "14px";
+          lbl.textContent = "Existing";
+          listWrap.appendChild(lbl);
+          for (const pl of list) {
+            const row = document.createElement("button");
+            row.type = "button"; row.className = "lib-sort-row";
+            const sp = document.createElement("span"); sp.className = "lib-sort-arrow"; sp.textContent = "";
+            const t = document.createElement("span"); t.className = "lib-sort-label"; t.textContent = pl.title || "Untitled";
+            row.appendChild(sp); row.appendChild(t);
+            row.addEventListener("click", () => send({ ...payload, playlist_id: pl.id }, close));
+            listWrap.appendChild(row);
+          }
+        } catch (e) { /* the New-playlist path still works */ }
+      })();
+    });
+  };
+
+  async function send(bodyObj, close) {
+    if (close) close();
+    try {
+      const r = await fetch("/api/playlists/add", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bodyObj)
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      // created:false means the name already existed — LMS appends to it rather
+      // than making a second playlist, so say so instead of implying a new one.
+      const where = bodyObj.name
+        ? (j.created ? "new playlist “" + bodyObj.name + "”" : "existing “" + bodyObj.name + "”")
+        : "playlist";
+      const skipped = j.skipped ? " (" + j.skipped + " skipped)" : "";
+      if (window.__showToast) window.__showToast("Added " + j.added + " track" + (j.added === 1 ? "" : "s") + " to " + where + skipped);
+      if (window.__afterPlaylistAdd) window.__afterPlaylistAdd();
+    } catch (e) {
+      if (window.__showToast) window.__showToast(e.message, "error");
+    }
+  }
 })();
