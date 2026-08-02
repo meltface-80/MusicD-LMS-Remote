@@ -98,6 +98,16 @@ Layout section of README.md.
   interpolated client-side). `/api/zone-state` hits LMS live per call, so
   concurrent app+display polls are coalesced server-side (`playerStatusShared`).
   Don't reintroduce fixed fast polls.
+- Theming is TWO axes on `<html>`: `data-theme` (dark|light) x `data-palette`
+  (classic|copper) = 4 themes (Dark, Light, Copper dark, Brass light), matching
+  the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
+  palette literal — a new palette should be a token block and nothing else.
+  `--on-accent` is ink ON an accent fill; `--accent-text` is accent used AS text
+  (they differ on light palettes, which need white on the fill). Theme list lives
+  in `public/app.js` `THEMES` and is exposed as `window.__themes` so the Settings
+  picker can't drift from the CSS. Persisted under `rra-theme-v2` (the v1
+  `rra-theme` key auto-migrates); `applyTheme()` reads `--bg` back out and syncs
+  the `theme-color` meta.
 - `public/app.js` is a series of sibling IIFEs (separate scopes, NOT one closure)
   — there is ONE shared HTML-escaper `esc()` at script top-level for all of them.
   Any LMS/network string put into `innerHTML` MUST go through `esc()` (album/

@@ -93,17 +93,59 @@ function esc(s) {
   function filterQS() { return filterQSOf(activeFilter); }
 
   // ----- Theme -----
-  const savedTheme = localStorage.getItem("rra-theme");
-  if (savedTheme === "light" || savedTheme === "dark") {
-    document.documentElement.dataset.theme = savedTheme;
-  } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
-    document.documentElement.dataset.theme = "light";
+  // Four themes across two axes (see the header comment in style.css):
+  // data-theme picks the family, data-palette picks the colours. Exposed on
+  // window.__themes so the Settings pane can render the picker without
+  // duplicating the list.
+  const THEMES = [
+    { id: "dark",         label: "Dark",        theme: "dark",  palette: "classic" },
+    { id: "light",        label: "Light",       theme: "light", palette: "classic" },
+    { id: "copper-dark",  label: "Copper dark", theme: "dark",  palette: "copper"  },
+    { id: "brass-light",  label: "Brass light", theme: "light", palette: "copper"  },
+  ];
+  const THEME_KEY = "rra-theme-v2";
+  window.__themes = THEMES;
+
+  function applyTheme(id) {
+    const t = THEMES.find(x => x.id === id) || THEMES[0];
+    const root = document.documentElement;
+    root.dataset.theme = t.theme;
+    root.dataset.palette = t.palette;
+    // Keep the iOS/Android status-bar tint in step with the actual painted
+    // background — read it back rather than hardcoding a per-theme literal.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      const bg = getComputedStyle(root).getPropertyValue("--bg").trim();
+      if (bg) meta.setAttribute("content", bg);
+    }
+    window.__currentTheme = t.id;
+    return t.id;
   }
-  themeBtn.addEventListener("click", () => {
-    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem("rra-theme", next);
-  });
+  window.__applyTheme = (id) => { applyTheme(id); localStorage.setItem(THEME_KEY, id); };
+
+  (function initTheme() {
+    let id = localStorage.getItem(THEME_KEY);
+    if (!THEMES.some(t => t.id === id)) {
+      // Migrate the v1 key, which only ever held "light" | "dark".
+      const legacy = localStorage.getItem("rra-theme");
+      if (legacy === "light" || legacy === "dark") id = legacy;
+      else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) id = "light";
+      else id = "dark";
+      localStorage.setItem(THEME_KEY, id);
+    }
+    applyTheme(id);
+  })();
+
+  // The old single icon-button toggle now just cycles dark <-> light within the
+  // current palette; the Settings pane offers the full four-theme picker.
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const cur = THEMES.find(t => t.id === window.__currentTheme) || THEMES[0];
+      const next = THEMES.find(t => t.palette === cur.palette && t.theme !== cur.theme) || THEMES[0];
+      window.__applyTheme(next.id);
+      document.dispatchEvent(new CustomEvent("themechange", { detail: next.id }));
+    });
+  }
 
   // ----- Sizing -----
   // Returns a fixed album count that exactly fills the responsive grid:
@@ -4438,6 +4480,61 @@ function esc(s) {
       localStorage.setItem("rra-label-min", labelMinSelect.value);
     });
   }
+
+  // Theme picker — four themes (dark/light x classic/copper). The list comes
+  // from window.__themes so it can't drift from the CSS token blocks. Each row
+  // shows a two-tone swatch rendered by momentarily resolving that theme's
+  // tokens, so the preview can never disagree with the real stylesheet.
+  const themePicker = document.getElementById("theme-picker");
+  function swatchFor(t) {
+    const probe = document.createElement("div");
+    probe.dataset.theme = t.theme;
+    probe.dataset.palette = t.palette;
+    probe.style.display = "none";
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    const bg = cs.getPropertyValue("--bg").trim() || "#000";
+    const ac = cs.getPropertyValue("--accent").trim() || "#888";
+    probe.remove();
+    return { bg, ac };
+  }
+  function renderThemePicker() {
+    if (!themePicker || !window.__themes) return;
+    themePicker.innerHTML = "";
+    for (const t of window.__themes) {
+      const on = window.__currentTheme === t.id;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "lib-sort-row" + (on ? " is-on" : "");
+      row.setAttribute("role", "radio");
+      row.setAttribute("aria-checked", on ? "true" : "false");
+
+      const sw = document.createElement("span");
+      sw.className = "theme-swatch";
+      const { bg, ac } = swatchFor(t);
+      const a = document.createElement("i"), b = document.createElement("i");
+      a.style.background = bg; b.style.background = ac;
+      sw.appendChild(a); sw.appendChild(b);
+
+      const label = document.createElement("span");
+      label.className = "lib-sort-label";
+      label.textContent = t.label;
+
+      const tick = document.createElement("span");
+      tick.className = "lib-sort-arrow";
+      tick.textContent = on ? "✓" : "";
+
+      row.appendChild(sw); row.appendChild(label); row.appendChild(tick);
+      row.addEventListener("click", () => {
+        if (window.__applyTheme) window.__applyTheme(t.id);
+        renderThemePicker();
+      });
+      themePicker.appendChild(row);
+    }
+  }
+  renderThemePicker();
+  // Keep the picker honest if the topbar toggle flips the theme behind its back.
+  document.addEventListener("themechange", renderThemePicker);
 
   // Don't Stop The Music is configured in Settings → Player settings (per
   // player, LMS-backed) — deliberately NOT duplicated on this pane.
