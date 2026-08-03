@@ -85,7 +85,7 @@ Features include:
 * Play album immediately
 * Queue album
 * Queue individual tracks
-* Multi-select albums
+* Multi-select albums (long-press to start; a top-bar Options menu carries every action)
 * Queue multiple albums
 * Continue playback automatically when the queue finishes
 * Move queue between zones - zone switcher

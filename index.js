@@ -1522,6 +1522,22 @@ app.post("/api/favourites/add-multi", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// The mirror of add-multi: UN-favourite several at once. Offered only when
+// every selected album is ALREADY a favourite, so like add-multi it is a
+// one-way move and never flips a mixed selection into a state nobody chose.
+app.post("/api/favourites/remove-multi", async (req, res) => {
+  const items = (req.body || {}).items;
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "items required" });
+  try {
+    let removed = 0, skipped = 0;
+    for (const it of items) {
+      if (favourites.remove(it.title, it.subtitle || it.artist || "")) removed++;
+      else skipped++;
+    }
+    res.json({ ok: true, removed, skipped, total: favourites.count() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/api/playlists", async (req, res) => {
   if (!state.connected) return notConnected(res);
   try {

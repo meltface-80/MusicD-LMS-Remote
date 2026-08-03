@@ -41,12 +41,11 @@ function esc(s) {
   const modalActs   = document.getElementById("modal-actions");
   const modalTracks = document.getElementById("modal-tracks");
 
-  const albumActionBar       = document.getElementById("album-action-bar");
-  const albumActionInfo      = document.getElementById("album-action-info");
-  const albumPlayNowBtn      = document.getElementById("album-play-now-btn");
-  const albumQueueBtn        = document.getElementById("album-queue-btn");
-  const albumActionCancelBtn = document.getElementById("album-action-cancel-btn");
-  const albumFavBtn          = document.getElementById("album-fav-btn");
+  // Album select mode owns a contextual row in the top bar, not a bottom bar.
+  const albumSelectRow       = document.getElementById("album-select-row");
+  const albumSelectInfo      = document.getElementById("album-select-info");
+  const albumOptionsBtn      = document.getElementById("album-options-btn");
+  const albumActionCancelBtn = document.getElementById("album-select-cancel");
   const trackActionBar       = document.getElementById("track-action-bar");
   const trackActionInfo      = document.getElementById("track-action-info");
   const trackPlayNowBtn      = document.getElementById("track-play-now-btn");
@@ -1496,55 +1495,169 @@ function esc(s) {
       if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
       (onClick || (() => openAlbum(a)))();
     });
-    // Long-press opens the album's context sheet (Favourite / Play now / Queue
-    // / Select). While already selecting it keeps the old behaviour of just
-    // toggling the tile — opening a sheet mid-selection would be a non-sequitur.
+    // Long-press STARTS multi-select, on every grid that uses this builder.
+    // Only a library album can be selected: every batch action keys off
+    // `offset`, so a catalogue album or a playlist tile has nothing to act on.
+    // Those keep the context sheet, which is the only way to favourite a Qobuz
+    // catalogue album from the screen you found it on.
     addLongPress(btn, () => {
       if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
-      if (window.__openAlbumSheet) window.__openAlbumSheet(a, { tileEl: btn });
-      else { enterAlbumSelectMode(); handleAlbumTileSelect(btn, a); }
+      if (a.offset != null && !btn.classList.contains("is-playlist")) {
+        enterAlbumSelectMode(); handleAlbumTileSelect(btn, a); return;
+      }
+      // A playlist tile isn't an album at all — no offset, no catalogue token,
+      // so neither selection nor the sheet's actions have a target.
+      if (btn.classList.contains("is-playlist")) return;
+      if (window.__openAlbumSheet) window.__openAlbumSheet(a, { tileEl: btn, allowSelect: false });
     });
     return btn;
   }
 
+  // ----- Album multi-select chrome -----------------------------------------
+  // The contextual row REPLACES the normal top row while selecting, so the
+  // grid below never shifts, and every action sits in one dropdown list —
+  // the old fixed bottom bar ran its last buttons off the edge of a phone.
+  const topbarRow = document.querySelector(".topbar-row");
+
   function enterAlbumSelectMode() {
     albumSelectMode = true;
-    if (albumActionBar) { albumActionBar.classList.remove("hidden"); updateAlbumActionBar(); }
+    if (topbarRow)       topbarRow.classList.add("hidden");
+    if (albumSelectRow)  albumSelectRow.classList.remove("hidden");
+    updateAlbumActionBar();
   }
 
   function exitAlbumSelectMode() {
     albumSelectMode = false;
     albumSelected = [];
-    if (albumActionBar) albumActionBar.classList.add("hidden");
+    closeAlbumOptionsMenu();
+    if (albumSelectRow) albumSelectRow.classList.add("hidden");
+    if (topbarRow)      topbarRow.classList.remove("hidden");
     // Clear the highlight on every selectable album tile — the grid plus the
     // Home carousels — but leave the labels browser's own selection alone.
     document.querySelectorAll(".album.is-selected:not(.label-tile)").forEach(b => b.classList.remove("is-selected"));
   }
 
+  // Named updateAlbumActionBar still, because every action handler calls it to
+  // repaint after a failure; it now writes the top-bar readout.
   function updateAlbumActionBar() {
     const n = albumSelected.length;
-    if (albumActionInfo) albumActionInfo.textContent = n === 0 ? "Tap albums to select" : n + " album" + (n === 1 ? "" : "s") + " selected";
-    if (albumPlayNowBtn) albumPlayNowBtn.disabled = n === 0;
-    if (albumQueueBtn)   albumQueueBtn.disabled   = n === 0;
-    const plBtn = document.getElementById("album-playlist-btn");
-    if (plBtn) plBtn.disabled = n === 0;
-    if (albumFavBtn) albumFavBtn.disabled = n === 0;
-    // Merge is the one action that needs at least two albums.
-    const mgBtn = document.getElementById("album-merge-btn");
-    if (mgBtn) {
-      mgBtn.disabled = n < 2;
-      mgBtn.title = n < 2 ? "Select two or more albums to merge them" : "Merge into one album";
+    if (albumSelectInfo) {
+      albumSelectInfo.textContent = n === 0
+        ? "Tap albums to select"
+        : n + " album" + (n === 1 ? "" : "s") + " selected";
     }
+    if (albumOptionsBtn) albumOptionsBtn.disabled = n === 0;
+    // Repaint an open menu rather than leaving stale gating behind it.
+    if (albumOptionsMenu) buildAlbumOptionsMenu(albumOptionsMenu);
   }
 
   window.__exitAlbumSelectMode = exitAlbumSelectMode;
 
   function handleAlbumTileSelect(btn, a) {
+    // Match on offset — the tile identity the batch endpoints use. Tiles with
+    // no offset never reach here (long-press and tap both gate on it), so an
+    // `undefined === undefined` collision can't collapse two selections.
+    if (a.offset == null) return;
     const idx = albumSelected.findIndex(x => x.offset === a.offset);
     if (idx === -1) { albumSelected.push(a); btn.classList.add("is-selected"); }
     else            { albumSelected.splice(idx, 1); btn.classList.remove("is-selected"); }
+    if (!albumSelected.length) { exitAlbumSelectMode(); return; }
     updateAlbumActionBar();
   }
+
+  // ----- The Options dropdown ----------------------------------------------
+  // Rendered into <body> with fixed positioning off the button's rect: the top
+  // bar is its own stacking context, so a menu nested inside it could not sit
+  // above a full-screen dismiss backdrop.
+  let albumOptionsMenu = null;
+  let albumOptionsBackdrop = null;
+
+  function closeAlbumOptionsMenu() {
+    if (albumOptionsBackdrop) albumOptionsBackdrop.remove();
+    if (albumOptionsMenu) albumOptionsMenu.remove();
+    albumOptionsBackdrop = null;
+    albumOptionsMenu = null;
+    if (albumOptionsBtn) albumOptionsBtn.setAttribute("aria-expanded", "false");
+  }
+
+  function buildAlbumOptionsMenu(menu) {
+    menu.innerHTML = "";
+    const n = albumSelected.length;
+    const row = (label, note, disabled, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "lib-sort-row";
+      b.setAttribute("role", "menuitem");
+      if (disabled) { b.disabled = true; b.setAttribute("aria-disabled", "true"); }
+      const txt = document.createElement("span");
+      const l = document.createElement("div");
+      l.className = "lib-sort-label"; l.textContent = label;
+      txt.appendChild(l);
+      if (note) {
+        const nn = document.createElement("div");
+        nn.className = "lib-sort-note"; nn.textContent = note;
+        txt.appendChild(nn);
+      }
+      b.appendChild(txt);
+      if (!disabled) {
+        b.addEventListener("click", async () => {
+          closeAlbumOptionsMenu();
+          try { await onClick(); } catch (e) { showToast(e.message, "error"); }
+        });
+      }
+      menu.appendChild(b);
+      return b;
+    };
+
+    row("Play now", null, n === 0, () => invokeAlbumMulti("play_now"));
+    row("Add to end of queue", null, n === 0, () => invokeAlbumMulti("queue"));
+    // Long-press no longer opens the context sheet on a library album, so the
+    // menu has to carry the sheet's un-favourite too — otherwise favouriting
+    // would be one gesture and un-favouriting would need the album screen.
+    // Like add-multi, it only offers the reverse when the WHOLE selection is
+    // already favourited; a mixed selection is always an add.
+    const allFav = n > 0 && window.__isFavourite && albumSelected.every(a => window.__isFavourite(a));
+    row(allFav ? "Remove from Favourites" : "Add to Favourites",
+        "Kept in this app, separate from your Qobuz favourites",
+        n === 0, () => albumActFavourite(allFav));
+    row("Add to playlist", null, n === 0, albumActPlaylist);
+    // Merge is the one action that needs at least two albums.
+    row("Merge into one album", n < 2 ? "Select two or more discs to merge them" : null,
+        n < 2, albumActMerge);
+    row("Clear selection", null, false, () => exitAlbumSelectMode());
+  }
+
+  function openAlbumOptionsMenu() {
+    if (albumOptionsMenu) { closeAlbumOptionsMenu(); return; }
+    if (!albumOptionsBtn) return;
+    albumOptionsBackdrop = document.createElement("div");
+    albumOptionsBackdrop.className = "dropdown-backdrop";
+    albumOptionsBackdrop.addEventListener("click", closeAlbumOptionsMenu);
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", "Album actions");
+    albumOptionsMenu = menu;
+    buildAlbumOptionsMenu(menu);
+    document.body.appendChild(albumOptionsBackdrop);
+    document.body.appendChild(menu);
+    // Right-align under the button, clamped into the viewport.
+    const r = albumOptionsBtn.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    let left = r.right - w;
+    if (left < 8) left = 8;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
+    menu.style.left = left + "px";
+    menu.style.top  = (r.bottom + 6) + "px";
+    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 20) + "px";
+    albumOptionsBtn.setAttribute("aria-expanded", "true");
+  }
+
+  if (albumOptionsBtn) albumOptionsBtn.addEventListener("click", openAlbumOptionsMenu);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && albumOptionsMenu) { closeAlbumOptionsMenu(); return; }
+    if (e.key === "Escape" && albumSelectMode) exitAlbumSelectMode();
+  });
 
   // Builds the album tiles into the grid. Shared by the random wall and search.
   function renderAlbumGrid(albums) {
@@ -4132,8 +4245,6 @@ function esc(s) {
   async function invokeAlbumMulti(kind) {
     if (!albumSelected.length) return;
     if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
-    if (albumPlayNowBtn) albumPlayNowBtn.disabled = true;
-    if (albumQueueBtn)   albumQueueBtn.disabled   = true;
     try {
       const r = await fetch("/api/play-multi", {
         method: "POST",
@@ -4159,25 +4270,24 @@ function esc(s) {
     }
   }
 
-  const albumPlaylistBtn = document.getElementById("album-playlist-btn");
-  if (albumPlaylistBtn) albumPlaylistBtn.addEventListener("click", () => {
+  // The Options menu calls these directly — they are the actions, not click
+  // handlers bound to buttons, so the menu can be rebuilt as often as it likes.
+  function albumActPlaylist() {
     if (!albumSelected.length || !window.__addToPlaylistSheet) return;
     const n = albumSelected.length;
     window.__afterPlaylistAdd = exitAlbumSelectMode;
     window.__addToPlaylistSheet(
       { offsets: albumSelected.map(a => a.offset) },
       "Every track from " + n + " selected album" + (n === 1 ? "" : "s") + ".");
-  });
-  if (albumPlayNowBtn)      albumPlayNowBtn.addEventListener("click",      () => invokeAlbumMulti("play_now"));
-  if (albumQueueBtn)        albumQueueBtn.addEventListener("click",        () => invokeAlbumMulti("queue"));
+  }
+
   // Favourite the whole selection. Always ADDS rather than toggling — a mixed
   // selection should end up all-favourited, not flipped item by item into a
   // state nobody asked for.
-  if (albumFavBtn) albumFavBtn.addEventListener("click", async () => {
+  async function albumActFavourite(removing) {
     if (!albumSelected.length) return;
-    albumFavBtn.disabled = true;
     try {
-      const r = await fetch("/api/favourites/add-multi", {
+      const r = await fetch(removing ? "/api/favourites/remove-multi" : "/api/favourites/add-multi", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items: albumSelected.map(a => ({
           title: a.title, subtitle: a.subtitle || "", source: a.source || null,
@@ -4186,23 +4296,26 @@ function esc(s) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-      showToast("Added " + j.added + " to Favourites");
+      showToast(removing
+        ? "Removed " + j.removed + " from Favourites"
+        : "Added " + j.added + " to Favourites");
       exitAlbumSelectMode();
+      // Repaint the hearts on whatever grid is open without rebuilding it.
+      if (window.__refreshFavKeys) window.__refreshFavKeys();
     } catch (e) { showToast(e.message, "error"); updateAlbumActionBar(); }
-  });
+  }
+
   // Merge the selection into one album. The FIRST selected is the primary: it
   // supplies the merged title (minus any disc marker) and artist, and the
   // selection order is the disc order, since LMS gives no disc number on an
   // album row to infer it from.
-  const albumMergeBtn = document.getElementById("album-merge-btn");
-  if (albumMergeBtn) albumMergeBtn.addEventListener("click", async () => {
+  async function albumActMerge() {
     if (albumSelected.length < 2) return;
     const names = albumSelected.map(a => a.title).join("\u201d, \u201c");
     const go = await confirmDialog(
       "Merge " + albumSelected.length + " albums into one?\n\n\u201c" + names + "\u201d\n\n" +
       "They\u2019ll show as a single album, in this order. You can undo this from Merged albums in the menu.");
     if (!go) return;
-    albumMergeBtn.disabled = true;
     try {
       const r = await fetch("/api/albums/merge", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -4215,7 +4328,7 @@ function esc(s) {
       // The index was rebuilt server-side, so whatever grid is open is stale.
       if (window.__refreshCurrentView) window.__refreshCurrentView();
     } catch (e) { showToast(e.message, "error"); updateAlbumActionBar(); }
-  });
+  }
   if (albumActionCancelBtn) albumActionCancelBtn.addEventListener("click", exitAlbumSelectMode);
 
   window.__openAlbum = openAlbum;
@@ -7379,11 +7492,12 @@ function esc(s) {
   }
   window.__toggleFavourite = toggleFav;
 
-  // ---- the long-press context sheet -------------------------------------
-  // Long-press used to enter multi-select directly. It now opens this sheet,
-  // which offers Select as one of its actions — so the gesture does more, and
-  // multi-select stays reachable (and is more discoverable than a hidden
-  // gesture ever was).
+  // ---- the album context sheet ------------------------------------------
+  // Long-press on a LIBRARY album enters multi-select (v1.0.50) — every batch
+  // action then lives in the top bar's Options menu. This sheet is what an
+  // album with no library offset gets instead: a Qobuz catalogue album can't
+  // be selected (nothing keys off), so the sheet is the only place it can be
+  // favourited from the screen you found it on.
   function openAlbumSheet(a, opts) {
     opts = opts || {};
     const many = opts.items && opts.items.length > 1 ? opts.items : null;

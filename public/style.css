@@ -152,6 +152,55 @@ button { font-family: inherit; }
 /* Refresh sits at the far right of the top bar. */
 #topbar-refresh { margin-left: auto; }
 
+/* Album multi-select: a contextual row that REPLACES .topbar-row rather than
+   stacking under it, so entering select mode never shifts the grid. Every
+   action hangs off one Options dropdown — the fixed bottom bar it replaced
+   carried five text buttons plus a cancel and ran Merge off a phone's edge. */
+.album-select-row {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 38px;
+}
+.album-select-info {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 14px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.album-options-btn {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 14px;
+  border: none; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s ease, transform .08s ease;
+}
+.album-options-btn:active { transform: scale(.97); }
+.album-options-btn:disabled { opacity: .45; cursor: default; }
+
+/* Anchored dropdown. Rendered into <body>, not into .topbar — the top bar is
+   its own stacking context, so a nested menu could not sit above a
+   full-screen dismiss backdrop. */
+.dropdown-backdrop { position: fixed; inset: 0; z-index: 95; background: transparent; }
+.dropdown-menu {
+  position: fixed; z-index: 96;
+  min-width: 240px; max-width: min(340px, calc(100vw - 16px));
+  padding: 6px;
+  background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-modal);
+  overflow-y: auto;
+  animation: dropdownIn .14s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes dropdownIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.dropdown-menu .lib-sort-row { margin-top: 0; }
+.dropdown-menu .lib-sort-row + .lib-sort-row { margin-top: 2px; }
+.dropdown-menu .lib-sort-row:hover:not(:disabled) { background: var(--bg-elev-2); color: var(--text); }
+.dropdown-menu .lib-sort-row:disabled { opacity: .42; cursor: default; }
+
 .album-count {
   font-size: 13px;
   font-weight: 600;
@@ -3434,9 +3483,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .album.is-app-fav .album-fav-mark { display: flex; }
 
-/* The album select bar now carries five actions plus cancel. It had no wrap or
-   scroll fallback, so on a narrow phone the last button ran off the edge —
-   let the row wrap instead of clipping. */
+/* Wrap fallback for the remaining bottom bars (track select, label merge).
+   Wrapping alone was NOT enough for the album select bar — .label-merge-actions
+   is flex-shrink:0, so six unshrinkable children overflowed rather than wrapped.
+   That bar is gone; its actions live in the top bar's Options dropdown. */
 .label-merge-bar { flex-wrap: wrap; row-gap: 8px; }
 .label-merge-actions { flex-wrap: wrap; row-gap: 8px; }
 
