@@ -32,6 +32,7 @@ const { makePlaysLog } = require("./lib/plays");
 const makeLivePlaylists = require("./lib/liveplaylists");
 const makeHomePicks = require("./lib/homepicks");
 const makeFavourites = require("./lib/favourites");
+const makeAlbumMerges = require("./lib/albummerges");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -86,6 +87,9 @@ const homePicks = makeHomePicks({ dataDir: DATA_DIR });
 // so they survive rescans and can hold albums that aren't in the library at
 // all. Nothing to do with the Qobuz heart, which writes to the Qobuz account.
 const favourites = makeFavourites({ dataDir: DATA_DIR, debug: DEBUG });
+// Multi-disc albums LMS split apart, collapsed back into one — see
+// lib/albummerges.js. Applied to the raw rows during buildIndex().
+const albumMerges = makeAlbumMerges({ dataDir: DATA_DIR, debug: DEBUG });
 
 // Per-player "what's currently playing, and did it already qualify as a play"
 // state, keyed by player id. Mirrors the sibling's scrobbleUpdate(), but
@@ -660,6 +664,11 @@ async function buildIndex() {
       if (stored) row.coverId = stored;
     }
   }
+  // Collapse merged multi-disc sets. Must run after the edit/art layering
+  // above (so a renamed part still matches its stored key) and before
+  // loadRecords, which mints the offsets and byId/byOffset maps from whatever
+  // row set it is handed.
+  rows = albumMerges.apply(rows);
   search.loadRecords(index, rows);
   indexProgress = 1;
   // "Date added" is derived from the TRACK table (LMS exposes no album-level
@@ -869,7 +878,8 @@ app.get("/api/zones", (req, res) => {
 // ---- library reads ----
 
 function albumOut(rec) {
-  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null, qobuz_id: search.qobuzIdFromExtid(rec.extid) };
+  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null, qobuz_id: search.qobuzIdFromExtid(rec.extid),
+    merge_id: rec.mergeId || null, part_count: rec.partCount || null };
 }
 
 app.get("/api/random-albums", async (req, res) => {
@@ -1048,6 +1058,37 @@ app.get("/api/music-mount", (req, res) => {
   res.json({ mounted: false, path: null });
 });
 
+// Tracks for a record. A merged album spans several LMS albums, so its list is
+// each part's tracks concatenated in the merge's disc order.
+//
+// THIS IS THE ONLY PLACE that ordering is decided, deliberately: track identity
+// on the client is (offset, array index), and /api/album, /api/play-track and
+// /api/play-tracks all resolve through here. If any of them built the array
+// differently, index N would mean a different track between listing it and
+// tapping it — a silent wrong-track bug.
+async function tracksForRecord(rec) {
+  if (!rec.partIds || rec.partIds.length < 2) return state.lms.albumTracks(rec.id);
+  // Fetched in parallel, then reassembled in part order — never completion order.
+  const perPart = await Promise.all(rec.partIds.map(id => state.lms.albumTracks(id).catch(() => [])));
+  const out = [];
+  perPart.forEach((tracks, i) => {
+    for (const t of tracks) out.push({ ...t, _disc: i + 1 });
+  });
+  return out;
+}
+
+// Play or queue a record. A merged album enqueues every part in disc order:
+// the first honours the requested mode, the rest append, or each would replace
+// the one before.
+async function playRecord(zoneId, rec, mode) {
+  if (!rec.partIds || rec.partIds.length < 2) return state.lms.playAlbum(zoneId, rec.id, mode);
+  let first = true;
+  for (const id of rec.partIds) {
+    await state.lms.playAlbum(zoneId, id, first ? mode : "queue");
+    first = false;
+  }
+}
+
 // Album detail by offset → LMS album id → tracks.
 app.get("/api/album", async (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -1056,9 +1097,10 @@ app.get("/api/album", async (req, res) => {
   const rec = index.byOffset.get(offset);
   if (!rec) return res.status(404).json({ error: "Unknown album offset" });
   try {
-    const tracks = await state.lms.albumTracks(rec.id);
+    const tracks = await tracksForRecord(rec);
     res.json({
-      album:  { title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year },
+      album:  { title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
+                merge_id: rec.mergeId || null, part_count: rec.partCount || null },
       tracks: tracks.map(t => ({ title: t.title, subtitle: t.artist || "" })),
       actions: [
         { kind: "play_now",  title: "Play Now" },
@@ -1216,7 +1258,7 @@ app.post("/api/play", async (req, res) => {
   if (!mode)                         return res.status(400).json({ error: "kind required" });
   const rec = index.byOffset.get(offset);
   if (!rec) return res.status(404).json({ error: "Unknown album offset" });
-  try { await state.lms.playAlbum(zone_or_output_id, rec.id, mode); res.json({ ok: true }); }
+  try { await playRecord(zone_or_output_id, rec, mode); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1236,7 +1278,7 @@ app.post("/api/play-multi", async (req, res) => {
     for (const off of offsets) {
       const rec = index.byOffset.get(off);
       if (!rec) continue;
-      await state.lms.playAlbum(zone_or_output_id, rec.id, first ? mode : "queue");
+      await playRecord(zone_or_output_id, rec, first ? mode : "queue");
       first = false;
     }
     res.json({ ok: true });
@@ -1255,7 +1297,7 @@ app.post("/api/play-track", async (req, res) => {
   const rec = index.byOffset.get(offset);
   if (!rec) return res.status(404).json({ error: "Unknown album offset" });
   try {
-    const tracks = await state.lms.albumTracks(rec.id);
+    const tracks = await tracksForRecord(rec);
     const t = tracks[track];
     if (!t) return res.status(409).json({ error: "Track index out of range (library changed?)" });
     await state.lms.playTracks(zone_or_output_id, [t.id], mode);
@@ -1285,7 +1327,7 @@ app.post("/api/play-tracks", async (req, res) => {
   const rec = index.byOffset.get(offset);
   if (!rec) return res.status(404).json({ error: "Unknown album offset" });
   try {
-    const tracks = await state.lms.albumTracks(rec.id);
+    const tracks = await tracksForRecord(rec);
     const ids = [];
     let missing = 0;
     for (const i of idxs) {
@@ -1325,6 +1367,71 @@ async function playlistArtFor(id) {
   playlistArtCache.set(String(id), rec);
   return rec;
 }
+
+// ---------------------------------------------------------------------------
+// Album merges (multi-disc sets LMS split apart)
+// ---------------------------------------------------------------------------
+
+// Rebuild the index so a merge change takes effect everywhere at once. The
+// collapse happens inside buildIndex, so there's no partial state to patch.
+async function reindexAfterMergeChange() {
+  index.builtAt = 0;
+  libraryViewCache.clear();
+  await ensureIndex();
+}
+
+app.get("/api/albums/merges", async (req, res) => {
+  try {
+    const rows = albumMerges.list();
+    // Resolve each merge to its live album so the screen can show the cover and
+    // link to it; a merge whose albums have left the library still lists, so it
+    // can be undone rather than becoming unreachable.
+    let byKey = null;
+    if (state.connected) {
+      try {
+        await ensureIndex();
+        byKey = new Map();
+        for (const rec of index.records) if (rec.mergeId) byKey.set(rec.mergeId, rec);
+      } catch (e) { byKey = null; }
+    }
+    res.json({
+      total: rows.length,
+      merges: rows.map(m => {
+        const live = byKey && byKey.get(m.id);
+        return {
+          id: m.id, title: m.title, artist: m.artist, at: m.at,
+          parts: m.parts.map(p => ({ title: p.title, artist: p.artist })),
+          part_count: m.parts.length,
+          offset: live ? live.offset : null,
+          image_key: live ? live.image_key : null,
+          present: live ? (live.partCount || 0) : 0,
+        };
+      }),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// body { items: [{title, subtitle}] } — items[0] is the primary and supplies
+// the merged album's title (minus any disc marker) and artist.
+app.post("/api/albums/merge", async (req, res) => {
+  const items = (req.body || {}).items;
+  if (!Array.isArray(items) || items.length < 2) return res.status(400).json({ error: "Pick at least two albums to merge" });
+  try {
+    const r = albumMerges.merge(items);
+    if (!r.ok) return res.status(400).json(r);
+    await reindexAfterMergeChange();
+    res.json({ ok: true, merge: r.merge });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete("/api/albums/merge/:id", async (req, res) => {
+  try {
+    const r = albumMerges.unmerge(req.params.id);
+    if (!r.ok) return res.status(404).json(r);
+    await reindexAfterMergeChange();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ---------------------------------------------------------------------------
 // Favourites (this app's own collection)

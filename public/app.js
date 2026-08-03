@@ -767,6 +767,13 @@ function esc(s) {
     if (libControls) libControls.classList.add("hidden");
   }
   window.__exitLibraryWall = exitLibraryWall;
+  // Used after a change that rebuilt the index server-side (an album merge), so
+  // the open grid doesn't keep showing rows that no longer exist.
+  window.__refreshCurrentView = () => {
+    if (libraryWallActive) applyLibView();
+    else if (!homeView.classList.contains("hidden")) { homeLibraryStale = true; showHome(); }
+    else loadRandom();
+  };
   window.__showLibraryWall = showLibraryWall;
 
   async function loadLibFacets() {
@@ -1450,6 +1457,13 @@ function esc(s) {
       artWrap.appendChild(heart);
     }
 
+    if (a.part_count > 1) {
+      const badge = document.createElement("span");
+      badge.className = "album-merge-badge";
+      badge.textContent = a.part_count + " discs";
+      artWrap.appendChild(badge);
+    }
+
     // Mark tiles already in this app's Favourites. The key is stamped on the
     // element so a later refresh can repaint without rebuilding the grid —
     // /api/favourites/keys exists precisely for this.
@@ -1513,6 +1527,12 @@ function esc(s) {
     const plBtn = document.getElementById("album-playlist-btn");
     if (plBtn) plBtn.disabled = n === 0;
     if (albumFavBtn) albumFavBtn.disabled = n === 0;
+    // Merge is the one action that needs at least two albums.
+    const mgBtn = document.getElementById("album-merge-btn");
+    if (mgBtn) {
+      mgBtn.disabled = n < 2;
+      mgBtn.title = n < 2 ? "Select two or more albums to merge them" : "Merge into one album";
+    }
   }
 
   window.__exitAlbumSelectMode = exitAlbumSelectMode;
@@ -4137,6 +4157,32 @@ function esc(s) {
       if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
       showToast("Added " + j.added + " to Favourites");
       exitAlbumSelectMode();
+    } catch (e) { showToast(e.message, "error"); updateAlbumActionBar(); }
+  });
+  // Merge the selection into one album. The FIRST selected is the primary: it
+  // supplies the merged title (minus any disc marker) and artist, and the
+  // selection order is the disc order, since LMS gives no disc number on an
+  // album row to infer it from.
+  const albumMergeBtn = document.getElementById("album-merge-btn");
+  if (albumMergeBtn) albumMergeBtn.addEventListener("click", async () => {
+    if (albumSelected.length < 2) return;
+    const names = albumSelected.map(a => a.title).join("\u201d, \u201c");
+    const go = await confirmDialog(
+      "Merge " + albumSelected.length + " albums into one?\n\n\u201c" + names + "\u201d\n\n" +
+      "They\u2019ll show as a single album, in this order. You can undo this from Merged albums in the menu.");
+    if (!go) return;
+    albumMergeBtn.disabled = true;
+    try {
+      const r = await fetch("/api/albums/merge", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: albumSelected.map(a => ({ title: a.title, subtitle: a.subtitle || "" })) }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      showToast("Merged into \u201c" + (j.merge && j.merge.title) + "\u201d");
+      exitAlbumSelectMode();
+      // The index was rebuilt server-side, so whatever grid is open is stale.
+      if (window.__refreshCurrentView) window.__refreshCurrentView();
     } catch (e) { showToast(e.message, "error"); updateAlbumActionBar(); }
   });
   if (albumActionCancelBtn) albumActionCancelBtn.addEventListener("click", exitAlbumSelectMode);
@@ -7405,4 +7451,86 @@ function esc(s) {
   }
   openBtn.addEventListener("click", open);
   window.__openFavourites = open;
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Merged albums — review and undo multi-disc merges                  */
+/* ------------------------------------------------------------------ */
+(function initMergedAlbums() {
+  const overlay = document.getElementById("merged-overlay");
+  const body    = document.getElementById("merged-body");
+  const openBtn = document.getElementById("merged-albums-toggle");
+  if (!overlay || !body || !openBtn) return;
+
+  const close = () => { overlay.classList.add("hidden"); document.body.style.overflow = ""; };
+  overlay.querySelectorAll("[data-merged-close]").forEach(el => el.addEventListener("click", close));
+  const msg = (cls, text) => { body.innerHTML = ""; const d = document.createElement("div"); d.className = cls; d.textContent = text; body.appendChild(d); };
+
+  async function render() {
+    msg("qb-loading", "Loading\u2026");
+    let j;
+    try {
+      const r = await fetch("/api/albums/merges", { cache: "no-store" });
+      j = await r.json();
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { msg("qb-empty", "Couldn\u2019t load: " + e.message); return; }
+    const merges = (j && j.merges) || [];
+    if (!merges.length) {
+      msg("qb-empty", "No merged albums. Select two or more albums, then choose Merge \u2014 useful when your server splits a multi-disc set.");
+      return;
+    }
+    body.innerHTML = "";
+    for (const m of merges) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "merged-row";
+
+      if (m.image_key) {
+        const img = document.createElement("img");
+        img.className = "merged-row-art"; img.loading = "lazy"; img.alt = "";
+        img.src = "/api/image/" + encodeURIComponent(m.image_key) + "?size=200";
+        img.onerror = () => img.remove();
+        rowEl.appendChild(img);
+      }
+
+      const txt = document.createElement("div");
+      txt.className = "merged-row-txt";
+      const t = document.createElement("div"); t.className = "merged-row-title"; t.textContent = m.title || "Untitled";
+      const sub = document.createElement("div"); sub.className = "merged-row-sub"; sub.textContent = m.artist || "";
+      const parts = document.createElement("div");
+      parts.className = "merged-row-parts";
+      // Say plainly when some parts aren't in the library, rather than showing
+      // a count that doesn't match what's listed.
+      const missing = m.part_count - (m.present || 0);
+      parts.textContent = m.parts.map(p => p.title).join("  \u00b7  ") +
+        (missing > 0 ? "  \u2014  " + missing + " not in the library" : "");
+      txt.appendChild(t); txt.appendChild(sub); txt.appendChild(parts);
+      rowEl.appendChild(txt);
+
+      const un = document.createElement("button");
+      un.type = "button"; un.className = "action-btn";
+      un.style.flex = "none";
+      un.textContent = "Unmerge";
+      un.addEventListener("click", async () => {
+        un.disabled = true;
+        try {
+          const r = await fetch("/api/albums/merge/" + encodeURIComponent(m.id), { method: "DELETE" });
+          const jj = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(jj.error || ("HTTP " + r.status));
+          window.__showToast("Unmerged \u201c" + (m.title || "album") + "\u201d");
+          await render();
+          if (window.__refreshCurrentView) window.__refreshCurrentView();
+        } catch (e) { un.disabled = false; window.__showToast(e.message, "error"); }
+      });
+      rowEl.appendChild(un);
+      body.appendChild(rowEl);
+    }
+  }
+
+  async function open() {
+    overlay.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    await render();
+  }
+  openBtn.addEventListener("click", open);
+  window.__openMergedAlbums = open;
 })();

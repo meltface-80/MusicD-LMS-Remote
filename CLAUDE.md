@@ -131,6 +131,22 @@ Layout section of README.md.
   `window.__addLongPress` explicitly with `allowSelect:false` (no library offset
   to multi-select on). Any new bespoke tile builder must do the same or its
   albums silently can't be favourited.
+- Album merges (`lib/albummerges.js`, `data/album-merges.json`) collapse the
+  separate rows LMS makes for a multi-disc set. NOT like the label merge: labels
+  are a derived projection, albums are the PRIMARY index. The collapse runs in
+  `buildIndex()` AFTER the edit/artwork layering (so a renamed part still
+  matches) and BEFORE `search.loadRecords` (which mints offsets and the maps).
+  A merged record keeps `partIds` — every part's LMS album id in disc order —
+  because LMS only understands one `album_id` at a time. `loadRecords` maps
+  EVERY part id into `byId`, or the genre-facet remap and the album-of-the-day
+  pick lose absorbed discs. `tracksForRecord()` and `playRecord()` in index.js
+  are the ONLY places that walk `partIds`; track identity is (offset, array
+  index), so if the track list and the play path built that array differently
+  the same index would mean different tracks — keep both going through
+  `tracksForRecord()`. Parts key on normalised title+artist (durable across
+  rescans); order is the USER'S selection order because an LMS album row
+  carries no disc number (only tracks do, tag `i`). The merged title comes from
+  `stripDiscSuffix()` on the primary part.
 - Favourites (`lib/favourites.js`, `data/favourites.json`) are THIS APP'S own
   collection, nothing to do with the Qobuz heart (which writes to the Qobuz
   account). Keyed on normalised title+artist like album edits, because ids and
