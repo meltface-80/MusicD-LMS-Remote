@@ -550,6 +550,7 @@ async function refreshConnectionInner() {
     if (!wasConnected) {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
+      invalidateServices();
     } else if (scanChangedSinceIndex() && !indexBuilding) {
       // LMS finished a scan we didn't start. Rebuild once, here, rather than
       // waiting for a request to notice — merges, edits and artwork are all
@@ -1161,12 +1162,39 @@ app.get("/api/albumart/candidates", async (req, res) => {
   } catch (e) { res.json({ candidates: [] }); }
 });
 
+// SSRF guard for owner-supplied artwork URLs, with ONE deliberate exemption:
+// the LMS server itself. The Music & Artist Information plugin returns cover
+// candidates as URLs on the LMS host, which is nearly always a private address
+// — guarding those blindly would block previewing and saving every MAI cover.
+// The LMS host isn't caller-chosen, it's the server we are already configured
+// to talk to, so it is not an SSRF target. Everything else goes through
+// assertPublicUrl unchanged.
+function isLmsHostedUrl(url) {
+  try {
+    const u = new URL(url);
+    const cfg = state.lms && state.lms.cfg;
+    if (!cfg || !cfg.host) return false;
+    const port = u.port || (u.protocol === "https:" ? "443" : "80");
+    return u.hostname.toLowerCase() === String(cfg.host).toLowerCase()
+        && String(port) === String(cfg.port);
+  } catch (e) { return false; }
+}
+async function assertAllowedArtUrl(url) {
+  if (isLmsHostedUrl(url)) return;
+  await assertPublicUrl(url);
+}
+
 // Server-side preview proxy for a candidate cover (remote sources are often
 // CORS-less / hotlink-blocked in the browser).
 app.get("/api/albumart/thumb", async (req, res) => {
   const url = String(req.query.url || "");
   if (!/^https?:\/\//i.test(url)) return res.status(400).end();
   try {
+    // The caller supplies this URL, so it needs the same SSRF guard as the
+    // album-edit art_url and the label logo. Without it this GET was a probe
+    // for internal hosts and ports, and relayed the bytes of anything that
+    // answered with an image content type.
+    await assertAllowedArtUrl(url);
     const { body, type } = await withDeadline(albumArt.thumb(url), 15000);
     res.set("Content-Type", type);
     res.set("Cache-Control", "public, max-age=3600");
@@ -1187,7 +1215,10 @@ app.post("/api/album/edit", async (req, res) => {
   try {
     let art;   // undefined = leave artwork override as-is
     if (typeof art_url === "string" && art_url.trim()) {
-      await assertPublicUrl(art_url.trim());   // SSRF guard on the owner-supplied cover URL
+      // SSRF guard on the owner-supplied cover URL. Exempts the LMS host, so a
+      // Music & Artist Information candidate (served BY the LMS, on a private
+      // address) can actually be saved — it could not be before.
+      await assertAllowedArtUrl(art_url.trim());
       art = await withDeadline(
         albumArt.saveFromUrl(origTitle, origArtist, art_url.trim(), "Manual"), 25000);
     }
@@ -1420,6 +1451,10 @@ async function playlistArtFor(id) {
 // Rebuild the index so a merge change takes effect everywhere at once. The
 // collapse happens inside buildIndex, so there's no partial state to patch.
 async function reindexAfterMergeChange() {
+  // Let any build already in flight finish first: it read the OLD merge file,
+  // so joining it would answer ok:true while the albums were still merged, and
+  // nothing would rebuild again until the 12h staleness.
+  if (indexBuilding) await indexBuilding.catch(() => {});
   index.builtAt = 0;
   libraryViewCache.clear();
   await ensureIndex();
@@ -1476,7 +1511,10 @@ function resolveMergeItems(items) {
     if (rec && rec.mergeId) {
       const m = albumMerges.byId(rec.mergeId);
       if (m && Array.isArray(m.parts) && m.parts.length) {
-        if (!out.length) { title = m.title || null; artist = m.artist || null; }
+        // Whichever selected item is the merge supplies the name — not only
+        // items[0]. Picking a loose disc first used to rename the whole set to
+        // that disc's title ("The Wall" becoming "The Wall (Disc 3)").
+        if (title == null) { title = m.title || null; artist = m.artist || null; }
         for (const p of m.parts) {
           out.push({ title: p.title, artist: p.artist, id: p.id || null,
                      origTitle: p.origTitle || p.title, origArtist: p.origArtist || p.artist });
@@ -2019,8 +2057,20 @@ app.get("/api/lms/pref/:name", async (req, res) => {
   try { res.json({ name: req.params.name, value: await state.lms.getPref(req.params.name) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Only the prefs this app's Settings screen actually offers. The rescan route
+// next door whitelists its modes for the same reason: an unauthenticated POST
+// must not be able to reconfigure the LMS server itself (mediadirs, auth, …).
+const WRITABLE_SERVER_PREFS = new Set([
+  "playtrackalbum", "playlistmode", "defeatDestructiveTouchToPlay",
+  "groupdiscs", "variousArtistAutoIdentification", "useBandAsAlbumArtist",
+  "ignoredarticles", "browseagelimit", "itemsPerPage",
+  "scheduledScan", "autorescan", "rescan-scheduled-time",
+]);
 app.post("/api/lms/pref/:name", async (req, res) => {
   if (!state.connected) return notConnected(res);
+  if (!WRITABLE_SERVER_PREFS.has(req.params.name)) {
+    return res.status(403).json({ error: "That server preference isn\u2019t writable from here" });
+  }
   try { await state.lms.setPref(req.params.name, (req.body || {}).value); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3092,32 +3142,53 @@ let serviceCache = { at: 0, list: null, inflight: null };
 
 async function probeServices() {
   const player = state.players[0] && state.players[0].id;
+  // With no player we cannot run the second step at all (every `<tag> items`
+  // dispatch is needs-client=1). Reporting "unusable" then would hide a
+  // perfectly good Qobuz whenever the server has no players connected, so
+  // treat it as UNKNOWN and leave the UI as it was.
+  if (!player) return null;
   // `apps` names every ENABLED app plugin, so a service the owner installed
   // that we don't know about still gets a label; it can't see login state, so
   // serviceStatus still decides usability.
   const apps = await state.lms.listApps().catch(() => []);
   const byTag = new Map(apps.map(a => [a.tag, a.name]));
   const tags = [...new Set([...SERVICE_TAGS, ...apps.map(a => a.tag)])];
+  // In parallel: each tag costs two round trips, and a server with a dozen app
+  // plugins made this a ~25-RPC serial walk in front of a user action.
+  const results = await Promise.all(tags.map(tag =>
+    state.lms.serviceStatus(tag, player).catch(() => null)));
   const out = [];
-  for (const tag of tags) {
-    const st = await state.lms.serviceStatus(tag, player).catch(() => null);
-    if (!st || !st.installed) continue;
+  results.forEach((st, i) => {
+    if (!st || !st.installed) return;
+    const tag = tags[i];
     out.push({ tag, name: SERVICE_LABEL[tag] || byTag.get(tag) || tag,
                installed: true, usable: !!st.usable, notice: st.notice || null });
-  }
+  });
   return out;
 }
 
 async function services(force) {
-  if (!state.connected || !state.lms) return [];
+  if (!state.connected || !state.lms) return serviceCache.list || [];
+  if (force && serviceCache.inflight) await serviceCache.inflight.catch(() => {});
   if (!force && serviceCache.list && (Date.now() - serviceCache.at) < SERVICE_TTL) return serviceCache.list;
   // Coalesce concurrent probes — the side menu and a search can ask at once.
-  if (serviceCache.inflight) return serviceCache.inflight;
+  if (!force && serviceCache.inflight) return serviceCache.inflight;
   serviceCache.inflight = probeServices()
-    .then((list) => { serviceCache = { at: Date.now(), list, inflight: null }; return list; })
+    .then((list) => {
+      // A null probe means "couldn't tell" (no player). Keep whatever we knew
+      // and do NOT stamp the cache, or one blip hides every service for the
+      // whole TTL — the failure mode is silent and looks like a bug in the app.
+      if (list === null) { serviceCache.inflight = null; return serviceCache.list || []; }
+      serviceCache = { at: Date.now(), list, inflight: null };
+      return list;
+    })
     .catch((e) => { serviceCache.inflight = null; log.debug("service probe failed:", e.message); return serviceCache.list || []; });
   return serviceCache.inflight;
 }
+
+// Invalidate on reconnect: a server that just came back may have had plugins
+// added, removed or signed in while we were away.
+function invalidateServices() { serviceCache = { at: 0, list: serviceCache.list, inflight: null }; }
 
 async function serviceUsable(tag) {
   const list = await services(false);
@@ -3151,6 +3222,9 @@ app.get("/api/services", async (req, res) => {
 // menu shapes can be inspected (the parsers were built without a live server).
 // Read-only. GET /api/qobuz/debug?q=radiohead
 app.get("/api/qobuz/debug", async (req, res) => {
+  // Echoes raw plugin responses (and player ids) straight back, so it is a
+  // diagnostic, not a feature — off unless diagnostics are switched on.
+  if (!log.enabled("debug")) return res.status(404).json({ error: "not found" });
   if (!state.connected || !state.lms) return res.status(503).json({ error: "not connected to LMS" });
   const q = String(req.query.q || "radiohead").trim();
   const player = state.players[0] && state.players[0].id;
@@ -3213,12 +3287,16 @@ app.get("/api/search/external", async (req, res) => {
   const LIM = 6, DEADLINE_MS = 10000;
   if (!q) return res.json({ query: q, pitchfork: [], qobuz: [] });
   const player = state.players[0] && state.players[0].id;
+  // Resolved BEFORE the array is built: an `await` inside it would let the
+  // Pitchfork deadline start ticking while the service probe ran, so a cold
+  // probe could eat the whole 10s budget and drop the Pitchfork results.
+  const qobuzOk = !!(state.connected && player) && await serviceUsable("qobuz");
   const [pf, qb] = await Promise.all([
     withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => []),
     // Skip the round trip entirely when Qobuz isn't usable — the "Available on
     // Qobuz" section then never appears, rather than appearing empty after a
     // 10s deadline.
-    (state.connected && player && await serviceUsable("qobuz"))
+    qobuzOk
       ? withDeadline(searchQobuz(q, player, LIM), DEADLINE_MS).catch((e) => { log.debug("qobuz search failed:", e.message); return []; })
       : Promise.resolve([]),
   ]);

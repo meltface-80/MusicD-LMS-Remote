@@ -1494,9 +1494,10 @@ function esc(s) {
     btn.appendChild(artWrap);
     btn.appendChild(meta);
     btn.addEventListener("click", () => {
-      // In select mode a tap always toggles selection — even for tiles that
-      // carry a custom open handler (Home carousels, label albums).
-      if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
+      // In select mode a tap toggles selection — even for tiles that carry a
+      // custom open handler (Home carousels, label albums). A tile with no
+      // offset can't be selected, so it opens as usual rather than being inert.
+      if (albumSelectMode && a.offset != null) { handleAlbumTileSelect(btn, a); return; }
       (onClick || (() => openAlbum(a)))();
     });
     // Long-press STARTS multi-select, on every grid that uses this builder.
