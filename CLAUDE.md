@@ -155,11 +155,29 @@ Layout section of README.md.
   re-resolves each one to a CURRENT offset by title+artist; a null offset means
   "not in the library right now", which the UI must handle rather than opening
   nothing.
-- Long-press on an album tile opens the CONTEXT SHEET (`window.__openAlbumSheet`),
-  not select mode — "Select" is one of its actions. Anything that expects the old
-  gesture must go through the sheet. Long-press while ALREADY selecting still
-  just toggles the tile. Track rows are unchanged: long-press there still enters
-  track select directly.
+- Long-press on an album tile ENTERS MULTI-SELECT (v1.0.50, reverting v1.0.45's
+  context sheet), and only for a tile with a library `offset` — every batch
+  action keys off it, so `handleAlbumTileSelect` returns early without one. A
+  Qobuz catalogue tile still gets `window.__openAlbumSheet` (always with
+  `allowSelect:false`): it is the only way to favourite a catalogue album from
+  the screen you found it on. A playlist/Live-Playlist tile (`.is-playlist`,
+  no offset, no token) gets NOTHING — it isn't an album. Long-press while
+  ALREADY selecting just toggles. Track rows are unchanged.
+- The album selection actions live in a TOP-BAR OPTIONS DROPDOWN, not a bottom
+  bar. `#album-select-row` REPLACES `.topbar-row` while selecting (so the grid
+  never shifts), and it works on every album grid for free because it is part of
+  the global top bar. The old `#album-action-bar` was five text buttons plus a
+  cancel in a `flex-shrink:0` row — `flex-wrap` could not save it and Merge fell
+  off a phone's right edge; a vertical list cannot overflow. The menu is
+  rendered into `<body>` with fixed positioning off the button's rect: `.topbar`
+  is its own stacking context, so a nested menu could not sit above the
+  full-screen dismiss backdrop. Do NOT write the "N selected" readout into
+  `#album-count` — the Library wall rewrites that on every page fetch;
+  `#album-select-info` exists for it. Teardown lives inside
+  `exitAlbumSelectMode()` so all ~15 call sites get it without edits.
+  Multi-favourite is add-only EXCEPT when the whole selection is already
+  favourited, when the row flips to Remove (`/api/favourites/remove-multi`) —
+  long-press no longer reaches the sheet's un-favourite, so the menu carries it.
 - `window.__albumAction(items, kind)` is the one way to play/queue a set of
   albums from anywhere. Library albums go by `offset` through `/api/play-multi`;
   Qobuz catalogue albums have no offset and replay by token. When mixing, only
