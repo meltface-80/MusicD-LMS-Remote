@@ -56,7 +56,7 @@ Search your music library instantly by:
 
 Optionally extend searches to Pitchfork reviews.
 
-Browse and add Qobuz / TIDAL albums through your LMS server's own plugins — reachable in-app via the **Browse** button, which opens the LMS Material skin.
+Browse and add Qobuz / TIDAL albums through your LMS server's own plugins — reachable in-app via the **Browse Qobuz** button, which opens the app's own Qobuz browser.
 
 ⸻
 
@@ -362,7 +362,7 @@ index.js          server: connection, album index, /api routes
 lib/lms.js        LMS JSON-RPC adapter (the Roon replacement)
 lib/search.js     whole-library album/artist search index
 lib/*.test.js     unit tests
-public/           the shared PWA frontend (byte-identical to the Roon build)
+public/           the PWA frontend (shares the Roon build's design language, plus LMS-only screens: album merges, Live Playlists, the native Qobuz browser)
 SETTINGS.md       Material-skin-level LMS settings catalog (settings-UI blueprint)
 PORTING.md        per-route Roon→LMS port status
 ```

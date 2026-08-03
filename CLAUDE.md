@@ -70,7 +70,8 @@ Layout section of README.md.
   NO app-side Qobuz/Tidal streaming integration — those were removed (v1.0.15).
   Browsing/adding online-library albums is done on the SERVER via its own
   Qobuz/Tidal plugins; the app opens the LMS Material skin (`/material/`) in the
-  embedded frame (topbar "Browse Qobuz" button → server-browse-toggle). The
+  embedded frame. NOTE: since the native browser landed, `server-browse-toggle`
+  opens `window.__openQobuzBrowse()` in-app, NOT the Material frame. The
   `lib/labels.js` Qobuz label lookup is an unrelated PUBLIC web scrape (no
   account/API) and stays.
 - Song/album LMS tag letters differ (`c` vs `j` for cover ids; see
@@ -140,7 +141,8 @@ Layout section of README.md.
   because LMS only understands one `album_id` at a time. `loadRecords` maps
   EVERY part id into `byId`, or the genre-facet remap and the album-of-the-day
   pick lose absorbed discs. `tracksForRecord()` and `playRecord()` in index.js
-  are the ONLY places that walk `partIds`; track identity is (offset, array
+  are the only places that WALK `partIds` in order (`resolveMergeItems` reads
+  `partIds[0]` for the primary's id); track identity is (offset, array
   index), so if the track list and the play path built that array differently
   the same index would mean different tracks — keep both going through
   `tracksForRecord()`. Parts key on normalised title+artist (durable across
@@ -161,6 +163,23 @@ Layout section of README.md.
   matches no album. `/api/albums/merge` takes each item's `offset` and resolves
   it server-side; an item that is itself a merge expands into that merge's
   parts AND carries its name over, so growing a set keeps both.
+- A merge repair may only ever move the ARTIST half of a key, NEVER the title
+  (v1.0.53). The title comes from the file's ALBUM tag; the artist is what LMS
+  re-derives. v1.0.52 accepted a stored-id hit with no identity check, so a full
+  rescan — which renumbers ids AND re-detects artists, i.e. exactly when repair
+  runs — could hand a part whichever album now holds its old id. That album
+  VANISHED from the library into someone else's merge and the merge file was
+  rewritten with its key, unrecoverable except by unmerging. Repairs now require
+  an exact normalised-title match; a moved artist additionally needs
+  corroboration (another part still matching exactly, or the WHOLE set
+  resolving) or it is refused.
+- Owner-supplied artwork URLs go through `assertAllowedArtUrl()`, not
+  `assertPublicUrl()` directly (v1.0.53): the MAI plugin returns cover
+  candidates as URLs ON THE LMS HOST, which is nearly always a private address.
+  Guarding those blindly made every MAI candidate unsavable — a bug that had
+  been live since the guard landed. The LMS host is exempt because it is the
+  server we are configured to talk to, not a caller-chosen target; everything
+  else is guarded as before.
 - Merge parts SELF-HEAL across a rescan (v1.0.52). The part key is
   title+artist and the ARTIST half is SCAN-DERIVED — `lib/lms.js` takes
   `row.artist || row.albumartist`, and a rescan re-runs various-artist
@@ -243,9 +262,11 @@ Layout section of README.md.
   filtering it would surprise). `applyLibView()` marks it stale; `showHome()`
   reloads it.
 - Multi-select is TWO independent systems. Albums: `albumSelectMode` +
-  `.album.is-selected` + `#album-action-bar`, entered by long-press, and a tap
-  in select mode ALWAYS toggles selection even on tiles with a custom onClick
-  (Home carousels, Library wall). It must be cleared on every view change —
+  `.album.is-selected` + `#album-select-row` (the top-bar Options row, v1.0.50 —
+  the old `#album-action-bar` is gone), entered by long-press, and a tap in
+  select mode toggles selection even on tiles with a custom onClick (Home
+  carousels, Library wall) — EXCEPT a tile with no `offset`, which can't be
+  selected and so opens as usual rather than being inert. It must be cleared on every view change —
   `showHome`/`showLibraryWall`/`exitLibraryWall`/`showUnplayedWall`/
   `exitArtistView`/search/labels — or the bar strands over the next screen.
   Track selection has its OWN control (`.t-check`) at the RIGHT of each row —
