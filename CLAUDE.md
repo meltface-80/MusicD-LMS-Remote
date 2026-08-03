@@ -147,6 +147,39 @@ Layout section of README.md.
   rescans); order is the USER'S selection order because an LMS album row
   carries no disc number (only tracks do, tag `i`). The merged title comes from
   `stripDiscSuffix()` on the primary part.
+- Merge identity is the ORIGINAL LMS title+artist, never the displayed one
+  (v1.0.51). The edit layer runs BEFORE `albummerges.apply()` and renames rows
+  in place, so keying on the display title meant a rename changed the very
+  string the key came from and the part fell out of its own merge. Rows carry
+  `origTitle`/`origArtist` so both stages agree; `apply()` matches a row on
+  EITHER key so pre-v1.0.51 merges still collapse. Renaming a merged album goes
+  to the merge record (`albummerges.rename`), NOT to an album edit — an edit
+  keys on a raw row and renaming that row is what broke it; year/artwork still
+  layer onto the primary part because they don't touch the key. `apply()` sets
+  the merged row's `origTitle`/`origArtist` from the primary part, or
+  `search.indexRecord` would default them to the synthesised merged name that
+  matches no album. `/api/albums/merge` takes each item's `offset` and resolves
+  it server-side; an item that is itself a merge expands into that merge's
+  parts AND carries its name over, so growing a set keeps both.
+- Streaming services are GATED ON THE SERVER'S ACTUAL STATE (v1.0.51). Three
+  states, and no single LMS command reports all three: plugin absent (the
+  `<tag> items` verb was never registered, so LMS logs "not dispatchable" and
+  CLOSES THE SOCKET — it surfaces as a rejected rpc, not an error payload),
+  present but logged out (XMLBrowser hoists the plugin's `type:"textarea"`
+  credentials row out of the list, so you get count:0 + `window.textarea`), and
+  usable. `lms.serviceStatus(tag, playerId)` does `can <tag> items ?` then one
+  root fetch. `can` is ADVISORY ONLY — a server that doesn't answer `_can` must
+  not have its plugins declared missing, so null falls through to the root
+  probe, which is authoritative. `apps 0 999` enumerates enabled app plugins
+  but CANNOT see login state (neither the Qobuz nor Tidal plugin declares a
+  `condition()`). `/api/services` caches for 5 min and coalesces concurrent
+  probes; `requireService()` fronts every `/api/qobuz/*` route so an unusable
+  service answers 503 `{unavailable:true}` instead of a raw socket-error 500.
+  The client hides the side-menu entry and the tile heart, and skips the
+  external Qobuz search entirely. The Qobuz SOURCE BADGE stays — the album
+  really did come from Qobuz, and hiding it would make an online album look
+  local; the heart goes because it is an action against an account that isn't
+  there.
 - Favourites (`lib/favourites.js`, `data/favourites.json`) are THIS APP'S own
   collection, nothing to do with the Qobuz heart (which writes to the Qobuz
   account). Keyed on normalised title+artist like album edits, because ids and

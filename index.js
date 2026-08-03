@@ -3053,6 +3053,74 @@ async function searchQobuz(q, playerId, limit) {
   }));
 }
 
+// ---- streaming-service availability ---------------------------------------
+// The owner can log out of Qobuz and remove the plugin from LMS; nothing about
+// the app should still offer it. Probed lazily and cached, because it needs two
+// round trips per service and the answer only changes when the owner changes a
+// server setting. `refresh=1` forces a re-probe (the Settings screen and the
+// side menu both offer it).
+const SERVICE_TAGS = ["qobuz", "tidal", "deezer", "spotty"];
+const SERVICE_LABEL = { qobuz: "Qobuz", tidal: "TIDAL", deezer: "Deezer", spotty: "Spotify" };
+const SERVICE_TTL = 5 * 60 * 1000;
+let serviceCache = { at: 0, list: null, inflight: null };
+
+async function probeServices() {
+  const player = state.players[0] && state.players[0].id;
+  // `apps` names every ENABLED app plugin, so a service the owner installed
+  // that we don't know about still gets a label; it can't see login state, so
+  // serviceStatus still decides usability.
+  const apps = await state.lms.listApps().catch(() => []);
+  const byTag = new Map(apps.map(a => [a.tag, a.name]));
+  const tags = [...new Set([...SERVICE_TAGS, ...apps.map(a => a.tag)])];
+  const out = [];
+  for (const tag of tags) {
+    const st = await state.lms.serviceStatus(tag, player).catch(() => null);
+    if (!st || !st.installed) continue;
+    out.push({ tag, name: SERVICE_LABEL[tag] || byTag.get(tag) || tag,
+               installed: true, usable: !!st.usable, notice: st.notice || null });
+  }
+  return out;
+}
+
+async function services(force) {
+  if (!state.connected || !state.lms) return [];
+  if (!force && serviceCache.list && (Date.now() - serviceCache.at) < SERVICE_TTL) return serviceCache.list;
+  // Coalesce concurrent probes — the side menu and a search can ask at once.
+  if (serviceCache.inflight) return serviceCache.inflight;
+  serviceCache.inflight = probeServices()
+    .then((list) => { serviceCache = { at: Date.now(), list, inflight: null }; return list; })
+    .catch((e) => { serviceCache.inflight = null; log.debug("service probe failed:", e.message); return serviceCache.list || []; });
+  return serviceCache.inflight;
+}
+
+async function serviceUsable(tag) {
+  const list = await services(false);
+  const s = list.find(x => x.tag === tag);
+  return !!(s && s.usable);
+}
+
+// Every /api/qobuz/* route goes through this, so an absent or logged-out plugin
+// answers "unavailable" instead of a raw socket-error 500 the UI can't read.
+async function requireService(tag, res) {
+  if (!state.connected) { notConnected(res); return false; }
+  if (await serviceUsable(tag)) return true;
+  const list = await services(false);
+  const s = list.find(x => x.tag === tag);
+  res.status(503).json({
+    error: s ? ((SERVICE_LABEL[tag] || tag) + " isn\u2019t signed in on your server")
+             : ((SERVICE_LABEL[tag] || tag) + " isn\u2019t installed on your server"),
+    unavailable: true, service: tag,
+  });
+  return false;
+}
+
+app.get("/api/services", async (req, res) => {
+  try {
+    const list = await services(req.query.refresh === "1");
+    res.json({ services: list, connected: !!state.connected });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Diagnostic: dump the RAW Qobuz-plugin menu responses so the exact live
 // menu shapes can be inspected (the parsers were built without a live server).
 // Read-only. GET /api/qobuz/debug?q=radiohead
@@ -3121,7 +3189,10 @@ app.get("/api/search/external", async (req, res) => {
   const player = state.players[0] && state.players[0].id;
   const [pf, qb] = await Promise.all([
     withDeadline(searchPitchforkReviews(q, LIM), DEADLINE_MS).catch(() => []),
-    (state.connected && player)
+    // Skip the round trip entirely when Qobuz isn't usable — the "Available on
+    // Qobuz" section then never appears, rather than appearing empty after a
+    // 10s deadline.
+    (state.connected && player && await serviceUsable("qobuz"))
       ? withDeadline(searchQobuz(q, player, LIM), DEADLINE_MS).catch((e) => { log.debug("qobuz search failed:", e.message); return []; })
       : Promise.resolve([]),
   ]);
@@ -3132,7 +3203,7 @@ app.get("/api/search/external", async (req, res) => {
 // library. `kind`: play_now (replace + play) or queue (append). The action was
 // captured from the plugin's own menu at search time (see searchQobuz).
 app.post("/api/qobuz/play", async (req, res) => {
-  if (!state.connected) return notConnected(res);
+  if (!await requireService("qobuz", res)) return;
   const { token, zone_or_output_id, kind } = req.body || {};
   if (!token)             return res.status(400).json({ error: "token required" });
   if (!zone_or_output_id) return res.status(400).json({ error: "zone_or_output_id required" });
@@ -3150,6 +3221,8 @@ app.post("/api/qobuz/play", async (req, res) => {
 // The user's Qobuz favourite album ids — the UI fills a heart on any library
 // or search tile whose qobuz_id is in this set.
 app.get("/api/qobuz/favorites", async (req, res) => {
+  // Not a hard gate: an empty key set just means no hearts get filled.
+  if (!await serviceUsable("qobuz")) return res.json({ keys: [], unavailable: true });
   const fav = await qobuzFavorites(req.query.refresh === "1");
   res.json({ keys: [...fav.keys] });
 });
@@ -3158,7 +3231,7 @@ app.get("/api/qobuz/favorites", async (req, res) => {
 // own). Favourite-only per design — no library rescan is triggered. The album's
 // menu node was captured at search time (token → go action).
 app.post("/api/qobuz/favorite", async (req, res) => {
-  if (!state.connected) return notConnected(res);
+  if (!await requireService("qobuz", res)) return;
   const { token, favorite } = req.body || {};
   const player = state.players[0] && state.players[0].id;
   if (!token)  return res.status(400).json({ error: "token required" });
@@ -3179,7 +3252,7 @@ app.post("/api/qobuz/favorite", async (req, res) => {
 // Un-favourite a LIBRARY Qobuz album by its qobuz_id (the heart on an owned
 // album). Uses the descend action captured in the favourites listing.
 app.post("/api/qobuz/favorite-id", async (req, res) => {
-  if (!state.connected) return notConnected(res);
+  if (!await requireService("qobuz", res)) return;
   const { title, artist, favorite } = req.body || {};
   const player = state.players[0] && state.players[0].id;
   if (!title)  return res.status(400).json({ error: "title required" });
@@ -3202,7 +3275,7 @@ app.post("/api/qobuz/favorite-id", async (req, res) => {
 // Genres, Playlists, …). Returns navigable `node`s and playable `album`s; albums
 // carry a token for /api/qobuz/play + /api/qobuz/favorite (same as search).
 app.get("/api/qobuz/browse", async (req, res) => {
-  if (!state.connected) return notConnected(res);
+  if (!await requireService("qobuz", res)) return;
   const player = state.players[0] && state.players[0].id;
   if (!player) return res.status(503).json({ error: "No player available" });
   const itemId = req.query.item_id != null && req.query.item_id !== "" ? String(req.query.item_id) : null;
@@ -3221,7 +3294,7 @@ app.get("/api/qobuz/browse", async (req, res) => {
 // Track listing + favourite state for one Qobuz album (token from a browse /
 // search result). Per-track rows get their own play token for tap-to-play.
 app.get("/api/qobuz/album", async (req, res) => {
-  if (!state.connected) return notConnected(res);
+  if (!await requireService("qobuz", res)) return;
   const player = state.players[0] && state.players[0].id;
   const token = String(req.query.token || "");
   const entry = qobuzActionStore.get(token);
