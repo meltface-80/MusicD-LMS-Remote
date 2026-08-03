@@ -175,6 +175,11 @@ Layout section of README.md.
   (Home carousels, Library wall). It must be cleared on every view change —
   `showHome`/`showLibraryWall`/`exitLibraryWall`/`showUnplayedWall`/
   `exitArtistView`/search/labels — or the bar strands over the next screen.
+  Track selection has its OWN control (`.t-check`) at the RIGHT of each row —
+  a hollow ring, a filled tick when picked — and ONLY that control toggles.
+  The row body deliberately does nothing while selecting: a track line carries
+  clickable artist links, and a row-wide hit area made following one a coin
+  toss. Keep the 44px padded tap target; the ring is drawn on `::before`.
   Tracks: `trackSelectMode` + `.t-row.is-picked` + `#track-action-bar`, scoped
   to the open album modal and reset by `closeModal()` AND `openAlbum()`.
   Deliberately NOT `.is-selected` — that selector is shared with the
