@@ -1319,6 +1319,7 @@ function esc(s) {
   }
 
   // ----- Long-press utility -----
+  window.__addLongPress = (el, cb) => addLongPress(el, cb);
   function addLongPress(el, callback) {
     let timer = null;
     let moved = false;
@@ -1447,6 +1448,22 @@ function esc(s) {
       setHeart(heart, true);
       heart.addEventListener("click", (e) => { e.stopPropagation(); qobuzFavPost("/api/qobuz/favorite-id", { title: a.title, artist: a.subtitle }, heart); });
       artWrap.appendChild(heart);
+    }
+
+    // Mark tiles already in this app's Favourites. The key is stamped on the
+    // element so a later refresh can repaint without rebuilding the grid —
+    // /api/favourites/keys exists precisely for this.
+    if (window.__favKeyOf) {
+      const fk = window.__favKeyOf(a.title, a.subtitle || a.artist);
+      if (fk) {
+        btn.dataset.favKey = fk;
+        if (window.__isFavourite && window.__isFavourite(a)) btn.classList.add("is-app-fav");
+        const mark = document.createElement("span");
+        mark.className = "album-fav-mark";
+        mark.setAttribute("aria-hidden", "true");
+        mark.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+        artWrap.appendChild(mark);
+      }
     }
 
     const meta = document.createElement("div");
@@ -1810,6 +1827,30 @@ function esc(s) {
     modalSub.appendChild(artistLinkNodes(subtitle));
   }
 
+  // This app's Favourite, in the album modal chrome. Reuses the shared
+  // helpers so its identity payload matches the grid/sheet exactly.
+  const modalFavBtn = document.getElementById("modal-fav-btn");
+  function paintModalFav() {
+    if (!modalFavBtn) return;
+    const on = !!(currentAlbum && window.__isFavourite && window.__isFavourite(currentAlbum));
+    modalFavBtn.classList.toggle("is-fav", on);
+    modalFavBtn.title = on ? "Remove from Favourites" : "Add to Favourites";
+    // Spelled out, because a bare heart here would be easy to mistake for the
+    // Qobuz one sitting in the action row below.
+    modalFavBtn.setAttribute("aria-label", modalFavBtn.title + " (kept in this app, separate from Qobuz)");
+  }
+  if (modalFavBtn) modalFavBtn.addEventListener("click", async () => {
+    if (!currentAlbum || !window.__toggleFavourite) return;
+    modalFavBtn.disabled = true;
+    try {
+      const on = await window.__toggleFavourite(currentAlbum);
+      paintModalFav();
+      if (window.__repaintFavMarks) window.__repaintFavMarks();
+      showToast(on ? "Added to Favourites" : "Removed from Favourites");
+    } catch (e) { showToast(e.message, "error"); }
+    finally { modalFavBtn.disabled = false; }
+  });
+
   function openAlbum(album, opts) {
     opts = opts || {};
     // Opening a different album invalidates any live track selection — the
@@ -1817,6 +1858,9 @@ function esc(s) {
     exitTrackSelectMode();
     currentAlbum = album;
     window.__currentAlbum = album;
+    paintModalFav();
+    // Keys may not have loaded yet on a cold open — repaint when they do.
+    if (window.__refreshFavKeys) window.__refreshFavKeys().then(paintModalFav);
     currentSource = opts.source || "random";
     currentSourceZoneId = opts.zoneId || null;
     // An explicit opts.filter (incl. null) wins over the active filter — Home
@@ -3171,6 +3215,13 @@ function esc(s) {
         // Open the SHARED album modal (same look as the main library) rather than
         // a bespoke detail — it inherits the cover / ambient / TRACKS styling.
         btn.addEventListener("click", () => { if (window.__openAlbum) window.__openAlbum(a, { source: "qobuz" }); });
+        // Built here rather than by buildAlbumTile, so it doesn't inherit that
+        // long-press. Wire it explicitly, or a catalogue album can't be added
+        // to this app's Favourites from the place you actually find it.
+        // No "Select" — these have no library offset to multi-select on.
+        if (window.__addLongPress && window.__openAlbumSheet) {
+          window.__addLongPress(btn, () => window.__openAlbumSheet(a, { tileEl: btn, allowSelect: false }));
+        }
         return btn;
       }
 
@@ -3987,7 +4038,15 @@ function esc(s) {
     if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
     const libs   = items.filter(a => a.offset != null);
     const tokens = items.filter(a => a.offset == null && a.token);
-    if (!libs.length && !tokens.length) { showToast("Nothing playable here", "error"); return; }
+    // A favourite whose album has left the library (or was only ever a
+    // catalogue album) carries neither an offset nor a token. Say which it is
+    // rather than the unhelpful "nothing playable".
+    if (!libs.length && !tokens.length) {
+      showToast(items.length === 1
+        ? "That album isn\u2019t in your library right now"
+        : "Those albums aren\u2019t in your library right now", "error");
+      return;
+    }
     let done = 0;
     if (libs.length) {
       const r = await fetch("/api/play-multi", {
@@ -7210,10 +7269,20 @@ function esc(s) {
       if (r.ok) favKeys = new Set((await r.json()).keys || []);
     } catch (e) { /* keep what we have */ }
   }
-  refreshKeys();
+  refreshKeys().then(() => repaintMarks());
 
   const isFav = (a) => { const k = keyFor(a && a.title, a && (a.subtitle || a.artist)); return !!k && favKeys.has(k); };
   window.__isFavourite = isFav;
+  window.__favKeyOf = keyFor;
+  // Repaint every tile already on screen from the current key set, so marks
+  // appear without rebuilding any grid.
+  function repaintMarks() {
+    document.querySelectorAll(".album[data-fav-key]").forEach(el => {
+      el.classList.toggle("is-app-fav", favKeys.has(el.dataset.favKey));
+    });
+  }
+  window.__repaintFavMarks = repaintMarks;
+  window.__refreshFavKeys = async () => { await refreshKeys(); repaintMarks(); };
 
   async function toggleFav(a, want) {
     const r = await fetch("/api/favourites/toggle", {
@@ -7228,6 +7297,7 @@ function esc(s) {
     if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
     const k = keyFor(a.title, a.subtitle || a.artist);
     if (k) { if (j.favourite) favKeys.add(k); else favKeys.delete(k); }
+    repaintMarks();
     return j.favourite;
   }
   window.__toggleFavourite = toggleFav;
@@ -7277,6 +7347,7 @@ function esc(s) {
               const j = await r.json().catch(() => ({}));
               if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
               await refreshKeys();
+              repaintMarks();
               window.__showToast("Added " + j.added + " to Favourites");
               if (window.__exitAlbumSelectMode) window.__exitAlbumSelectMode();
             } else {

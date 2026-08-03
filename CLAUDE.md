@@ -118,6 +118,19 @@ Layout section of README.md.
   counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
   returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
   say "added to the existing one" instead of implying a new playlist.
+- The app-Favourite control on the album screen is an ICON BUTTON IN THE MODAL
+  CHROME (`.modal-fav`, beside Edit), never a pill in `#modal-actions`: that row
+  is playback, and for a Qobuz album a heart pill there would sit beside the
+  Qobuz heart meaning something else entirely. App favourites paint with
+  `--accent`; the Qobuz heart stays pink — different colour, different system.
+  Tiles mark app-favourites via `data-fav-key` + `.is-app-fav`, repainted by
+  `window.__repaintFavMarks()` from `/api/favourites/keys` (that endpoint exists
+  for exactly this — don't fetch the whole collection to mark a grid).
+- Tiles built OUTSIDE `buildAlbumTile()` — the Qobuz search rows and the native
+  Qobuz browser's grid — don't inherit its long-press, so they wire
+  `window.__addLongPress` explicitly with `allowSelect:false` (no library offset
+  to multi-select on). Any new bespoke tile builder must do the same or its
+  albums silently can't be favourited.
 - Favourites (`lib/favourites.js`, `data/favourites.json`) are THIS APP'S own
   collection, nothing to do with the Qobuz heart (which writes to the Qobuz
   account). Keyed on normalised title+artist like album edits, because ids and

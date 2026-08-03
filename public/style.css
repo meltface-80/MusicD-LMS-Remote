@@ -3407,3 +3407,28 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* A playlist tile's "artist" line carries the track count, which should read
    as metadata rather than a name. */
 .album.is-playlist .album-artist { color: var(--text-faint); }
+
+/* This app's own Favourite, in the album modal chrome. Sits left of Edit.
+   Painted with --accent rather than the Qobuz heart's pink, so the two
+   favourite systems are distinguishable at a glance as well as by position. */
+.modal-fav { position: absolute; top: 12px; right: 156px; z-index: 2; }
+.modal-fav.is-fav { color: var(--accent-text); border-color: var(--accent); }
+.modal-fav.is-fav svg { fill: currentColor; }
+/* Now-playing mode has its own layout (no ×, Home at the left) and hides the
+   whole action row, so there's no coherent slot for it there. */
+.modal.np-mode .modal-fav { display: none; }
+
+/* "In this app's Favourites" marker on an album tile. Bottom-LEFT, because the
+   other three corners are taken: album-of-the-day badge (top-left), online
+   source badge (top-right) and the Qobuz heart (bottom-right). Accent-coloured
+   to match the modal control and stay distinct from the pink Qobuz heart. */
+.album-fav-mark {
+  position: absolute; bottom: 6px; left: 6px; z-index: 3;
+  display: none; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px;
+  background: rgba(8, 12, 16, .55); color: var(--accent-text);
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.album.is-app-fav .album-fav-mark { display: flex; }
