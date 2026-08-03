@@ -3325,11 +3325,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 /* Swap the track number for a tick while the row is picked, so the
    selection reads at a glance without shifting the row's layout. */
-.track-list li.t-row.is-picked::before {
-  content: "✓";
-  color: var(--accent-text);
-  font-weight: 700;
-}
+/* The track NUMBER stays a number while selecting — the checkbox on the right
+   is the indicator now, so the row doesn't reflow when you pick something. */
 /* While selecting, rows are pickable — kill the tap-to-expand affordance so
    the two interaction models never look simultaneously available. */
 .track-list.is-selecting li.t-row:hover { background: var(--accent-soft); }
@@ -3463,3 +3460,42 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .merged-row-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .merged-row-sub { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .merged-row-parts { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+
+/* ------------------------------------------------------------------ */
+/*  Per-track selection control (v1.0.49)                              */
+/*  A track line is full of tappable artist links, so selection gets   */
+/*  its own target at the right of the row instead of the whole row    */
+/*  being a hit area. Hollow ring when unselected, filled tick when    */
+/*  selected. Hidden entirely until select mode is active.             */
+/* ------------------------------------------------------------------ */
+.t-check {
+  position: relative;                 /* containing block for the ring */
+  flex: 0 0 auto;
+  display: none;                      /* only while selecting */
+  align-items: center; justify-content: center;
+  /* 22px ring inside a 44px tap target: the padding IS the point — it keeps
+     the touch area comfortable without widening the visible control. */
+  width: 44px; height: 44px; padding: 11px;
+  margin: -6px -6px -6px 4px;         /* absorb the row padding, stay aligned */
+  background: none; border: 0; cursor: pointer;
+  color: transparent;                 /* the tick is invisible until picked */
+  align-self: center;
+}
+.track-list.is-selecting .t-check { display: inline-flex; }
+/* The ring itself, drawn on the inner box so the padding stays clickable. */
+.t-check::before {
+  content: "";
+  position: absolute;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--text-faint);
+  transition: background .12s ease, border-color .12s ease;
+}
+.t-check svg { position: relative; z-index: 1; }
+.t-check:active::before { border-color: var(--accent); }
+/* Selected: filled ring, tick in the accent's ink. */
+.track-list li.t-row.is-picked .t-check { color: var(--on-accent); }
+.track-list li.t-row.is-picked .t-check::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}

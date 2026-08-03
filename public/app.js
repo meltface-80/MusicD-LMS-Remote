@@ -1355,6 +1355,8 @@ function esc(s) {
   // A library album imported from Qobuz carries a `qobuz_id`; a search result
   // carries a token. Both can be favourited/un-favourited through the LMS Qobuz
   // plugin (favourite-only — no library rescan is triggered).
+  // Tick shown inside a selected track's checkbox. The hollow ring is CSS.
+  const TICK_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
   const HEART_PATH = "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z";
   const heartSvg = (filled) =>
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="' + (filled ? "currentColor" : "none") +
@@ -2337,12 +2339,31 @@ function esc(s) {
         tx.appendChild(ti); tx.appendChild(su);
         li.appendChild(tx);
         li.dataset.trackIdx = String(idx);
+        // Selection has its OWN target at the right of the row, rather than the
+        // whole row being tappable: a track line is full of artist links, and a
+        // row-wide hit area meant every attempt to follow one risked toggling
+        // the track instead. Only this control (and its padding) selects.
+        const check = document.createElement("button");
+        check.type = "button";
+        check.className = "t-check";
+        check.setAttribute("aria-label", "Select track");
+        check.setAttribute("aria-pressed", "false");
+        check.innerHTML = TICK_SVG;
+        check.addEventListener("click", (e) => {
+          e.stopPropagation();          // never let it reach the row handler
+          if (!trackSelectMode) enterTrackSelectMode();
+          handleTrackSelect(li, idx);
+        });
+        li.appendChild(check);
+
         li.addEventListener("click", (e) => {
           if (e.target.closest(".t-actions")) return;   // taps on the buttons themselves
           if (e.target.closest(".t-artist-link")) return;   // artist links keep working
-          // Mirrors the album grid: once selecting, a tap always toggles
-          // selection rather than doing the row's normal thing.
-          if (trackSelectMode) { handleTrackSelect(li, idx); return; }
+          if (e.target.closest(".t-check")) return;     // its own handler owns this
+          // While selecting, the row body does nothing — the checkbox is the
+          // only way to pick a track, so tapping a title can't select by
+          // accident and artist links stay usable.
+          if (trackSelectMode) return;
           toggleTrackActions(li, t, idx);
         });
         // Long-press enters track select mode. Only library rows get this —
@@ -2381,6 +2402,10 @@ function esc(s) {
     trackSelectOffset = null;
     modalTracks.classList.remove("is-selecting");
     modalTracks.querySelectorAll("li.t-row.is-picked").forEach(li => li.classList.remove("is-picked"));
+    modalTracks.querySelectorAll(".t-check").forEach(b => {
+      b.setAttribute("aria-pressed", "false");
+      b.setAttribute("aria-label", "Select track");
+    });
     if (trackActionBar) trackActionBar.classList.add("hidden");
   }
   function updateTrackActionBar() {
@@ -2396,6 +2421,12 @@ function esc(s) {
     const at = trackSelected.indexOf(idx);
     if (at === -1) { trackSelected.push(idx); li.classList.add("is-picked"); }
     else           { trackSelected.splice(at, 1); li.classList.remove("is-picked"); }
+    const box = li.querySelector(".t-check");
+    if (box) {
+      const on = li.classList.contains("is-picked");
+      box.setAttribute("aria-pressed", on ? "true" : "false");
+      box.setAttribute("aria-label", on ? "Deselect track" : "Select track");
+    }
     updateTrackActionBar();
   }
 
