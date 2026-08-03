@@ -46,6 +46,7 @@ function esc(s) {
   const albumPlayNowBtn      = document.getElementById("album-play-now-btn");
   const albumQueueBtn        = document.getElementById("album-queue-btn");
   const albumActionCancelBtn = document.getElementById("album-action-cancel-btn");
+  const albumFavBtn          = document.getElementById("album-fav-btn");
   const trackActionBar       = document.getElementById("track-action-bar");
   const trackActionInfo      = document.getElementById("track-action-info");
   const trackPlayNowBtn      = document.getElementById("track-play-now-btn");
@@ -316,7 +317,7 @@ function esc(s) {
     // ready on the first visit — retry each visit until it populates, then stop.
     if (!homeLotwLoaded) loadHomeLabelOfWeek();
     if (!homeSectionsLoaded) loadHomeGenres();
-    if (!rowHasContent(homeLibrary)) loadHomeLibrary();
+    if (homeLibraryStale || !rowHasContent(homeLibrary)) loadHomeLibrary();
   }
   // Reveal the album wall. opts.loadIfEmpty loads a fresh wall only when it has
   // no content yet (so passive reveals — opening an overlay from the menu —
@@ -640,10 +641,24 @@ function esc(s) {
     return p.toString();
   }
 
+  // The Home "Library" row follows the SORT you set on the Library wall, so the
+  // two agree instead of the row being permanently A-Z. Deliberately sort+dir
+  // only, not the Focus facets: the row is labelled "Library" and links to the
+  // whole library, so silently hiding most of it behind an active filter would
+  // be a surprise. Set from the Library wall via applyLibView().
+  let homeLibraryStale = false;
+  function homeLibrarySortQuery() {
+    const p = new URLSearchParams();
+    p.set("sort", libView.sort);
+    p.set("dir", libView.dir);
+    if (libView.sort === "random") p.set("seed", String(libView.seed));
+    return p.toString();
+  }
   async function loadHomeLibrary() {
     if (!homeLibrary) return;
+    homeLibraryStale = false;
     try {
-      const r = await fetch("/api/library/albums?offset=0&count=30&sort=album&dir=asc", { cache: "no-store" });
+      const r = await fetch("/api/library/albums?offset=0&count=30&" + homeLibrarySortQuery(), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const j = await r.json();
       const albums = (j && j.albums) || [];
@@ -705,6 +720,7 @@ function esc(s) {
 
   async function applyLibView() {
     saveLibView();
+    homeLibraryStale = true;   // Home's Library row follows this sort
     renderLibraryControls();
     libWall.seq++;
     const mySeq = libWall.seq;
@@ -1331,8 +1347,13 @@ function esc(s) {
   // A library album imported from Qobuz carries a `qobuz_id`; a search result
   // carries a token. Both can be favourited/un-favourited through the LMS Qobuz
   // plugin (favourite-only — no library rescan is triggered).
-  const HEART_FILLED  = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.6-4.9-9.8-9.2C.8 8.3 2.4 5 5.6 5c2 0 3.3 1.2 4.4 2.7C11.1 6.2 12.4 5 14.4 5c3.2 0 4.8 3.3 3.4 6.8C19.6 16.1 12 21 12 21z"/></svg>';
-  const HEART_OUTLINE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M12 20s-6.8-4.4-8.8-8.2C1.9 8.5 3.2 6 5.6 6c1.8 0 3 1.1 4.4 2.7C11.3 7.1 12.6 6 14.4 6c2.4 0 3.7 2.5 2.4 5.8C18.8 15.6 12 20 12 20z"/></svg>';
+  const HEART_PATH = "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z";
+  const heartSvg = (filled) =>
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="' + (filled ? "currentColor" : "none") +
+    '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="' + HEART_PATH + '"/></svg>';
+  const HEART_FILLED  = heartSvg(true);
+  const HEART_OUTLINE = heartSvg(false);
   let _qobuzFavIds = null, _qobuzFavPromise = null;
   function ensureQobuzFavs() {
     if (_qobuzFavIds) return Promise.resolve(_qobuzFavIds);
@@ -1442,10 +1463,13 @@ function esc(s) {
       if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
       (onClick || (() => openAlbum(a)))();
     });
-    // Long-press enters select mode on every album tile, wherever it lives.
+    // Long-press opens the album's context sheet (Favourite / Play now / Queue
+    // / Select). While already selecting it keeps the old behaviour of just
+    // toggling the tile — opening a sheet mid-selection would be a non-sequitur.
     addLongPress(btn, () => {
-      if (!albumSelectMode) enterAlbumSelectMode();
-      handleAlbumTileSelect(btn, a);
+      if (albumSelectMode) { handleAlbumTileSelect(btn, a); return; }
+      if (window.__openAlbumSheet) window.__openAlbumSheet(a, { tileEl: btn });
+      else { enterAlbumSelectMode(); handleAlbumTileSelect(btn, a); }
     });
     return btn;
   }
@@ -1471,6 +1495,7 @@ function esc(s) {
     if (albumQueueBtn)   albumQueueBtn.disabled   = n === 0;
     const plBtn = document.getElementById("album-playlist-btn");
     if (plBtn) plBtn.disabled = n === 0;
+    if (albumFavBtn) albumFavBtn.disabled = n === 0;
   }
 
   window.__exitAlbumSelectMode = exitAlbumSelectMode;
@@ -3952,6 +3977,48 @@ function esc(s) {
 
 
 
+  // Play or queue an arbitrary set of albums, from anywhere. Library albums go
+  // through /api/play-multi by offset; Qobuz catalogue albums have no offset
+  // and are replayed by their action token instead. Shared by the context
+  // sheet and the multi-select bar.
+  window.__albumAction = async (items, kind) => {
+    items = (items || []).filter(Boolean);
+    if (!items.length) return;
+    if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
+    const libs   = items.filter(a => a.offset != null);
+    const tokens = items.filter(a => a.offset == null && a.token);
+    if (!libs.length && !tokens.length) { showToast("Nothing playable here", "error"); return; }
+    let done = 0;
+    if (libs.length) {
+      const r = await fetch("/api/play-multi", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offsets: libs.map(a => a.offset), zone_or_output_id: selectedZoneId, kind }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      done += libs.length;
+    }
+    // The first token honours `kind`; any after it must append, or each would
+    // wipe the one before.
+    let first = !libs.length;
+    for (const t of tokens) {
+      const r = await fetch("/api/qobuz/play", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: t.token, kind: (first && kind === "play_now") ? "play_now" : "queue" }),
+      });
+      if (r.ok) { done++; first = false; }
+    }
+    const verb = kind === "play_now" ? "Playing" : "Queued";
+    showToast(verb + " " + done + " album" + (done === 1 ? "" : "s") + " \u2192 " + zoneName(selectedZoneId));
+  };
+
+  // Enter multi-select from the context sheet, pre-selecting the album it was
+  // opened on so the gesture doesn't lose what you long-pressed.
+  window.__enterAlbumSelect = (a, tileEl) => {
+    if (!albumSelectMode) enterAlbumSelectMode();
+    if (tileEl && a) handleAlbumTileSelect(tileEl, a);
+  };
+
   async function invokeAlbumMulti(kind) {
     if (!albumSelected.length) return;
     if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
@@ -3993,6 +4060,26 @@ function esc(s) {
   });
   if (albumPlayNowBtn)      albumPlayNowBtn.addEventListener("click",      () => invokeAlbumMulti("play_now"));
   if (albumQueueBtn)        albumQueueBtn.addEventListener("click",        () => invokeAlbumMulti("queue"));
+  // Favourite the whole selection. Always ADDS rather than toggling — a mixed
+  // selection should end up all-favourited, not flipped item by item into a
+  // state nobody asked for.
+  if (albumFavBtn) albumFavBtn.addEventListener("click", async () => {
+    if (!albumSelected.length) return;
+    albumFavBtn.disabled = true;
+    try {
+      const r = await fetch("/api/favourites/add-multi", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: albumSelected.map(a => ({
+          title: a.title, subtitle: a.subtitle || "", source: a.source || null,
+          image_key: a.image_key || null, qobuz_id: a.qobuz_id || null,
+        })) }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      showToast("Added " + j.added + " to Favourites");
+      exitAlbumSelectMode();
+    } catch (e) { showToast(e.message, "error"); updateAlbumActionBar(); }
+  });
   if (albumActionCancelBtn) albumActionCancelBtn.addEventListener("click", exitAlbumSelectMode);
 
   window.__openAlbum = openAlbum;
@@ -5829,6 +5916,8 @@ function esc(s) {
   // Rescan actions. After LMS finishes, /api/reindex refreshes this app's own
   // album index so new music shows up without waiting for the 12h staleness.
   let lmsScanPoll = null;
+  // Shared with the side-menu rescan shortcut so both paths reindex on finish.
+  window.__watchLmsScan = () => watchLmsScan();
   function watchLmsScan() {
     if (lmsScanPoll) clearInterval(lmsScanPoll);
     let polls = 0;
@@ -6605,6 +6694,25 @@ function esc(s) {
         if (window.__showHome) window.__showHome();
         return;
       }
+      if (action === "rescan") {
+        // Shortcut for the common case only. The destructive "clear and rescan
+        // everything" stays in Settings -> LMS server, where it has its own
+        // confirm — a two-tap path must not be able to wipe the library.
+        (async () => {
+          const go = await window.__confirmDialog(
+            "Scan the LMS library for new and changed music?");
+          if (!go) return;
+          try {
+            const r = await fetch("/api/lms/rescan", {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: "{}"
+            });
+            if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ("HTTP " + r.status)); }
+            window.__showToast("Rescan started — new music appears as it's found.");
+            if (window.__watchLmsScan) window.__watchLmsScan();
+          } catch (e) { window.__showToast("Couldn't start rescan: " + e.message, "error"); }
+        })();
+        return;
+      }
       if (action === "shuffle") {
         // Clear any active filter/labels so "Random albums" is a fresh wall.
         // applyFilter(null) reveals the wall and loads it.
@@ -7076,4 +7184,154 @@ function esc(s) {
       render();
     } catch (e) { window.__showToast(e.message, "error"); }
   }
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Favourites (this app's own) + the album context sheet              */
+/* ------------------------------------------------------------------ */
+(function initFavourites() {
+  const overlay = document.getElementById("favourites-overlay");
+  const body    = document.getElementById("fav-body");
+  const openBtn = document.getElementById("favourites-toggle");
+  if (!overlay || !body || !openBtn) return;
+
+  // Keys of everything favourited, so tiles can be marked without asking per
+  // tile. Refreshed whenever we change something or open the screen.
+  let favKeys = new Set();
+  const keyFor = (title, artist) => {
+    const norm = (x) => String(x || "").toLowerCase().normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    const t = norm(title);
+    return t ? t + "|" + norm(artist) : null;
+  };
+  async function refreshKeys() {
+    try {
+      const r = await fetch("/api/favourites/keys", { cache: "no-store" });
+      if (r.ok) favKeys = new Set((await r.json()).keys || []);
+    } catch (e) { /* keep what we have */ }
+  }
+  refreshKeys();
+
+  const isFav = (a) => { const k = keyFor(a && a.title, a && (a.subtitle || a.artist)); return !!k && favKeys.has(k); };
+  window.__isFavourite = isFav;
+
+  async function toggleFav(a, want) {
+    const r = await fetch("/api/favourites/toggle", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: a.title, subtitle: a.subtitle || a.artist || "", source: a.source || null,
+        image_key: a.image_key || null, qobuz_id: a.qobuz_id || null,
+        favourite: want,
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    const k = keyFor(a.title, a.subtitle || a.artist);
+    if (k) { if (j.favourite) favKeys.add(k); else favKeys.delete(k); }
+    return j.favourite;
+  }
+  window.__toggleFavourite = toggleFav;
+
+  // ---- the long-press context sheet -------------------------------------
+  // Long-press used to enter multi-select directly. It now opens this sheet,
+  // which offers Select as one of its actions — so the gesture does more, and
+  // multi-select stays reachable (and is more discoverable than a hidden
+  // gesture ever was).
+  function openAlbumSheet(a, opts) {
+    opts = opts || {};
+    const many = opts.items && opts.items.length > 1 ? opts.items : null;
+    const title = many ? many.length + " albums" : (a.title || "Album");
+    const subtitle = many ? "" : (a.subtitle || "");
+    if (!window.__openLibSheet) return;
+    window.__openLibSheet(title, (sheetBody, close) => {
+      if (subtitle) {
+        const sub = document.createElement("div");
+        sub.className = "lib-sheet-note";
+        sub.style.marginTop = "0";
+        sub.textContent = subtitle;
+        sheetBody.appendChild(sub);
+      }
+      const row = (label, note, onClick) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "lib-sort-row";
+        const txt = document.createElement("span");
+        const l = document.createElement("div"); l.className = "lib-sort-label"; l.textContent = label;
+        txt.appendChild(l);
+        if (note) { const n = document.createElement("div"); n.className = "lib-sort-note"; n.textContent = note; txt.appendChild(n); }
+        b.appendChild(txt);
+        b.addEventListener("click", async () => { close(); try { await onClick(); } catch (e) { window.__showToast(e.message, "error"); } });
+        sheetBody.appendChild(b);
+        return b;
+      };
+
+      const targets = many || [a];
+      const allFav = targets.every(isFav);
+      row(allFav && !many ? "Remove from Favourites" : "Add to Favourites",
+          "Kept in this app, separate from your Qobuz favourites",
+          async () => {
+            if (many) {
+              const r = await fetch("/api/favourites/add-multi", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: many }),
+              });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+              await refreshKeys();
+              window.__showToast("Added " + j.added + " to Favourites");
+              if (window.__exitAlbumSelectMode) window.__exitAlbumSelectMode();
+            } else {
+              const on = await toggleFav(a, allFav ? false : true);
+              window.__showToast(on ? "Added to Favourites" : "Removed from Favourites");
+              if (opts.onFavChange) opts.onFavChange(on);
+            }
+          });
+
+      row("Play now", null, () => window.__albumAction(targets, "play_now"));
+      row("Add to end of queue", null, () => window.__albumAction(targets, "queue"));
+      if (!many && opts.allowSelect !== false) {
+        row("Select", "Choose several albums", () => {
+          if (window.__enterAlbumSelect) window.__enterAlbumSelect(a, opts.tileEl);
+        });
+      }
+    });
+  }
+  window.__openAlbumSheet = openAlbumSheet;
+
+  // ---- the Favourites screen --------------------------------------------
+  const close = () => { overlay.classList.add("hidden"); document.body.style.overflow = ""; };
+  overlay.querySelectorAll("[data-fav-close]").forEach(el => el.addEventListener("click", close));
+  const msg = (cls, text) => { body.innerHTML = ""; const d = document.createElement("div"); d.className = cls; d.textContent = text; body.appendChild(d); };
+
+  async function open() {
+    overlay.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    msg("qb-loading", "Loading\u2026");
+    await refreshKeys();
+    let j;
+    try {
+      const r = await fetch("/api/favourites", { cache: "no-store" });
+      j = await r.json();
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { msg("qb-empty", "Couldn\u2019t load: " + e.message); return; }
+    const albums = (j && j.albums) || [];
+    if (!albums.length) {
+      msg("qb-empty", "No favourites yet. Long-press any album and choose \u201cAdd to Favourites\u201d.");
+      return;
+    }
+    body.innerHTML = "";
+    const grid = document.createElement("div");
+    grid.className = "album-grid";
+    for (const a of albums) {
+      const tile = window.__buildAlbumTile(a, () => {
+        if (a.offset != null) { close(); window.__openAlbum(a, { source: "home", filter: null }); }
+        // An album that has left the library (or was only ever a catalogue
+        // album) has no offset to open — say so rather than doing nothing.
+        else window.__showToast("That album isn\u2019t in your library right now", "error");
+      });
+      grid.appendChild(tile);
+    }
+    body.appendChild(grid);
+  }
+  openBtn.addEventListener("click", open);
+  window.__openFavourites = open;
 })();
