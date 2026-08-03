@@ -1450,7 +1450,11 @@ function esc(s) {
     // Favourite heart for a Qobuz album that IS in the library. It was imported
     // BECAUSE it's a Qobuz favourite, so the heart starts filled; a tap removes
     // the favourite (matched by title+artist — favourite rows carry no id).
-    if (a.source === "qobuz" && a.qobuz_id) {
+    // Only when the server can still reach Qobuz. The album stays badged as a
+    // Qobuz album either way — that is where it came from, and hiding it would
+    // make an online album look local — but the heart is an ACTION against the
+    // account, so it goes when the account does.
+    if (a.source === "qobuz" && a.qobuz_id && (!window.__serviceUsable || window.__serviceUsable("qobuz"))) {
       const heart = document.createElement("button");
       heart.type = "button"; heart.className = "album-fav-heart";
       setHeart(heart, true);
@@ -4319,7 +4323,11 @@ function esc(s) {
     try {
       const r = await fetch("/api/albums/merge", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: albumSelected.map(a => ({ title: a.title, subtitle: a.subtitle || "" })) }),
+        // Send the offset too: the server resolves each item back to its index
+        // record and keys the merge on the album's ORIGINAL LMS name, so a
+        // later rename can't drop a disc out of its own merge. Title/subtitle
+        // stay as a fallback for a stale offset.
+        body: JSON.stringify({ items: albumSelected.map(a => ({ offset: a.offset, title: a.title, subtitle: a.subtitle || "" })) }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
@@ -4336,6 +4344,12 @@ function esc(s) {
   // any future wall) need their tiles to open unfiltered, not fall back to
   // openAlbum's default filter handling.
   window.__buildAlbumTile = (a, onClick) => buildAlbumTile(a, onClick);
+  // /api/services resolves after the first grids have painted, so drop any
+  // hearts that were drawn optimistically before the answer arrived.
+  window.__repaintServiceUI = () => {
+    if (window.__serviceUsable && window.__serviceUsable("qobuz")) return;
+    document.querySelectorAll(".album .album-fav-heart").forEach(el => el.remove());
+  };
   window.__loadRandom = loadRandom;
   window.__showToast = (msg, kind) => showToast(msg, kind);
   window.__confirmDialog = (msg) => confirmDialog(msg);
@@ -6921,6 +6935,39 @@ function esc(s) {
   const overlay = document.getElementById("menu-overlay");
   const toggle  = document.getElementById("menu-toggle");
   if (!overlay || !toggle) return;
+
+  // Streaming services the SERVER can actually use. A plugin the owner removed,
+  // or one they've signed out of, must leave no trace in the UI — an entry that
+  // only fails when tapped is worse than no entry. /api/services distinguishes
+  // "not installed" from "not signed in"; both hide.
+  let servicesReady = false;
+  const usable = new Set();
+  window.__serviceUsable = (tag) => !servicesReady || usable.has(tag);
+  async function loadServices(force) {
+    try {
+      const r = await fetch("/api/services" + (force ? "?refresh=1" : ""), { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      usable.clear();
+      for (const s of (j.services || [])) if (s.usable) usable.add(s.tag);
+      servicesReady = true;
+      paintServiceItems(j.services || []);
+    } catch (e) { /* leave everything shown rather than hiding on a blip */ }
+  }
+  function paintServiceItems(list) {
+    const browse = overlay.querySelector('.menu-item[data-target="server-browse-toggle"]');
+    if (browse) {
+      browse.classList.toggle("hidden", !usable.has("qobuz"));
+      // Name it after whatever the server actually runs, so a future Tidal
+      // build doesn't need this string changed in two places.
+      const q = list.find(s => s.tag === "qobuz");
+      const label = browse.querySelector("span");
+      if (label && q) label.textContent = "Browse " + q.name;
+    }
+    if (window.__repaintServiceUI) window.__repaintServiceUI();
+  }
+  window.__refreshServices = () => loadServices(true);
+  loadServices(false);
 
   const openMenu  = () => overlay.classList.remove("hidden");
   const closeMenu = () => overlay.classList.add("hidden");
