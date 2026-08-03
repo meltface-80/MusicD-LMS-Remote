@@ -31,6 +31,7 @@ const search = require("./lib/search");
 const { makePlaysLog } = require("./lib/plays");
 const makeLivePlaylists = require("./lib/liveplaylists");
 const makeHomePicks = require("./lib/homepicks");
+const makeFavourites = require("./lib/favourites");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -81,6 +82,10 @@ const playsLog = makePlaysLog(path.join(DATA_DIR, "plays.json"));
 // Remembers the day's album and the week's label so a restart can't re-roll
 // them mid-period — see lib/homepicks.js for why they used to move.
 const homePicks = makeHomePicks({ dataDir: DATA_DIR });
+// This remote's OWN favourites — see lib/favourites.js. Keyed on title+artist
+// so they survive rescans and can hold albums that aren't in the library at
+// all. Nothing to do with the Qobuz heart, which writes to the Qobuz account.
+const favourites = makeFavourites({ dataDir: DATA_DIR, debug: DEBUG });
 
 // Per-player "what's currently playing, and did it already qualify as a play"
 // state, keyed by player id. Mirrors the sibling's scrobbleUpdate(), but
@@ -1320,6 +1325,95 @@ async function playlistArtFor(id) {
   playlistArtCache.set(String(id), rec);
   return rec;
 }
+
+// ---------------------------------------------------------------------------
+// Favourites (this app's own collection)
+// ---------------------------------------------------------------------------
+
+// The full collection, newest first. Library albums are re-resolved to a CURRENT
+// offset by title+artist so tapping one opens the right album even after a
+// rescan moved it; an album that has since left the library (or was only ever a
+// catalogue album) still lists, just without an offset.
+app.get("/api/favourites", async (req, res) => {
+  try {
+    const rows = favourites.list();
+    let byKey = null;
+    if (state.connected) {
+      try {
+        await ensureIndex();
+        byKey = new Map();
+        for (const rec of index.records) {
+          const k = makeFavourites.keyFor(rec.title, rec.subtitle);
+          if (k && !byKey.has(k)) byKey.set(k, rec);
+        }
+      } catch (e) { byKey = null; }   // index unavailable — list without offsets
+    }
+    res.json({
+      total: rows.length,
+      albums: rows.map(r => {
+        const live = byKey && byKey.get(r.key);
+        return {
+          key: r.key,
+          title: r.title,
+          subtitle: r.artist || "",
+          // Prefer the live record's art: a rescued cover found since
+          // favouriting should show, rather than the key stored at the time.
+          image_key: (live && live.image_key) || r.image_key || null,
+          source: r.source || (live && live.source) || null,
+          qobuz_id: r.qobuz_id || null,
+          offset: live ? live.offset : null,   // null = not currently in the library
+          at: r.at,
+        };
+      }),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Just the keys, so a grid can mark which tiles are favourited without
+// shipping the whole collection.
+app.get("/api/favourites/keys", (req, res) => {
+  try { res.json({ keys: [...favourites.keys()] }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Toggle one album. Body carries the album as the client knows it — title and
+// artist are the identity, everything else is stored as context.
+app.post("/api/favourites/toggle", (req, res) => {
+  const b = req.body || {};
+  const title = String(b.title || "").trim();
+  if (!title) return res.status(400).json({ error: "title required" });
+  try {
+    const on = favourites.toggle({
+      title,
+      artist: b.subtitle || b.artist || "",
+      source: b.source || null,
+      image_key: b.image_key || null,
+      qobuz_id: b.qobuz_id || null,
+      extid: b.extid || null,
+    }, b.favourite);
+    res.json({ ok: true, favourite: on, total: favourites.count() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Favourite SEVERAL albums at once (the multi-select bar). Always adds rather
+// than toggling: a mixed selection should end up all-favourited, not flipped
+// item by item into an unpredictable state.
+app.post("/api/favourites/add-multi", async (req, res) => {
+  const items = (req.body || {}).items;
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "items required" });
+  try {
+    let added = 0, skipped = 0;
+    for (const it of items) {
+      const rec = favourites.add({
+        title: it.title, artist: it.subtitle || it.artist || "",
+        source: it.source || null, image_key: it.image_key || null,
+        qobuz_id: it.qobuz_id || null, extid: it.extid || null,
+      });
+      if (rec) added++; else skipped++;
+    }
+    res.json({ ok: true, added, skipped, total: favourites.count() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get("/api/playlists", async (req, res) => {
   if (!state.connected) return notConnected(res);

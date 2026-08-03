@@ -118,6 +118,28 @@ Layout section of README.md.
   counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
   returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
   say "added to the existing one" instead of implying a new playlist.
+- Favourites (`lib/favourites.js`, `data/favourites.json`) are THIS APP'S own
+  collection, nothing to do with the Qobuz heart (which writes to the Qobuz
+  account). Keyed on normalised title+artist like album edits, because ids and
+  offsets move on a rescan and a catalogue album has neither — so a favourite
+  can hold an album that isn't in the library at all. `/api/favourites`
+  re-resolves each one to a CURRENT offset by title+artist; a null offset means
+  "not in the library right now", which the UI must handle rather than opening
+  nothing.
+- Long-press on an album tile opens the CONTEXT SHEET (`window.__openAlbumSheet`),
+  not select mode — "Select" is one of its actions. Anything that expects the old
+  gesture must go through the sheet. Long-press while ALREADY selecting still
+  just toggles the tile. Track rows are unchanged: long-press there still enters
+  track select directly.
+- `window.__albumAction(items, kind)` is the one way to play/queue a set of
+  albums from anywhere. Library albums go by `offset` through `/api/play-multi`;
+  Qobuz catalogue albums have no offset and replay by token. When mixing, only
+  the FIRST item may honour `play_now` — the rest must append or each would wipe
+  the one before.
+- The Home "Library" row follows the Library wall's SORT (not its Focus facets —
+  the row is labelled "Library" and links to the whole thing, so silently
+  filtering it would surprise). `applyLibView()` marks it stale; `showHome()`
+  reloads it.
 - Multi-select is TWO independent systems. Albums: `albumSelectMode` +
   `.album.is-selected` + `#album-action-bar`, entered by long-press, and a tap
   in select mode ALWAYS toggles selection even on tiles with a custom onClick
