@@ -550,6 +550,13 @@ async function refreshConnectionInner() {
     if (!wasConnected) {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
+    } else if (scanChangedSinceIndex() && !indexBuilding) {
+      // LMS finished a scan we didn't start. Rebuild once, here, rather than
+      // waiting for a request to notice — merges, edits and artwork are all
+      // re-layered by buildIndex, so this is the one place that heals them.
+      log.info("lms: library rescan detected (lastScan changed) — rebuilding the index");
+      libraryViewCache.clear();
+      ensureIndex();
     }
   } catch (e) {
     state.connected = false;
@@ -670,6 +677,9 @@ async function buildIndex() {
   // row set it is handed.
   rows = albumMerges.apply(rows);
   search.loadRecords(index, rows);
+  // Remember which scan this index reflects, so a later rescan is noticed even
+  // when it was started outside the app.
+  indexScanStamp = (state.server && state.server.lastScan) != null ? String(state.server.lastScan) : null;
   indexProgress = 1;
   // "Date added" is derived from the TRACK table (LMS exposes no album-level
   // added time, and sort:new is capped at browseagelimit ~100 albums, so it
@@ -744,11 +754,24 @@ async function applyAddedTimes(sig, albumCount) {
   } finally { addedSweeping = false; }
 }
 
+// The lastScan value the current index was built from. Nothing else watched
+// this, so a rescan started from LMS's own web UI (or a scheduled scan) left
+// the app serving a pre-scan index for up to INDEX_MAX_AGE_MS — 12 hours. The
+// in-app rescan happened to be fine only because the client pokes /api/reindex
+// when it sees the scan finish, which needs the page to be open.
+let indexScanStamp = null;
+function scanChangedSinceIndex() {
+  const scan = state.server && state.server.lastScan;
+  if (scan == null || indexScanStamp == null) return false;
+  return String(scan) !== String(indexScanStamp);
+}
+
 function ensureIndex() {
   // Keyed off builtAt (set by loadRecords), NOT records.length — a genuinely
   // empty/still-scanning library has a valid built-but-empty index and must not
   // re-trigger a build (and its countAlbums RPC) on every request.
-  const stale = !index.builtAt || (Date.now() - index.builtAt) > INDEX_MAX_AGE_MS;
+  const stale = !index.builtAt || (Date.now() - index.builtAt) > INDEX_MAX_AGE_MS
+                || scanChangedSinceIndex();
   if (stale && !indexBuilding) {
     indexBuilding = buildIndex()
       .catch(e => { if (DEBUG) console.error("[index] build failed:", e.message); })
@@ -1455,7 +1478,7 @@ function resolveMergeItems(items) {
       if (m && Array.isArray(m.parts) && m.parts.length) {
         if (!out.length) { title = m.title || null; artist = m.artist || null; }
         for (const p of m.parts) {
-          out.push({ title: p.title, artist: p.artist,
+          out.push({ title: p.title, artist: p.artist, id: p.id || null,
                      origTitle: p.origTitle || p.title, origArtist: p.origArtist || p.artist });
         }
         continue;
@@ -1463,6 +1486,9 @@ function resolveMergeItems(items) {
     }
     if (rec) {
       out.push({ title: rec.title, artist: rec.subtitle,
+                 // The LMS album id is a second handle for rescan repair. For a
+                 // merged record take the primary part's id, not the record's.
+                 id: (rec.partIds && rec.partIds[0]) || rec.id || null,
                  origTitle: rec.origTitle || rec.title, origArtist: rec.origArtist || rec.subtitle });
       continue;
     }
