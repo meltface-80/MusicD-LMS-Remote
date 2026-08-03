@@ -161,6 +161,28 @@ Layout section of README.md.
   matches no album. `/api/albums/merge` takes each item's `offset` and resolves
   it server-side; an item that is itself a merge expands into that merge's
   parts AND carries its name over, so growing a set keeps both.
+- Merge parts SELF-HEAL across a rescan (v1.0.52). The part key is
+  title+artist and the ARTIST half is SCAN-DERIVED — `lib/lms.js` takes
+  `row.artist || row.albumartist`, and a rescan re-runs various-artist
+  detection and re-reads ALBUMARTIST/ARTIST, so a disc can come back as
+  "Various Artists" with its title untouched and the key matches nothing.
+  `apply()` therefore tries, in order: exact key (orig then current) → the
+  stored LMS album `id` (survives a "new and changed" scan; a full rescan
+  renumbers) → an UNAMBIGUOUS title match (exactly one album in the library
+  carries that title). Anything recovered is written back via `healParts()` so
+  the next rebuild is an exact match. It must never guess: two albums sharing a
+  title with different artists is precisely the case that has to be left alone,
+  because a wrong absorb HIDES an album. Album edits, rescued artwork and
+  favourites key on the same fragile pair and have the same exposure — they
+  just have no repair pass yet.
+- NOTHING used to notice a rescan started outside the app (v1.0.52).
+  `state.server.lastScan` was read only by `indexCacheSig`, and the only
+  post-scan refresh was client-side (`watchLmsScan` → `POST /api/reindex`),
+  which needs the page open and the scan to have been started from the app. A
+  scan run from LMS's own web UI or on a schedule left a pre-scan index for up
+  to `INDEX_MAX_AGE_MS` (12h). `indexScanStamp` records the lastScan each index
+  was built from; `refreshConnection` rebuilds when it moves, and
+  `ensureIndex()` treats a changed stamp as stale.
 - Streaming services are GATED ON THE SERVER'S ACTUAL STATE (v1.0.51). Three
   states, and no single LMS command reports all three: plugin absent (the
   `<tag> items` verb was never registered, so LMS logs "not dispatchable" and
