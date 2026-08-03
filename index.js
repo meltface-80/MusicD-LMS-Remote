@@ -1172,9 +1172,22 @@ app.post("/api/album/edit", async (req, res) => {
     const norm = (v) => (v === undefined ? undefined : (v === null || String(v).trim() === "" ? null : v));
     const yr = year === undefined ? undefined
              : (year === null || year === "" ? null : Number(year));
+    // RENAMING A MERGED ALBUM goes to the merge record, never to an album edit.
+    // An album edit keys on a raw LMS row and renames it — and a renamed row no
+    // longer matches its own merge part, which is how a rename used to split
+    // the set back apart and take several re-merges to put right. Year and
+    // artwork still layer onto the primary part as usual: they don't touch the
+    // string the merge is keyed on.
+    const merged = rec.mergeId ? albumMerges.byId(rec.mergeId) : null;
+    if (merged) {
+      const mr = albumMerges.rename(rec.mergeId,
+        title  === undefined ? merged.title  : norm(title),
+        artist === undefined ? merged.artist : norm(artist));
+      if (mr.ok) { rec.title = mr.merge.title; rec.subtitle = mr.merge.artist; }
+    }
     albumEdits.set(origTitle, origArtist, {
-      title:  norm(title),
-      artist: norm(artist),
+      title:  merged ? undefined : norm(title),
+      artist: merged ? undefined : norm(artist),
       year:   Number.isNaN(yr) ? undefined : yr,
       art
     });
@@ -1182,11 +1195,13 @@ app.post("/api/album/edit", async (req, res) => {
     // immediately without a full rebuild.
     const edit = albumEdits.get(origTitle, origArtist);
     rec.origTitle = origTitle; rec.origArtist = origArtist;
-    rec.title    = (edit && edit.title  != null) ? edit.title  : origTitle;
-    rec.subtitle = (edit && edit.artist != null) ? edit.artist : origArtist;
+    if (!merged) {
+      rec.title    = (edit && edit.title  != null) ? edit.title  : origTitle;
+      rec.subtitle = (edit && edit.artist != null) ? edit.artist : origArtist;
+    }
     rec.year     = (edit && edit.year   != null) ? edit.year   : rec.year;
     if (edit && edit.art != null) rec.image_key = edit.art;
-    rec.edited = !!edit;
+    rec.edited = !!edit || !!merged;
     search.reindexRecord(index, rec);
     // Owner edits are durable immediately (not just on the debounce timer).
     albumEdits.flushNow();
@@ -1205,6 +1220,13 @@ app.delete("/api/album/edit", async (req, res) => {
   albumEdits.remove(origTitle, origArtist);
   albumEdits.flushNow();
   rec.title = origTitle; rec.subtitle = origArtist; rec.edited = false;
+  // A merged album's name lives on the merge, so "remove edits" has to reset
+  // that too — otherwise the rename would survive a restore that claims to
+  // undo everything. Passing null re-derives it from the primary part.
+  if (rec.mergeId) {
+    const mr = albumMerges.rename(rec.mergeId, null, null);
+    if (mr.ok) { rec.title = mr.merge.title; rec.subtitle = mr.merge.artist; }
+  }
   if (rec.origYear !== undefined) rec.year = rec.origYear;
   // Restore artwork: the real LMS cover if the album had one, else whatever
   // the background sweep rescued, else nothing.
@@ -1411,13 +1433,53 @@ app.get("/api/albums/merges", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// body { items: [{title, subtitle}] } — items[0] is the primary and supplies
-// the merged album's title (minus any disc marker) and artist.
+// body { items: [{offset, title, subtitle}] } — items[0] is the primary and
+// supplies the merged album's title (minus any disc marker) and artist.
+//
+// The client can only send what it displays, and a display title is not a
+// durable identity: it changes when the owner renames the album, and for an
+// already-merged album it is a synthesised name no LMS row ever had. So every
+// item is resolved back to its index record here, and the merge is keyed on
+// `origTitle`/`origArtist` — the album's real LMS name. An item that is itself
+// a merge expands into that merge's existing parts, so merging a set with one
+// more disc keeps the discs already absorbed.
+function resolveMergeItems(items) {
+  const out = [];
+  // If the FIRST item is already a merge, the set keeps the name the owner
+  // gave it rather than reverting to the primary disc's title.
+  let title = null, artist = null;
+  for (const it of items || []) {
+    const rec = it && Number.isFinite(it.offset) ? index.byOffset.get(it.offset) : null;
+    if (rec && rec.mergeId) {
+      const m = albumMerges.byId(rec.mergeId);
+      if (m && Array.isArray(m.parts) && m.parts.length) {
+        if (!out.length) { title = m.title || null; artist = m.artist || null; }
+        for (const p of m.parts) {
+          out.push({ title: p.title, artist: p.artist,
+                     origTitle: p.origTitle || p.title, origArtist: p.origArtist || p.artist });
+        }
+        continue;
+      }
+    }
+    if (rec) {
+      out.push({ title: rec.title, artist: rec.subtitle,
+                 origTitle: rec.origTitle || rec.title, origArtist: rec.origArtist || rec.subtitle });
+      continue;
+    }
+    // No offset (or a stale one): fall back to what was sent. Still better than
+    // refusing the merge outright.
+    if (it && it.title) out.push({ title: it.title, artist: it.subtitle || it.artist || "" });
+  }
+  return { items: out, title, artist };
+}
+
 app.post("/api/albums/merge", async (req, res) => {
   const items = (req.body || {}).items;
   if (!Array.isArray(items) || items.length < 2) return res.status(400).json({ error: "Pick at least two albums to merge" });
   try {
-    const r = albumMerges.merge(items);
+    if (state.connected) { try { await ensureIndex(); } catch (e) { /* fall back to sent titles */ } }
+    const resolved = resolveMergeItems(items);
+    const r = albumMerges.merge(resolved.items, { title: resolved.title, artist: resolved.artist });
     if (!r.ok) return res.status(400).json(r);
     await reindexAfterMergeChange();
     res.json({ ok: true, merge: r.merge });

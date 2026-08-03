@@ -4319,7 +4319,11 @@ function esc(s) {
     try {
       const r = await fetch("/api/albums/merge", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: albumSelected.map(a => ({ title: a.title, subtitle: a.subtitle || "" })) }),
+        // Send the offset too: the server resolves each item back to its index
+        // record and keys the merge on the album's ORIGINAL LMS name, so a
+        // later rename can't drop a disc out of its own merge. Title/subtitle
+        // stay as a fallback for a stale offset.
+        body: JSON.stringify({ items: albumSelected.map(a => ({ offset: a.offset, title: a.title, subtitle: a.subtitle || "" })) }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
