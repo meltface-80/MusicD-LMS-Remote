@@ -364,6 +364,22 @@ Layout section of README.md.
   picker can't drift from the CSS. Persisted under `rra-theme-v2` (the v1
   `rra-theme` key auto-migrates); `applyTheme()` reads `--bg` back out and syncs
   the `theme-color` meta.
+- Random Album Radio (`lib/radio.js`, `data/radio-zones.json`) queues WHOLE
+  ALBUMS when a player's queue runs down — that is the point of it, and why it
+  isn't just shuffle. `radioDecision()` is pure so it can be tested without a
+  server: it tops up while the LAST track plays (appending after the queue
+  drains would gap), starts something when stopped-and-empty, and never touches
+  a paused player. It STANDS DOWN when LMS's own Don't Stop The Music is on for
+  that player — two queue-fillers would interleave an album with DSTM's tracks.
+  It rides the existing 2.5s poll rather than owning a timer, and `radioBusy`
+  holds a per-player lock ~4s past the append so the next tick sees the new
+  queue length, not the pre-append one.
+- Transport MODES are painted FROM the poll, never from a local guess:
+  `playerStatus` reports `playlist shuffle` / `playlist repeat` (LMS spells
+  those keys with SPACES), `/api/zone-state` passes them through, and each
+  control sends a CONCRETE mode. Another client — or LMS's own web UI — can
+  change them, and a client-side toggle would then send the wrong value.
+  Repeat cycles off -> queue(2) -> track(1); the badge marks the track case.
 - `public/app.js` is a series of sibling IIFEs (separate scopes, NOT one closure)
   — there is ONE shared HTML-escaper `esc()` at script top-level for all of them.
   Any LMS/network string put into `innerHTML` MUST go through `esc()` (album/

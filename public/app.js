@@ -1960,6 +1960,9 @@ function esc(s) {
     });
     return frag;
   }
+  // Shared across IIFEs (Now Playing uses it too) — separate scopes, so it
+  // has to be exposed rather than referenced directly.
+  window.__artistLinkNodes = artistLinkNodes;
 
   function setModalArtist(subtitle) {
     modalSub.innerHTML = "";
@@ -4456,6 +4459,75 @@ function esc(s) {
   const bigArt      = document.getElementById("modal-img");
   const npTrack     = document.getElementById("np-track");
   const npArtist    = document.getElementById("np-artist");
+  const npShuffle   = document.getElementById("np-shuffle");
+  const npRepeat    = document.getElementById("np-repeat");
+  const npRepeatBadge = document.getElementById("np-repeat-badge");
+  const npRadio     = document.getElementById("np-radio");
+  const npRadioRow  = document.querySelector(".np-radio-row");
+
+  // ---- Now Playing transport modes -------------------------------------
+  // Painted FROM the poll, never from a local guess: another client (or LMS's
+  // own web UI) can change these, and a toggle computed client-side would then
+  // send the wrong value. Each control sends a concrete mode.
+  let npModeBusy = false;
+  function paintTransportModes(zone) {
+    if (!npShuffle || !npRepeat) return;
+    if (npModeBusy) return;                 // don't fight an in-flight change
+    const sh = Number(zone.shuffle) || 0;   // 0 off, 1 songs, 2 albums
+    const rp = Number(zone.repeat)  || 0;   // 0 off, 1 track, 2 queue
+    npShuffle.setAttribute("aria-pressed", sh > 0 ? "true" : "false");
+    npShuffle.title = sh === 2 ? "Shuffle albums" : sh === 1 ? "Shuffle songs" : "Shuffle";
+    npRepeat.setAttribute("aria-pressed", rp > 0 ? "true" : "false");
+    npRepeat.title = rp === 1 ? "Repeat this track" : rp === 2 ? "Repeat the queue" : "Repeat";
+    // LMS numbers repeat as 1=track, 2=queue. The badge marks the track case.
+    if (npRepeatBadge) npRepeatBadge.classList.toggle("hidden", rp !== 1);
+    if (npRadio) npRadio.setAttribute("aria-pressed", zone.radio ? "true" : "false");
+  }
+
+  async function setTransportMode(body) {
+    if (!selectedZoneId) return;
+    npModeBusy = true;
+    try {
+      const r = await fetch("/api/lms/player/" + encodeURIComponent(selectedZoneId) + "/mode", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+    } catch (e) { window.__showToast && window.__showToast(e.message, "error"); }
+    finally { npModeBusy = false; }
+  }
+
+  if (npShuffle) npShuffle.addEventListener("click", async () => {
+    const on = npShuffle.getAttribute("aria-pressed") === "true";
+    // Off -> shuffle SONGS. Album shuffle is reachable from Player settings;
+    // one tap here should do the thing people mean by "shuffle".
+    npShuffle.setAttribute("aria-pressed", on ? "false" : "true");
+    await setTransportMode({ shuffle: on ? 0 : 1 });
+  });
+  if (npRepeat) npRepeat.addEventListener("click", async () => {
+    const pressed = npRepeat.getAttribute("aria-pressed") === "true";
+    const badgeOn = npRepeatBadge && !npRepeatBadge.classList.contains("hidden");
+    // off -> queue -> track -> off, matching the Roon build's cycle.
+    const next = !pressed ? 2 : (badgeOn ? 0 : 1);
+    npRepeat.setAttribute("aria-pressed", next ? "true" : "false");
+    if (npRepeatBadge) npRepeatBadge.classList.toggle("hidden", next !== 1);
+    await setTransportMode({ repeat: next });
+  });
+  if (npRadio) npRadio.addEventListener("click", async () => {
+    if (!selectedZoneId) return;
+    const on = npRadio.getAttribute("aria-pressed") === "true";
+    npRadio.setAttribute("aria-pressed", on ? "false" : "true");
+    try {
+      const r = await fetch("/api/radio", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zone: selectedZoneId, enabled: !on }),
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      window.__showToast && window.__showToast(!on ? "Random album radio on \u2014 whole albums keep coming"
+                    : "Random album radio off");
+    } catch (e) { window.__showToast && window.__showToast(e.message, "error"); npRadio.setAttribute("aria-pressed", on ? "true" : "false"); }
+  });
+
   const npAlbum     = document.getElementById("np-album");
   const npSeek      = document.getElementById("np-seek");
   const npCur       = document.getElementById("np-cur");
@@ -4595,6 +4667,7 @@ function esc(s) {
     const volOutput = (zone.outputs || []).find(o => o.volume);
     const muted = (zone.outputs || []).some(o => o.is_muted);
     const playing = zone.state === "playing" || zone.state === "loading";
+    paintTransportModes(zone);
     const barSig = [np.line1, np.line2, np.line3, zone.state, muted,
                     volOutput ? volOutput.volume.value : "novol"].join("|");
     if (barSig !== lastBarSig) {
@@ -4696,7 +4769,13 @@ function esc(s) {
     if (!np) { setNpTrack(null); npArtist.textContent = ""; npAlbum.textContent = ""; return; }
 
     setNpTrack(np.line1);
-    npArtist.textContent = np.line2 || "";
+    // One clickable link per credited artist, the same renderer the album view
+    // and track rows use — it was already here, just never wired to this line.
+    npArtist.textContent = "";
+    if (np.line2) {
+      if (window.__artistLinkNodes) npArtist.appendChild(window.__artistLinkNodes(np.line2, "np-artist-link"));
+      else npArtist.textContent = np.line2;
+    }
     npAlbum.textContent  = np.line3 || "";
     if (npAlbum) npAlbum.setAttribute("aria-label", "Open album: " + (np.line3 || ""));
 
@@ -6989,6 +7068,23 @@ function esc(s) {
 
       if (action === "home") {
         if (window.__showHome) window.__showHome();
+        return;
+      }
+      if (action === "pause-all" || action === "mute-all" || action === "unmute-all") {
+        (async () => {
+          try {
+            const path = action === "pause-all" ? "/api/pause-all" : "/api/mute-all";
+            const body = action === "pause-all" ? {} : { how: action === "mute-all" ? "mute" : "unmute" };
+            const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify(body) });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+            // This IIFE has no showToast of its own — siblings don't share scope.
+            window.__showToast(action === "pause-all"
+              ? "Paused " + j.paused + " zone" + (j.paused === 1 ? "" : "s")
+              : action === "mute-all" ? "Muted every zone" : "Unmuted every zone");
+          } catch (e) { window.__showToast(e.message, "error"); }
+        })();
         return;
       }
       if (action === "rescan") {

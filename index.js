@@ -33,6 +33,7 @@ const makeLivePlaylists = require("./lib/liveplaylists");
 const makeHomePicks = require("./lib/homepicks");
 const makeFavourites = require("./lib/favourites");
 const makeAlbumMerges = require("./lib/albummerges");
+const makeRadio       = require("./lib/radio");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -90,6 +91,10 @@ const favourites = makeFavourites({ dataDir: DATA_DIR, debug: DEBUG });
 // Multi-disc albums LMS split apart, collapsed back into one — see
 // lib/albummerges.js. Applied to the raw rows during buildIndex().
 const albumMerges = makeAlbumMerges({ dataDir: DATA_DIR, debug: DEBUG });
+// Random Album Radio — keeps a player fed with whole random albums when its
+// queue runs down. Stands down when LMS's own Don't Stop The Music is on for
+// that player; see lib/radio.js for why two queue-fillers must not both run.
+const radio = makeRadio({ dataDir: DATA_DIR, log: log.child("radio") });
 
 // Per-player "what's currently playing, and did it already qualify as a play"
 // state, keyed by player id. Mirrors the sibling's scrobbleUpdate(), but
@@ -547,6 +552,15 @@ async function refreshConnectionInner() {
       }
       catch (e) { /* a single player being unreachable is non-fatal */ }
     }));
+    // Random Album Radio rides the existing 2.5s poll — no timer of its own,
+    // and it works off the statuses this tick just fetched, so it costs one
+    // extra LMS call only when it actually decides to queue something.
+    if (radio.list().length) {
+      radio.prune(state.players.map(p => p.id));
+      for (const p of state.players) {
+        if (radio.isOn(p.id)) runRadioFor(p.id, false).catch(() => {});
+      }
+    }
     if (!wasConnected) {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
@@ -1932,6 +1946,11 @@ app.get("/api/zone-state", async (req, res) => {
       zone_id: player.id,
       display_name: player.name,
       state: st ? (st.mode === "play" ? "playing" : st.mode === "pause" ? "paused" : "stopped") : "stopped",
+      // Transport modes, so the Now Playing screen paints the real state and
+      // sends a concrete value rather than a blind toggle.
+      shuffle: st && Number.isFinite(st.shuffle) ? st.shuffle : 0,
+      repeat:  st && Number.isFinite(st.repeat)  ? st.repeat  : 0,
+      radio:   radio.isOn(player.id),
       is_play_allowed: true, is_pause_allowed: true, is_next_allowed: true,
       is_previous_allowed: true, is_seek_allowed: true,
       outputs: [{
@@ -2033,6 +2052,119 @@ app.post("/api/play-unheard", async (req, res) => {
   try { await state.lms.playAlbum(zoneId, rec.id, "now"); res.json({ ok: true, album: { title: rec.title, subtitle: rec.subtitle } }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ---------------------------------------------------------------------------
+// Whole-zone actions, and the Shortcuts / automation triggers.
+// ---------------------------------------------------------------------------
+
+// Pause every player that is actually playing. Best-effort per player: one
+// unreachable player must not fail the rest, exactly as in the poll loop.
+app.post("/api/pause-all", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  let paused = 0;
+  await Promise.all(state.players.map(async (p) => {
+    try {
+      // Pause unconditionally: the cached status can be a poll behind, and
+      // pausing something already paused is harmless. Skipping on a stale
+      // cache would leave a zone playing, which is the one outcome that makes
+      // "pause all" useless.
+      await state.lms.transport(p.id, "pause");
+      paused++;
+    } catch (e) { log.debug("pause-all:", p.id, e.message); }
+  }));
+  res.json({ ok: true, paused });
+});
+
+// Mute or unmute every player. `how`: "mute" | "unmute".
+app.post("/api/mute-all", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const mute = String((req.body || {}).how || "mute") !== "unmute";
+  let changed = 0;
+  await Promise.all(state.players.map(async (p) => {
+    try { await state.lms.setMute(p.id, mute); changed++; }
+    catch (e) { log.debug("mute-all:", p.id, e.message); }
+  }));
+  res.json({ ok: true, muted: mute, changed });
+});
+
+// ---- Random Album Radio -----------------------------------------------------
+app.get("/api/radio", (req, res) => {
+  const zoneId = req.query.zone;
+  res.json({ enabled: zoneId ? radio.isOn(zoneId) : false, zones: radio.list() });
+});
+app.post("/api/radio", async (req, res) => {
+  const zoneId  = (req.body || {}).zone || null;
+  const enabled = !!(req.body || {}).enabled;
+  if (!zoneId) return res.status(400).json({ error: "zone required" });
+  radio.set(zoneId, enabled);
+  res.json({ ok: true, enabled });
+  // React immediately rather than waiting for the next poll — the owner just
+  // asked for music, so a silent player should start now.
+  if (enabled) { try { await runRadioFor(zoneId, true); } catch (e) { log.debug("radio kickstart:", e.message); } }
+});
+
+// One album at a time, and never two at once for the same player: the poll runs
+// every 2.5s and appending twice would double up a whole album.
+const radioBusy = new Set();
+async function runRadioFor(zoneId, allowPlay) {
+  if (radioBusy.has(zoneId)) return;
+  if (!state.connected || !radio.isOn(zoneId)) return;
+  let st = state.statuses.get(zoneId);
+  if (!st) return;
+  // Defer to LMS's own queue filler — see lib/radio.js.
+  let dstm = false;
+  try { dstm = !!(await state.lms.getPlayerPref(zoneId, "dontstopthemusic")); } catch (e) { /* assume off */ }
+  const want = radio.decide(st, true, dstm);
+  if (!want) return;
+  if (want === "play" && !allowPlay && st.mode !== "stop") return;
+  await ensureIndex();
+  if (!index.records.length) return;
+  radioBusy.add(zoneId);
+  try {
+    const rec = index.records[Math.floor(Math.random() * index.records.length)];
+    await playRecord(zoneId, rec, want === "play" ? "now" : "queue");
+    log.info("radio:", want, "\u201c" + rec.title + "\u201d on", zoneId);
+  } catch (e) {
+    log.debug("radio failed:", e.message);
+  } finally {
+    // Hold the lock briefly past the call so the next poll sees the new queue
+    // length rather than the pre-append one.
+    setTimeout(() => radioBusy.delete(zoneId), 4000);
+  }
+}
+
+// ---- Apple Shortcuts / automation: GET so a Shortcut can just fetch a URL ----
+// Zones are addressed by DISPLAY NAME because that is what someone types into
+// a Shortcut; ids are MAC addresses.
+function zoneByName(name) {
+  const want = String(name || "").trim().toLowerCase();
+  if (!want) return null;
+  return state.players.find(p => String(p.name || "").trim().toLowerCase() === want) || null;
+}
+async function shortcutPlay(req, res, pickUnheard) {
+  if (!state.connected) return notConnected(res);
+  const p = zoneByName(req.query.zone);
+  if (!p) return res.status(404).json({ error: "Unknown zone", zones: state.players.map(x => x.name) });
+  await ensureIndex();
+  if (!index.records.length) return res.status(503).json({ error: "No albums available" });
+  let pool = index.records;
+  if (pickUnheard) {
+    const cutoff = Date.now() - 6 * 30 * 24 * 60 * 60 * 1000;
+    const heard = playsLog.getPlayedTitlesSince(cutoff);
+    const unplayed = index.records.filter(rec => {
+      const t = (rec.title || "").toLowerCase().trim();
+      return !(t && heard.has(t));
+    });
+    if (unplayed.length) pool = unplayed;
+  }
+  const rec = pool[Math.floor(Math.random() * pool.length)];
+  try {
+    await playRecord(p.id, rec, "now");
+    res.json({ ok: true, zone: p.name, album: { title: rec.title, subtitle: rec.subtitle } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+app.get("/api/shortcut/play-random",  (req, res) => shortcutPlay(req, res, false));
+app.get("/api/shortcut/play-unheard", (req, res) => shortcutPlay(req, res, true));
 
 // ---- LMS connection settings (used by the new Material-skin settings UI) ----
 app.get("/api/lms/connection", (req, res) => {

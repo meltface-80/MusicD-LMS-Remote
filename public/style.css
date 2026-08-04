@@ -3549,3 +3549,46 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   background: var(--accent);
   border-color: var(--accent);
 }
+
+
+/* ------------------------------------------------------------------ */
+/*  Now Playing: shuffle / repeat / random-album radio (v1.0.54)       */
+/* ------------------------------------------------------------------ */
+/* Flat, like the rest of the UI: an active mode is marked by the accent
+   colour, not by a filled pill. */
+.np-mode-btn { position: relative; color: var(--text-faint); }
+.np-mode-btn[aria-pressed="true"] { color: var(--accent-text); }
+.np-mode-btn:disabled { opacity: .35; cursor: default; }
+.np-mode-badge {
+  position: absolute; right: 2px; bottom: 2px;
+  min-width: 13px; height: 13px; padding: 0 2px;
+  border-radius: 7px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 9px; font-weight: 800; line-height: 13px; text-align: center;
+}
+.np-mode-badge.hidden { display: none; }
+
+.np-radio-row { display: flex; justify-content: center; margin-top: 10px; }
+.np-radio-row.hidden { display: none; }
+.np-radio-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 34px; padding: 0 14px;
+  border-radius: 999px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.np-radio-btn svg { width: 16px; height: 16px; }
+.np-radio-btn[aria-pressed="true"] {
+  color: var(--accent-text); border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.np-radio-btn:disabled { opacity: .4; cursor: default; }
+
+/* Artist links on the Now Playing line — same affordance as the album view. */
+.np-artist .np-artist-link {
+  color: inherit; background: none; border: 0; padding: 0;
+  font: inherit; cursor: pointer; text-decoration: none;
+}
+.np-artist .np-artist-link:hover { text-decoration: underline; }
+.np-artist .np-artist-sep { opacity: .55; }
