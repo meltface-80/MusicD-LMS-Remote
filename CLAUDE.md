@@ -422,6 +422,26 @@ Layout section of README.md.
   Any LMS/network string put into `innerHTML` MUST go through `esc()` (album/
   artist/track names carry markup, esp. online-library titles the owner didn't
   author). Prefer `textContent`/DOM building where possible.
+- The SAME NAME means different things in different `app.js` IIFEs (v1.0.57).
+  In the main IIFE `selectedZoneId` is a string variable; in the mini-transport
+  IIFE it is a FUNCTION that reads `#zone-select`. The v1.0.54 shuffle / repeat /
+  radio handlers landed in the transport IIFE and used it bare: the truthy guard
+  passed (a function is truthy) and `JSON.stringify` then DROPPED the key
+  entirely, so `/api/radio` answered 400 and the mode commands went to whatever
+  player the server defaulted to. Always CALL it there. The e2e missed it because
+  the fake LMS ignored player identity — a transport test must assert WHICH
+  player the command named, not just that the command was sent.
+- The Library control row is FLAT and Focus-first (`.lib-ctl`, v1.0.57), matching
+  the Roon extension: Focus carries a COUNT BADGE (`.lib-ctl-badge`), Sort
+  carries the direction arrow inside its own label, and there is no separate
+  direction button — re-tapping the selected sort row reverses it. The old
+  `.lib-pill` / `.lib-dir-btn` pair is gone; anything selecting controls
+  positionally must remember Focus is index 0 and Sort index 1.
+- Playlist / Live-Playlist mosaic tiles get their four covers from the INDEX, not
+  from LMS artwork ids: `lms.playlistArt()` returns `albums:[{album,artist,cover}]`
+  and `findRecordByName(title, artist)` resolves each to a record whose image key
+  the tile can use. A stored playlist's tracks can name albums LMS gives no
+  usable cover id for, which is why the mosaics were blank.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It

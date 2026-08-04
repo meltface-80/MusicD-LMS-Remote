@@ -803,41 +803,48 @@ function esc(s) {
     if (!libraryWallActive) return;
     libControls.innerHTML = "";
 
-    const pill = (label, value, active, onClick) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "lib-pill" + (active ? " is-active" : "");
-      const l = document.createElement("span"); l.className = "lib-pill-label"; l.textContent = label;
-      const v = document.createElement("span"); v.className = "lib-pill-value"; v.textContent = value;
-      b.appendChild(l); b.appendChild(v);
-      b.addEventListener("click", onClick);
-      return b;
-    };
-    libControls.appendChild(pill("Sort", libSortLabel(), false, openLibSortSheet));
-
-    const dir = document.createElement("button");
-    dir.type = "button";
-    dir.className = "lib-dir-btn";
-    if (!libSortHasDir(libView.sort)) {
-      // Random has no meaningful direction — offer a reshuffle instead.
-      dir.textContent = "⟳";
-      dir.title = "Shuffle again";
-      dir.setAttribute("aria-label", "Shuffle again");
-      dir.addEventListener("click", () => { libView.seed = libNextSeed(); applyLibView(); });
-    } else {
-      const desc = libView.dir === "desc";
-      dir.textContent = desc ? "↓" : "↑";
-      dir.title = libDirLabel();
-      dir.setAttribute("aria-label", "Reverse order — currently " + libDirLabel());
-      dir.addEventListener("click", () => { libView.dir = desc ? "asc" : "desc"; applyLibView(); });
-    }
-    libControls.appendChild(dir);
-
+    // Flat text controls with a hairline under the row, matching the Roon
+    // build. The separate direction button is GONE: it was a third boxed
+    // control between two others, and direction is a property of the sort, so
+    // it belongs in the sort sheet (which already flips on a re-tap). The row
+    // still SHOWS the direction as part of the sort's own label, so nothing is
+    // hidden — it just isn't its own button.
+    const focus = document.createElement("button");
+    focus.type = "button";
     const n = libFocusCount();
+    focus.className = "lib-ctl lib-ctl-focus" + (n ? " is-active" : "");
+    const chev = document.createElement("span");
+    chev.className = "lib-ctl-chevron"; chev.setAttribute("aria-hidden", "true"); chev.textContent = "\u203a";
+    const ftext = document.createElement("span");
+    ftext.className = "lib-ctl-text"; ftext.textContent = "Focus";
+    focus.appendChild(chev); focus.appendChild(ftext);
+    if (n) {
+      const badge = document.createElement("span");
+      badge.className = "lib-ctl-badge"; badge.textContent = String(n);
+      focus.appendChild(badge);
+    }
     // () => openLibFocusSheet(null), NOT the bare function: a click handler is
     // called with an Event, which would arrive as an edit target and make the
     // next save overwrite a playlist chosen at random.
-    libControls.appendChild(pill("Focus", n ? n + " active" : "None", n > 0, () => openLibFocusSheet(null)));
+    focus.addEventListener("click", () => openLibFocusSheet(null));
+    libControls.appendChild(focus);
+
+    const sort = document.createElement("button");
+    sort.type = "button";
+    sort.className = "lib-ctl lib-ctl-sort";
+    const stext = document.createElement("span");
+    stext.className = "lib-ctl-text"; stext.textContent = libSortLabel();
+    const arrow = document.createElement("span");
+    arrow.className = "lib-ctl-arrow"; arrow.setAttribute("aria-hidden", "true");
+    // A label, not a button: it says which way the current sort runs. Random
+    // has no direction, so it shows the reshuffle glyph instead.
+    arrow.textContent = libSortHasDir(libView.sort) ? (libView.dir === "desc" ? "\u2193" : "\u2191") : "\u27f3";
+    const caret = document.createElement("span");
+    caret.className = "lib-ctl-caret"; caret.setAttribute("aria-hidden", "true"); caret.textContent = "\u2304";
+    sort.appendChild(stext); sort.appendChild(arrow); sort.appendChild(caret);
+    sort.setAttribute("aria-label", libSortLabel() + " \u2014 " + libDirLabel() + ", change sort");
+    sort.addEventListener("click", openLibSortSheet);
+    libControls.appendChild(sort);
   }
 
   // Shared bottom-sheet builder — every Library picker is built with this so
@@ -4556,6 +4563,11 @@ function esc(s) {
   // Painted FROM the poll, never from a local guess: another client (or LMS's
   // own web UI) can change these, and a toggle computed client-side would then
   // send the wrong value. Each control sends a concrete mode.
+  // NOTE: in THIS IIFE `selectedZoneId` is a FUNCTION that reads #zone-select,
+  // not the id variable of the main IIFE. Using it as a value made every call
+  // here address a garbage player: JSON.stringify drops a function, so the
+  // radio POST arrived with no zone at all (HTTP 400), and shuffle/repeat
+  // silently went to a nonsense player id. Always CALL it.
   let npModeBusy = false;
   function paintTransportModes(zone) {
     if (!npShuffle || !npRepeat) return;
@@ -4572,10 +4584,11 @@ function esc(s) {
   }
 
   async function setTransportMode(body) {
-    if (!selectedZoneId) return;
+    const zid = selectedZoneId();
+    if (!zid) return;
     npModeBusy = true;
     try {
-      const r = await fetch("/api/lms/player/" + encodeURIComponent(selectedZoneId) + "/mode", {
+      const r = await fetch("/api/lms/player/" + encodeURIComponent(zid) + "/mode", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -4601,13 +4614,14 @@ function esc(s) {
     await setTransportMode({ repeat: next });
   });
   if (npRadio) npRadio.addEventListener("click", async () => {
-    if (!selectedZoneId) return;
+    const zid = selectedZoneId();
+    if (!zid) return;
     const on = npRadio.getAttribute("aria-pressed") === "true";
     npRadio.setAttribute("aria-pressed", on ? "false" : "true");
     try {
       const r = await fetch("/api/radio", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zone: selectedZoneId, enabled: !on }),
+        body: JSON.stringify({ zone: zid, enabled: !on }),
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
       window.__showToast && window.__showToast(!on ? "Random album radio on \u2014 whole albums keep coming"
