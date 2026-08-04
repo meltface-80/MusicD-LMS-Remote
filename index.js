@@ -1364,14 +1364,19 @@ app.post("/api/play-multi", async (req, res) => {
     // Play Now = replace); the rest are appended in order. Tracking "first
     // resolved" (not index 0) means an unknown leading offset can't silently
     // demote a Play Now into an append onto the existing queue.
-    let first = true;
+    let first = true, queued = 0, failed = 0;
     for (const off of offsets) {
       const rec = index.byOffset.get(off);
-      if (!rec) continue;
-      await playRecord(zone_or_output_id, rec, first ? mode : "queue");
-      first = false;
+      // An offset that no longer resolves (a rescan mid-selection) is COUNTED,
+      // not silently skipped: answering a bare ok for a 40-album selection that
+      // only queued 37 is a lie the UI can't detect.
+      if (!rec) { failed++; continue; }
+      try {
+        await playRecord(zone_or_output_id, rec, first ? mode : "queue");
+        queued++; first = false;
+      } catch (e) { failed++; log.debug("play-multi:", off, e.message); }
     }
-    res.json({ ok: true });
+    res.json({ ok: queued > 0, queued, failed, total: offsets.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -2807,35 +2812,124 @@ const libraryViewCache = new Map();
 const LIBRARY_VIEW_CACHE_MAX = 8;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
+// ---------------------------------------------------------------------------
+// Focus facets — ONE table drives both filtering and counting (v1.0.55).
+//
+// Filtering and counting used to be written twice: three bespoke `if` blocks in
+// libraryView() and three hand-built Maps in /api/library/facets. Adding a
+// facet meant editing both and hoping they agreed. Now a facet is one entry
+// here: an id, a label, and a function from an album record to the values it
+// holds. An album with NO value for a facet returns [] and matches only while
+// that facet is unselected.
+//
+// VALUES ARE STRINGS END TO END. The decade filter used to parseInt its values,
+// which would destroy the "!" exclusion prefix before the matcher ever saw it.
+// Live Playlists persist these same strings (lib/liveplaylists.js), so the wire
+// shape, the stored shape and the matcher all agree by construction.
+const LIB_ADDED_WINDOWS = [
+  { value: "7",   label: "Week",     days: 7 },
+  { value: "30",  label: "Month",    days: 30 },
+  { value: "90",  label: "3 months", days: 90 },
+  { value: "365", label: "Year",     days: 365 },
+];
+const SRC_LABEL = { local: "Local files", qobuz: "Qobuz", tidal: "TIDAL" };
+
+function libFacetDefs() {
+  return [
+    { id: "genre",  label: "Genre",
+      // LMS gives genre as a native album tag, so unlike the Roon build there
+      // is nothing to harvest — it is simply there.
+      values: (r) => (r.genre ? [String(r.genre)] : []), sort: "count" },
+    { id: "source", label: "Source",
+      // "local" is the ABSENCE of an online-library extid, so it needs a
+      // sentinel rather than being left empty.
+      values: (r) => [String(r.source || "local")],
+      order: ["local", "qobuz", "tidal"], labels: (v) => SRC_LABEL[v] || v },
+    { id: "decade", label: "Decade",
+      // The value is the START YEAR as a string ("1990"), not "1990s". An
+      // album with no year is UNKNOWN and matches no decade.
+      values: (r) => (r.year != null && r.year >= 1000 ? [String(Math.floor(r.year / 10) * 10)] : []),
+      sort: "numeric-desc", labels: (v) => v + "s" },
+    { id: "label",  label: "Record label",
+      // Derived by the background label scan, so coverage is partial — the
+      // sheet says so rather than showing a list that doesn't add up.
+      values: (r) => { const n = labelNameForRecord(r); return n ? [n] : []; }, sort: "count" },
+    { id: "letter", label: "Starts with",
+      // Free: sortTitle already files "The Beatles" under B.
+      values: (r) => {
+        const c = String(r.sortTitle || "").charAt(0).toUpperCase();
+        return c ? [/[A-Z]/.test(c) ? c : "#"] : [];
+      }, sort: "alpha" },
+    { id: "added",  label: "Added in the last",
+      // Windows NEST: an album returns every window that contains it, so
+      // picking "3 months" can't exclude what arrived this week.
+      values: (r) => {
+        if (r.addedAt == null) return [];
+        // addedAt comes from LMS tag D, which is epoch SECONDS. Comparing it
+        // straight against Date.now() (milliseconds) made every album look
+        // ~55 years old, so no window ever matched.
+        const ms = r.addedAt < 1e11 ? r.addedAt * 1000 : r.addedAt;
+        const age = Date.now() - ms;
+        return LIB_ADDED_WINDOWS.filter(w => age >= 0 && age <= w.days * 86400000).map(w => w.value);
+      },
+      order: LIB_ADDED_WINDOWS.map(w => w.value),
+      labels: (v) => (LIB_ADDED_WINDOWS.find(w => w.value === v) || {}).label || v },
+  ];
+}
+
+// Does an album's values satisfy a selection? OR within a facet, and an
+// explicit "!value" EXCLUDES. Excludes always win; a selection made only of
+// excludes needs no positive hit to match.
+function facetMatch(selected, values) {
+  if (!selected || !selected.length) return true;
+  let wanted = false, sawInclude = false;
+  for (const sel of selected) {
+    if (sel.charAt(0) === "!") { if (values.includes(sel.slice(1))) return false; }
+    else { sawInclude = true; if (values.includes(sel)) wanted = true; }
+  }
+  return sawInclude ? wanted : true;
+}
+
+// The label a record resolves to, if the background label scan has reached it.
+// labels.albumKey() is title+SUBTITLE, so the lookup object must use `subtitle`
+// — passing `artist` silently resolves nothing.
+// Memoised per index build: this runs once per record per facet pass, and the
+// lookup normalises two strings each time.
+let labelNameCache = { builtAt: -1, map: new Map() };
+function labelNameForRecord(r) {
+  if (labelNameCache.builtAt !== index.builtAt) {
+    labelNameCache = { builtAt: index.builtAt, map: new Map() };
+  }
+  if (labelNameCache.map.has(r.offset)) return labelNameCache.map.get(r.offset);
+  let out = null;
+  try {
+    if (labels && typeof labels.labelForAlbum === "function") {
+      const n = labels.labelForAlbum({ title: r.title, subtitle: r.subtitle });
+      out = n ? String(n) : null;
+    }
+  } catch (e) { out = null; }
+  labelNameCache.map.set(r.offset, out);
+  return out;
+}
+
 function libraryView(q) {
   const sort  = LIB_SORTS.has(String(q.sort || "")) ? String(q.sort) : "album";
   const desc  = String(q.dir || "asc") === "desc";
   const seed  = parseInt(q.seed, 10) || 1;
+  // Values stay STRINGS — parsing them here would destroy an "!" exclusion.
   const asList = (v) => (v === undefined ? [] : (Array.isArray(v) ? v : [v])).map(String).filter(Boolean);
-  const decades = asList(q.decade).map(d => parseInt(d, 10)).filter(Number.isFinite);
-  const sources = asList(q.source);
-  const genres  = asList(q.genre);
-  const played  = String(q.played || "any");
+  const defs = libFacetDefs();
+  const picked = defs.map(d => ({ def: d, sel: asList(q[d.id]) })).filter(x => x.sel.length);
+  const played = String(q.played || "any");
 
-  const sig = [index.builtAt, sort, desc, seed, decades.join(","),
-               sources.join(","), genres.join(","), played].join("|");
+  const sig = [index.builtAt, sort, desc, seed, played,
+               ...defs.map(d => d.id + ":" + asList(q[d.id]).join(","))].join("|");
   const hit = libraryViewCache.get(sig);
   if (hit) return hit;
 
   let list = index.records;
-  if (decades.length) {
-    // A decade value is its START YEAR (1990, not "1990s"); an album with no
-    // known year is UNKNOWN and matches no decade rather than falling in 0s.
-    list = list.filter(r => r.year != null && decades.some(d => r.year >= d && r.year < d + 10));
-  }
-  if (sources.length) {
-    // "local" is the absence of an online-library extid, so it needs a sentinel.
-    list = list.filter(r => sources.includes(r.source || "local"));
-  }
-  if (genres.length) {
-    const want = new Set(genres.map(g => g.toLowerCase()));
-    list = list.filter(r => r.genre && want.has(String(r.genre).toLowerCase()));
-  }
+  // Sequential filters = AND across facets; facetMatch is OR within one.
+  for (const { def, sel } of picked) list = list.filter(r => facetMatch(sel, def.values(r)));
   if (played !== "any") {
     // Titles played within the window (or ever, for "never"). Matching is by
     // title — see lib/plays.js for why, and the caveat that carries.
@@ -2905,34 +2999,61 @@ app.get("/api/library/facets", async (req, res) => {
   if (!state.connected) return notConnected(res);
   try {
     await ensureIndex();
-    const decades = new Map(), sources = new Map(), genres = new Map();
-    let dated = 0, genred = 0;
+    const defs = libFacetDefs();
+    // ONE pass over the library building one Map per facet, from the SAME
+    // value functions libraryView filters with — counting and selecting can no
+    // longer disagree, which is what the two hand-written copies allowed.
+    const counts = defs.map(() => new Map());
+    const covered = defs.map(() => 0);
     for (const r of index.records) {
-      if (r.year != null && r.year >= 1000) {
-        dated++;
-        const d = Math.floor(r.year / 10) * 10;
-        decades.set(d, (decades.get(d) || 0) + 1);
-      }
-      const s = r.source || "local";
-      sources.set(s, (sources.get(s) || 0) + 1);
-      if (r.genre) { genred++; genres.set(r.genre, (genres.get(r.genre) || 0) + 1); }
+      defs.forEach((d, i) => {
+        const vals = d.values(r);
+        if (vals.length) covered[i]++;
+        for (const v of vals) counts[i].set(v, (counts[i].get(v) || 0) + 1);
+      });
     }
-    const SRC_LABEL = { local: "Local files", qobuz: "Qobuz", tidal: "TIDAL" };
+    const CHIP_MAX = 40;
+    const facets = defs.map((d, i) => {
+      let rows = [...counts[i].entries()].map(([value, count]) => ({
+        value, label: d.labels ? d.labels(value) : value, count,
+      }));
+      if (d.order) {
+        const rank = new Map(d.order.map((v, n) => [v, n]));
+        rows.sort((a, b) => (rank.has(a.value) ? rank.get(a.value) : 999) -
+                            (rank.has(b.value) ? rank.get(b.value) : 999));
+      } else if (d.sort === "numeric-desc") {
+        rows.sort((a, b) => Number(b.value) - Number(a.value));
+      } else if (d.sort === "alpha") {
+        rows.sort((a, b) => String(a.value).localeCompare(String(b.value)));
+      } else {
+        rows.sort((a, b) => b.count - a.count || String(a.value).localeCompare(String(b.value)));
+      }
+      const total_values = rows.length;
+      // Truncate the long tails (genres, labels) — the client synthesises a
+      // chip for anything selected that falls outside this slice, so a saved
+      // filter is never silently unclearable.
+      if (rows.length > CHIP_MAX) rows = rows.slice(0, CHIP_MAX);
+      return { id: d.id, label: d.label, total_values, values: rows,
+               // How many albums hold ANY value here. LMS doesn't always carry
+               // a year, a genre or a resolved label, so the sheet can say
+               // "N of M albums" rather than showing a list that doesn't add up.
+               covered: covered[i] };
+    });
     res.json({
       total: index.records.length,
-      // Coverage counts: LMS doesn't always carry a year or a genre, so the
-      // sheet can say "N of M albums have a release year" rather than showing
-      // a decade list that quietly doesn't add up to the library.
-      dated, genred,
-      decades: [...decades.entries()].sort((a, b) => b[0] - a[0])
-        .map(([d, n]) => ({ value: d, label: d + "s", count: n })),
-      sources: ["local", "qobuz", "tidal"].filter(s => sources.get(s))
-        .map(s => ({ value: s, label: SRC_LABEL[s] || s, count: sources.get(s) })),
-      genres: [...genres.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .map(([g, n]) => ({ value: g, label: g, count: n })),
+      facets,
       // Whether any play history exists at all — the client hides the
       // Listening facet entirely rather than offering filters that match all.
       hasPlays: playsLog.getPlayedTitlesSince(0).size > 0,
+      // A PWA client can be a service-worker version behind the server, so the
+      // pre-v1.0.55 keys stay — but as a PROJECTION of the same facet table,
+      // never a second hand-built count that could drift from it.
+      dated:   (facets.find(f => f.id === "decade") || {}).covered || 0,
+      genred:  (facets.find(f => f.id === "genre")  || {}).covered || 0,
+      decades: (facets.find(f => f.id === "decade") || { values: [] }).values
+                 .map(v => ({ value: Number(v.value), label: v.label, count: v.count })),
+      sources: (facets.find(f => f.id === "source") || { values: [] }).values,
+      genres:  (facets.find(f => f.id === "genre")  || { values: [] }).values,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
