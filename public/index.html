@@ -249,6 +249,21 @@
           <span>Play something unheard</span>
         </button>
         <div class="menu-sep"></div>
+        <!-- Whole-house controls: every player at once, not just the one the
+             app is currently pointed at. -->
+        <button class="menu-item" type="button" data-action="pause-all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          <span>Pause all zones</span>
+        </button>
+        <button class="menu-item" type="button" data-action="mute-all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          <span>Mute all zones</span>
+        </button>
+        <button class="menu-item" type="button" data-action="unmute-all">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <span>Unmute all zones</span>
+        </button>
+        <div class="menu-sep"></div>
         <button class="menu-item" type="button" data-action="rescan">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           <span>Rescan library</span>
@@ -539,6 +554,16 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             </div>
 
             <div class="np-transport">
+              <!-- Shuffle / repeat / radio flank the transport, as in the Roon
+                   build. They paint from the poll and send a CONCRETE mode, not
+                   a blind toggle, so two clients can't disagree about state. -->
+              <button class="np-btn np-mode-btn" id="np-shuffle" type="button" aria-label="Shuffle" aria-pressed="false" title="Shuffle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/>
+                  <path d="M15 15l6 6"/><path d="M4 4l5 5"/>
+                </svg>
+              </button>
               <button class="np-btn" id="np-prev" aria-label="Previous track" disabled>
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M6 6h2v12H6zM9.5 12l10-6v12z"/>
@@ -556,6 +581,30 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M16 6h2v12h-2zM4.5 6l10 6-10 6z"/>
                 </svg>
+              </button>
+              <!-- Repeat cycles off -> queue -> one track; the badge carries the
+                   "1" so the icon itself never has to change. -->
+              <button class="np-btn np-mode-btn" id="np-repeat" type="button" aria-label="Repeat" aria-pressed="false" title="Repeat">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                  <path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+                </svg>
+                <span class="np-mode-badge hidden" id="np-repeat-badge">1</span>
+              </button>
+            </div>
+
+            <!-- Random Album Radio: keeps whole albums coming when the queue
+                 runs out. Hidden while LMS's own Don't Stop The Music is on for
+                 this player — two queue fillers would fight. -->
+            <div class="np-radio-row">
+              <button class="np-radio-btn" id="np-radio" type="button" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>
+                  <path d="M7.5 7.5a6.4 6.4 0 0 0 0 9"/><path d="M16.5 7.5a6.4 6.4 0 0 1 0 9"/>
+                </svg>
+                <span>Random album radio</span>
               </button>
             </div>
 
