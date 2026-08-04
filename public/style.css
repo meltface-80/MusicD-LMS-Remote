@@ -3592,3 +3592,39 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .np-artist .np-artist-link:hover { text-decoration: underline; }
 .np-artist .np-artist-sep { opacity: .55; }
+
+
+/* ------------------------------------------------------------------ */
+/*  Focus sheet: collapsible categories + exclusion chips (v1.0.55)    */
+/* ------------------------------------------------------------------ */
+/* Ten categories with hundreds of values between them will not fit a
+   phone flat, so each collapses; any category holding an active filter
+   opens itself. */
+.lib-facet-sec { border-bottom: 1px solid var(--panel-hairline); }
+.lib-facet-sec:last-of-type { border-bottom: 0; }
+.lib-facet-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 13px 2px; background: none; border: 0; cursor: pointer;
+  color: inherit; text-align: left;
+}
+.lib-facet-head .lib-sheet-section-label { flex: 1 1 auto; margin: 0; }
+.lib-facet-count {
+  flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: var(--accent); color: var(--on-accent);
+  font-size: 11px; font-weight: 800; line-height: 20px; text-align: center;
+}
+.lib-facet-caret {
+  flex: 0 0 auto; width: 20px; text-align: center;
+  color: var(--text-faint); font-size: 17px; font-weight: 700;
+}
+.lib-facet-sec .lib-chips { padding-bottom: 10px; }
+
+/* An excluded value is struck through as well as recoloured — colour alone
+   would leave "include" and "exclude" indistinguishable to anyone who can't
+   separate the two hues. */
+.lib-chip.is-not {
+  color: var(--danger, #e5484d);
+  border-color: var(--danger, #e5484d);
+  background: transparent;
+  text-decoration: line-through;
+}

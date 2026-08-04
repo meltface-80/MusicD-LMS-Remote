@@ -307,6 +307,24 @@ Layout section of README.md.
   the background scan does for as long as it runs. Store the stable IDENTITY
   (album id, label key), never the position, and re-validate on read so a pick
   that no longer exists is re-picked rather than returned.
+- Focus facets come from ONE table, `libFacetDefs()` (v1.0.55). Counting
+  (`/api/library/facets`) and filtering (`libraryView`) call the SAME `values()`
+  function per facet, because they used to be written twice — three bespoke
+  `if` blocks against three hand-built Maps — and could silently disagree about
+  what a count meant. Adding a facet is now one entry. An album with no value
+  returns `[]` and matches only while that facet is unselected.
+- Facet values are STRINGS end to end, and a leading `!` means EXCLUDE
+  (`facetMatch()`): excludes always win, and a selection made only of excludes
+  needs no positive hit. Never parse a facet value — `sanitizeView()` in
+  lib/liveplaylists.js used to `parseInt` the decade, which destroyed `!1990`
+  before the matcher saw it; validation must split the prefix off, check the
+  value, and put it back. The same strings persist into Live Playlists, so the
+  wire shape, the stored shape and the matcher agree by construction.
+- `addedAt` is epoch SECONDS (LMS tag `D`), not milliseconds. The "Added in the
+  last" facet compares it against `Date.now()`, so it must scale first — the
+  first cut didn't, and every album read as ~55 years old so no window matched.
+  Its windows NEST deliberately: an album returns every window containing it,
+  so picking "3 months" can't exclude what arrived this week.
 - The Library wall (`/api/library/albums`, `/api/library/facets`) is the ONLY
   deterministic browse — every other wall is a random sample. Semantics mirror
   the Roon build: facet values OR within a group, groups AND together; `dir`

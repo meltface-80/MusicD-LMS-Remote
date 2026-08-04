@@ -600,7 +600,11 @@ function esc(s) {
     (id === "year" || id === "added" || id === "plays" || id === "lastplayed") ? "desc" : "asc";
   const libNextSeed = () => 1 + Math.floor(Math.random() * 100000);
 
-  let libView = { sort: "album", dir: "asc", seed: 1, decade: [], source: [], genre: [], played: "any" };
+  // Every facet id the server can offer. Held generically so adding a facet is
+  // a server-side change only; a value prefixed "!" means EXCLUDE.
+  const LIB_FACET_IDS = ["genre", "source", "decade", "label", "letter", "added"];
+  const emptyFacets = () => { const o = {}; for (const id of LIB_FACET_IDS) o[id] = []; return o; };
+  let libView = { sort: "album", dir: "asc", seed: 1, played: "any", ...emptyFacets() };
   let libraryWallActive = false;
   let libFacets = null;
   const libWall = { seq: 0, offset: 0, loading: false, done: false, total: 0 };
@@ -614,14 +618,16 @@ function esc(s) {
           sort:   LIB_SORT_OPTIONS.some(o => o.id === v.sort) ? v.sort : "album",
           dir:    v.dir === "desc" ? "desc" : "asc",
           seed:   Number.isFinite(v.seed) && v.seed > 0 ? v.seed : 1,
-          decade: arr(v.decade), source: arr(v.source), genre: arr(v.genre),
           played: LIB_PLAYED_OPTIONS.some(o => o.id === v.played) ? v.played : "any",
+          ...emptyFacets(),
         };
+        for (const id of LIB_FACET_IDS) libView[id] = arr(v[id]);
       }
     } catch (e) {} // corrupt/absent — defaults are fine
   })();
   const saveLibView = () => { try { localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(libView)); } catch (e) {} };
-  const libFocusCount = () => libView.decade.length + libView.source.length + libView.genre.length +
+  const libFocusCount = () =>
+    LIB_FACET_IDS.reduce((n, id) => n + (libView[id] || []).length, 0) +
     (libView.played !== "any" ? 1 : 0);
   const libSortLabel = () => (LIB_SORT_OPTIONS.find(o => o.id === libView.sort) || LIB_SORT_OPTIONS[0]).label;
   function libDirLabel() {
@@ -633,9 +639,7 @@ function esc(s) {
     p.set("sort", libView.sort);
     p.set("dir", libView.dir);
     if (libView.sort === "random") p.set("seed", String(libView.seed));
-    for (const d of libView.decade) p.append("decade", d);
-    for (const s of libView.source) p.append("source", s);
-    for (const g of libView.genre)  p.append("genre", g);
+    for (const id of LIB_FACET_IDS) for (const v of (libView[id] || [])) p.append(id, v);
     if (libView.played !== "any") p.set("played", libView.played);
     return p.toString();
   }
@@ -932,78 +936,121 @@ function esc(s) {
       applyViewToLibView(editTarget.view);
       renderLibraryControls();
     }
+    // Which sections are expanded, remembered across repaints so clearing the
+    // last chip in a section doesn't collapse it under your finger.
+    const openSections = new Set();
     openLibSheet(editTarget ? "Edit rules" : "Focus", (body) => {
       const paint = () => {
         body.innerHTML = "";
         const f = libFacets || {};
-        const group = (label, note) => {
-          const sec = document.createElement("div");
-          sec.style.marginBottom = "16px";
-          const l = document.createElement("div");
-          l.className = "lib-sheet-section-label"; l.textContent = label;
-          sec.appendChild(l);
-          const wrap = document.createElement("div"); wrap.className = "lib-chips";
-          sec.appendChild(wrap);
-          if (note) {
-            const n = document.createElement("div"); n.className = "lib-facet-note"; n.textContent = note;
-            sec.appendChild(n);
-          }
-          body.appendChild(sec);
-          return wrap;
-        };
-        const chip = (host, label, on, toggle) => {
-          const c = document.createElement("button");
-          c.type = "button";
-          c.className = "lib-chip" + (on ? " is-on" : "");
-          c.textContent = label;
-          c.addEventListener("click", () => { toggle(); paint(); applyLibView(); });
-          host.appendChild(c);
-        };
-        const multi = (arr, v) => {
-          const i = arr.indexOf(v);
-          if (i === -1) arr.push(v); else arr.splice(i, 1);
+        const facets = Array.isArray(f.facets) ? f.facets : [];
+
+        // A chip has THREE states: off -> include -> exclude -> off. Exclusion
+        // is encoded in the value itself ("!Jazz"), so saved Live Playlists and
+        // the query string round-trip with no schema change.
+        const stateOf = (arr, v) => arr.includes(v) ? "on" : (arr.includes("!" + v) ? "not" : "off");
+        const cycle = (arr, v) => {
+          const i = arr.indexOf(v), j = arr.indexOf("!" + v);
+          if (i !== -1) { arr.splice(i, 1); arr.push("!" + v); }
+          else if (j !== -1) { arr.splice(j, 1); }
+          else { arr.push(v); }
         };
 
-        if ((f.sources || []).length) {
-          const w = group("Source");
-          for (const s of f.sources) {
-            chip(w, s.label + " (" + s.count + ")", libView.source.includes(String(s.value)),
-              () => multi(libView.source, String(s.value)));
+        const section = (id, label, activeCount, build) => {
+          const sec = document.createElement("div");
+          sec.className = "lib-facet-sec";
+          const head = document.createElement("button");
+          head.type = "button"; head.className = "lib-facet-head";
+          const open = openSections.has(id) || activeCount > 0;
+          head.setAttribute("aria-expanded", open ? "true" : "false");
+          const t = document.createElement("span");
+          t.className = "lib-sheet-section-label"; t.textContent = label;
+          head.appendChild(t);
+          if (activeCount > 0) {
+            const b = document.createElement("span");
+            b.className = "lib-facet-count"; b.textContent = String(activeCount);
+            head.appendChild(b);
           }
+          const car = document.createElement("span");
+          car.className = "lib-facet-caret"; car.textContent = open ? "\u2013" : "+";
+          head.appendChild(car);
+          head.addEventListener("click", () => {
+            if (openSections.has(id)) openSections.delete(id); else openSections.add(id);
+            paint();
+          });
+          sec.appendChild(head);
+          if (open) { openSections.add(id); build(sec); }
+          body.appendChild(sec);
+        };
+
+        const chip = (host, label, state, onTap) => {
+          const c = document.createElement("button");
+          c.type = "button";
+          c.className = "lib-chip" + (state === "on" ? " is-on" : state === "not" ? " is-not" : "");
+          c.textContent = label;
+          if (state === "not") c.setAttribute("aria-label", "Excluding " + label);
+          c.addEventListener("click", () => { onTap(); paint(); applyLibView(); });
+          host.appendChild(c);
+        };
+        const note = (host, text) => {
+          const n = document.createElement("div");
+          n.className = "lib-facet-note"; n.textContent = text;
+          host.appendChild(n);
+        };
+
+        for (const fc of facets) {
+          const sel = libView[fc.id] || (libView[fc.id] = []);
+          if (!fc.values.length && !sel.length) continue;
+          section(fc.id, fc.label, sel.length, (sec) => {
+            const wrap = document.createElement("div"); wrap.className = "lib-chips";
+            sec.appendChild(wrap);
+            const shown = new Set(fc.values.map(v => String(v.value)));
+            for (const v of fc.values) {
+              const val = String(v.value);
+              chip(wrap, v.label + " (" + v.count + ")", stateOf(sel, val), () => cycle(sel, val));
+            }
+            // Anything selected that isn't in the server's top slice still gets
+            // a chip, or a saved filter would be impossible to clear.
+            for (const raw of sel) {
+              const val = raw.charAt(0) === "!" ? raw.slice(1) : raw;
+              if (shown.has(val)) continue;
+              chip(wrap, val, stateOf(sel, val), () => cycle(sel, val));
+            }
+            if (fc.total_values > fc.values.length) {
+              note(sec, "Showing the " + fc.values.length + " most common of " +
+                        fc.total_values.toLocaleString() + ".");
+            }
+            if (f.total && fc.covered != null && fc.covered < f.total) {
+              note(sec, fc.covered.toLocaleString() + " of " + f.total.toLocaleString() +
+                        " albums have a value here.");
+            }
+          });
         }
-        if ((f.genres || []).length) {
-          const shown = f.genres.slice(0, 40);
-          const missing = f.total != null && f.genred != null && f.genred < f.total
-            ? f.genred.toLocaleString() + " of " + f.total.toLocaleString() + " albums have a genre"
-            : null;
-          const w = group("Genre", missing);
-          for (const g of shown) {
-            chip(w, g.label + " (" + g.count + ")", libView.genre.includes(String(g.value)),
-              () => multi(libView.genre, String(g.value)));
-          }
-        }
-        if ((f.decades || []).length) {
-          const missing = f.total != null && f.dated != null && f.dated < f.total
-            ? f.dated.toLocaleString() + " of " + f.total.toLocaleString() + " albums have a release year"
-            : null;
-          const w = group("Decade", missing);
-          for (const d of f.decades) {
-            chip(w, d.label + " (" + d.count + ")", libView.decade.includes(String(d.value)),
-              () => multi(libView.decade, String(d.value)));
-          }
-        }
+
         if (f.hasPlays) {
-          const w = group("Listening", "Based on plays this app has seen, matched by album title.");
-          for (const p of LIB_PLAYED_OPTIONS) {
-            chip(w, p.label, libView.played === p.id, () => { libView.played = p.id; });
-          }
+          section("played", "Listening", libView.played !== "any" ? 1 : 0, (sec) => {
+            const wrap = document.createElement("div"); wrap.className = "lib-chips";
+            sec.appendChild(wrap);
+            for (const p of LIB_PLAYED_OPTIONS) {
+              chip(wrap, p.label, libView.played === p.id ? "on" : "off",
+                   () => { libView.played = p.id; });
+            }
+            note(sec, "Based on plays this app has seen, matched by album title.");
+          });
         }
+
         if (!body.children.length) {
           const e = document.createElement("div");
           e.className = "lib-facet-note";
-          e.textContent = "No filters available yet — the library is still being indexed.";
+          e.textContent = "No filters available yet \u2014 the library is still being indexed.";
           body.appendChild(e);
         }
+        // Tapping a chip twice EXCLUDES rather than clearing — say so once.
+        const hint = document.createElement("div");
+        hint.className = "lib-facet-note";
+        hint.style.marginTop = "12px";
+        hint.textContent = "Tap once to include, again to exclude, again to clear.";
+        body.appendChild(hint);
       };
       paint();
     }, (foot, close) => {
@@ -1012,7 +1059,8 @@ function esc(s) {
       clear.textContent = "Clear all";
       clear.addEventListener("click", () => {
         committed = true;
-        libView.decade = []; libView.source = []; libView.genre = []; libView.played = "any";
+        for (const id of LIB_FACET_IDS) libView[id] = [];
+        libView.played = "any";
         close(); applyLibView();
       });
       // Saving the CURRENT sort+focus as a Live Playlist. When the sheet was
@@ -1051,16 +1099,16 @@ function esc(s) {
     if (!v) return;
     libView = {
       sort: v.sort || "album", dir: v.dir === "desc" ? "desc" : "asc", seed: v.seed || 1,
-      decade: (v.decade || []).map(String), source: (v.source || []).map(String),
-      genre: (v.genre || []).map(String), played: v.played || "any",
+      played: v.played || "any", ...emptyFacets(),
     };
+    for (const id of LIB_FACET_IDS) libView[id] = (v[id] || []).map(String);
   }
 
-  const currentLibViewSnapshot = () => ({
-    sort: libView.sort, dir: libView.dir, seed: libView.seed,
-    decade: libView.decade.slice(), source: libView.source.slice(),
-    genre: libView.genre.slice(), played: libView.played,
-  });
+  const currentLibViewSnapshot = () => {
+    const o = { sort: libView.sort, dir: libView.dir, seed: libView.seed, played: libView.played };
+    for (const id of LIB_FACET_IDS) o[id] = (libView[id] || []).slice();
+    return o;
+  };
 
   async function saveLivePlaylistPrompt(existing) {
     const suggested = (existing && existing.name) || suggestLivePlaylistName();
@@ -1086,9 +1134,12 @@ function esc(s) {
     const bits = [];
     if (libView.played === "never") bits.push("Never played");
     else if (libView.played !== "any") bits.push("Unplayed " + libView.played + "m");
-    if (libView.decade.length) bits.push(libView.decade.slice().sort().map(d => d + "s").join(" + "));
-    if (libView.genre.length)  bits.push(libView.genre.join(" + "));
-    if (libView.source.length && !bits.length) bits.push(libView.source.join(" + "));
+    // Only INCLUDED values make a good name; "not Pop" reads badly in a title.
+    const inc = (id) => (libView[id] || []).filter(v => v.charAt(0) !== "!");
+    if (inc("decade").length) bits.push(inc("decade").slice().sort().map(d => d + "s").join(" + "));
+    if (inc("genre").length)  bits.push(inc("genre").join(" + "));
+    if (inc("label").length)  bits.push(inc("label").join(" + "));
+    if (inc("source").length && !bits.length) bits.push(inc("source").join(" + "));
     return bits.length ? bits.join(" ") : "My Live Playlist";
   }
 
@@ -4268,9 +4319,14 @@ function esc(s) {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      const n = albumSelected.length;
+      // Report what actually happened, not what was asked for: a selection can
+      // lose albums to a rescan between selecting and playing.
       const verb = kind === "play_now" ? "Playing" : "Queued";
-      showToast(verb + " " + n + " album" + (n === 1 ? "" : "s") + " → " + zoneName(selectedZoneId));
+      const n = Number.isFinite(j.queued) ? j.queued : albumSelected.length;
+      const miss = Number.isFinite(j.failed) ? j.failed : 0;
+      showToast(verb + " " + n + " album" + (n === 1 ? "" : "s") +
+                (miss ? " (" + miss + " no longer in the library)" : "") +
+                " → " + zoneName(selectedZoneId), miss ? "error" : undefined);
       exitAlbumSelectMode();
     } catch (e) {
       showToast(e.message, "error");
