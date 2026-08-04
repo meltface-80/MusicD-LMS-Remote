@@ -366,6 +366,25 @@ Layout section of README.md.
   (X, backdrop, or a footer button that doesn't commit); (c) saving under an
   existing NAME with no id is a save-over, not a new playlist, and the 50-item
   cap applies only to genuinely new records so edits still work when full.
+- Whole-house actions (pause / mute / unmute EVERY zone) live in the ZONE
+  PICKER, above "Play on", under an "All zones" heading — not in the side menu
+  (v1.0.56). Three menu rows took the list to 16 items / 905px of content and
+  pushed Settings off the bottom of a phone. They belong with the zone picker
+  anyway, since that is where "which zones" is already the subject. Both
+  pickers carry the section (`#mt-zone-popover` and `#np-device-popover`);
+  the handler is ONE delegated `[data-all]` listener at app.js top level,
+  because those two popovers live in separate sibling IIFEs.
+- The side-menu drawer is `height: 100dvh` (with `100%` as the preceding
+  fallback) and its bottom reserve lives on `.menu-list`, NOT on `.menu-drawer`
+  (v1.0.56). `100%` resolves against iOS Safari's LARGE viewport, so the last
+  row sat under the retracted toolbar however far you scrolled; and
+  `padding-bottom` on an `overflow-y:auto` container is not added to scrollable
+  overflow in WebKit, so the reserve there bought nothing. NOTE: headless
+  Chromium reproduces NEITHER — it has no retracting toolbar and no safe-area
+  inset — so a Playwright hit test PASSES on the broken build. Verified by
+  running the new test against the pre-fix commit. The e2e guards the other
+  half (a menu that outgrows the screen); the iOS half is guarded by the CSS.
+  Keep the menu under ~800px of content on a 375x667 phone.
 - The UI is FLAT everywhere (Home v1.0.39, album modal + Queue v1.0.42). No
   section or panel carries a background fill, radius, padding or watermark
   motif — structure comes from hairline separators and whitespace only, so the

@@ -249,20 +249,6 @@
           <span>Play something unheard</span>
         </button>
         <div class="menu-sep"></div>
-        <!-- Whole-house controls: every player at once, not just the one the
-             app is currently pointed at. -->
-        <button class="menu-item" type="button" data-action="pause-all">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-          <span>Pause all zones</span>
-        </button>
-        <button class="menu-item" type="button" data-action="mute-all">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-          <span>Mute all zones</span>
-        </button>
-        <button class="menu-item" type="button" data-action="unmute-all">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
-          <span>Unmute all zones</span>
-        </button>
         <div class="menu-sep"></div>
         <button class="menu-item" type="button" data-action="rescan">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -619,6 +605,25 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
                 </svg>
               </button>
               <div class="np-popover np-device-popover hidden" id="np-device-popover">
+                <!-- Whole-house controls. These used to be three side-menu rows, which
+                     pushed Settings off the bottom of a phone; they belong with the zone
+                     picker anyway, since that is where "which zones" is already the
+                     subject. -->
+                <div class="np-popover-title">All zones</div>
+                <div class="zone-all-row">
+                  <button class="zone-all-btn" type="button" data-all="pause" aria-label="Pause all zones">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                    <span>Pause</span>
+                  </button>
+                  <button class="zone-all-btn" type="button" data-all="mute" aria-label="Mute all zones">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                    <span>Mute</span>
+                  </button>
+                  <button class="zone-all-btn" type="button" data-all="unmute" aria-label="Unmute all zones">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+                    <span>Unmute</span>
+                  </button>
+                </div>
                 <div class="np-popover-title">Play on</div>
                 <div class="np-device-list" id="np-device-list"></div>
               </div>
@@ -737,7 +742,26 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
       </button>
     </div>
 
-    <div class="mt-zone-popover hidden" id="mt-zone-popover" role="dialog" aria-label="Play on">
+    <div class="mt-zone-popover hidden" id="mt-zone-popover" role="dialog" aria-label="Zones">
+      <!-- Whole-house controls. These used to be three side-menu rows, which
+           pushed Settings off the bottom of a phone; they belong with the zone
+           picker anyway, since that is where "which zones" is already the
+           subject. -->
+      <div class="np-popover-title">All zones</div>
+      <div class="zone-all-row">
+        <button class="zone-all-btn" type="button" data-all="pause" aria-label="Pause all zones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+          <span>Pause</span>
+        </button>
+        <button class="zone-all-btn" type="button" data-all="mute" aria-label="Mute all zones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+          <span>Mute</span>
+        </button>
+        <button class="zone-all-btn" type="button" data-all="unmute" aria-label="Unmute all zones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <span>Unmute</span>
+        </button>
+      </div>
       <div class="np-popover-title">Play on</div>
       <div class="np-device-list" id="mt-zone-list"></div>
     </div>
