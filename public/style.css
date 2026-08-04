@@ -3285,29 +3285,35 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 
 /* Control bar above the library grid: [Sort pill] [dir] [Focus pill] */
-.library-controls { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; margin: 0 0 12px; }
+/* Library control row — flat text, hairline under, matching the Roon build.
+   No boxed pills, and no separate direction button: direction is shown inside
+   the sort's own label (see renderLibraryControls). */
+.library-controls {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--panel-hairline);
+}
 .library-controls.hidden { display: none; }
-.lib-pill {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
-  min-width: 0; padding: 7px 12px; border-radius: 10px;
-  background: var(--bg-elev); border: 1px solid var(--border);
-  color: var(--text); cursor: pointer; min-height: 44px; justify-content: center;
+.lib-ctl {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 6px 2px; min-height: 44px;
+  background: none; border: 0; border-radius: 8px;
+  color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer;
 }
-.lib-pill.is-active { border-color: var(--accent); background: var(--accent-soft); }
-.lib-pill-label {
-  font-size: 10px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--text-faint);
+.lib-ctl:hover  { color: var(--accent-text); }
+.lib-ctl:active { opacity: .7; }
+.lib-ctl-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-ctl-chevron { font-size: 19px; line-height: 1; color: var(--text-faint); }
+.lib-ctl-focus.is-active,
+.lib-ctl-focus.is-active .lib-ctl-chevron { color: var(--accent-text); }
+.lib-ctl-badge {
+  flex: 0 0 auto; min-width: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
 }
-.lib-pill-value {
-  font-size: 13px; font-weight: 600; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
-}
-.lib-dir-btn {
-  min-width: 44px; min-height: 44px; padding: 0 12px;
-  border-radius: 10px; background: var(--bg-elev); border: 1px solid var(--border);
-  color: var(--accent-text); font-size: 20px; line-height: 1; cursor: pointer;
-}
-.lib-dir-btn:active { transform: scale(.96); }
+.lib-ctl-arrow { flex: 0 0 auto; font-size: 15px; line-height: 1; color: var(--accent-text); }
+.lib-ctl-caret { flex: 0 0 auto; font-size: 13px; line-height: 1; color: var(--text-faint); }
 
 /* Bottom sheet shell (Sort, Focus, pickers) */
 .lib-sheet-backdrop {
@@ -3634,9 +3640,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    would leave "include" and "exclude" indistinguishable to anyone who can't
    separate the two hues. */
 .lib-chip.is-not {
-  color: var(--danger, #e5484d);
-  border-color: var(--danger, #e5484d);
-  background: transparent;
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--text);
   text-decoration: line-through;
 }
 

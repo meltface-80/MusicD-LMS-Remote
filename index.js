@@ -1454,11 +1454,35 @@ const playlistArtCache = new Map();   // id -> { art, tracks, at }
 const PLAYLIST_ART_TTL_MS = 10 * 60 * 1000;
 const PLAYLIST_ART_CONCURRENCY = 3;
 
+// Find a library record by album name (+ artist when we have one). Used where
+// LMS hands back a title but no id — playlist rows, share imports.
+function findRecordByName(title, artist) {
+  const nT = search.normalize(String(title || ""));
+  if (!nT) return null;
+  const nA = search.normalize(String(artist || ""));
+  const hits = index.records.filter(r => r.nTitle === nT);
+  if (!hits.length) return null;
+  if (nA) { const exact = hits.find(r => r.nArtist === nA); if (exact) return exact; }
+  // Exactly one album with that title is unambiguous; more than one without an
+  // artist to separate them is a coin toss, so don't guess.
+  return hits.length === 1 ? hits[0] : null;
+}
+
 async function playlistArtFor(id) {
   const hit = playlistArtCache.get(String(id));
   if (hit && (Date.now() - hit.at) < PLAYLIST_ART_TTL_MS) return hit;
-  const { art, total } = await state.lms.playlistArt(id);
-  const rec = { art, tracks: total, at: Date.now() };
+  const { art, albums, total } = await state.lms.playlistArt(id);
+  // Fill any cover LMS didn't give us from our own index. A Qobuz playlist's
+  // tracks often come back with no cover id on this query, which left every
+  // tile blank; the library holds a good image key for anything we own, and
+  // matching is the same normalised title+artist used everywhere else.
+  const filled = [];
+  for (const a of (albums || [])) {
+    if (a.cover) { filled.push(a.cover); continue; }
+    const rec = a.album ? findRecordByName(a.album, a.artist) : null;
+    if (rec && rec.image_key) filled.push(rec.image_key);
+  }
+  const rec = { art: filled.length ? filled.slice(0, 4) : art, tracks: total, at: Date.now() };
   playlistArtCache.set(String(id), rec);
   return rec;
 }
