@@ -1988,6 +1988,37 @@ function esc(s) {
   // A fragment of per-artist link buttons for any artist string. Every name is
   // clickable and opens that artist's page (their own albums first, then the
   // albums they appear on).
+// ---------------------------------------------------------------------------
+// Whole-house actions, shared by both zone pickers (mini-transport and Now
+// Playing). Defined once at top level because those two live in separate
+// sibling IIFEs — see the note on esc() about scopes not being shared.
+// Delegated from document so it works for whichever popover is open.
+// ---------------------------------------------------------------------------
+(function initAllZoneActions() {
+  let busy = false;
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest && e.target.closest("[data-all]");
+    if (!btn) return;
+    e.stopPropagation();
+    if (busy) return;
+    busy = true;
+    const what = btn.dataset.all;
+    try {
+      const path = what === "pause" ? "/api/pause-all" : "/api/mute-all";
+      const body = what === "pause" ? {} : { how: what === "mute" ? "mute" : "unmute" };
+      const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+      window.__showToast(what === "pause"
+        ? "Paused " + j.paused + " zone" + (j.paused === 1 ? "" : "s")
+        : what === "mute" ? "Muted every zone" : "Unmuted every zone");
+    } catch (err) {
+      window.__showToast(err.message, "error");
+    } finally { busy = false; }
+  });
+})();
+
   function artistLinkNodes(subtitle, linkClass) {
     const frag = document.createDocumentFragment();
     splitArtistParts(subtitle).forEach((part, i) => {
@@ -7124,23 +7155,6 @@ function esc(s) {
 
       if (action === "home") {
         if (window.__showHome) window.__showHome();
-        return;
-      }
-      if (action === "pause-all" || action === "mute-all" || action === "unmute-all") {
-        (async () => {
-          try {
-            const path = action === "pause-all" ? "/api/pause-all" : "/api/mute-all";
-            const body = action === "pause-all" ? {} : { how: action === "mute-all" ? "mute" : "unmute" };
-            const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify(body) });
-            const j = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-            // This IIFE has no showToast of its own — siblings don't share scope.
-            window.__showToast(action === "pause-all"
-              ? "Paused " + j.paused + " zone" + (j.paused === 1 ? "" : "s")
-              : action === "mute-all" ? "Muted every zone" : "Unmuted every zone");
-          } catch (e) { window.__showToast(e.message, "error"); }
-        })();
         return;
       }
       if (action === "rescan") {
