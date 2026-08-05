@@ -574,9 +574,14 @@ Layout section of README.md.
   `overflow:hidden` itself, and blanking it unlocked the page behind a still-open
   modal.
 - Import lives in the SIDE MENU (owner decision, v1.0.61), matching the Roon
-  build — it is a thing you DO, not a place you browse. That takes the menu to
-  14 rows / ~750px on a 375x667 phone against the 800px budget the v1.0.56 e2e
-  enforces; the next row added needs something else removed first.
+  build — it is a thing you DO, not a place you browse. The menu now mirrors
+  Roon v1.7.43's list (v1.0.62): Home / Random albums | Labels, Favourites,
+  Merged albums, Qobuz, Pitchfork, Dynamic Playlists, Playlists, Import a
+  playlist | Rescan library | Settings. Favourites and Merged albums are this
+  app's own and have no other entry point; Roon's whole-house zone rows stay in
+  the zone picker (v1.0.56). The v1.0.56 e2e measures the budget with the Qobuz
+  row FORCED VISIBLE — the fake reports the plugin absent, so measuring as-is
+  read the menu one row shorter than the owner's phone. 817px of 900.
 - DELETING a stored playlist is the one action in this app that destroys
   something irrecoverably (v1.0.61). LMS's `playlistsDeleteCommand` →
   `_wipePlaylist` → `removePlaylistFromDisk` does a bare `unlink` of the .m3u —
@@ -600,6 +605,41 @@ Layout section of README.md.
   makes LMS close the socket, and the id goes stale precisely because the
   playlist is already gone — so the client returns to the list and re-reads
   rather than asserting either outcome.
+- UI PARITY WITH THE ROON BUILD is checked against the FULL files, not a cached
+  copy (v1.0.62). The copies in the scratchpad had been truncated (app.js 365KB
+  against a real 474KB) and three "gaps" derived from them were wrong in both
+  directions: the album action row really IS 2 pills + an overflow menu, the
+  Home unheard tile really IS in the Roon build, and the side menu really has
+  NO "Filter" or "Play something unheard" row. Re-download before auditing:
+  `raw.githubusercontent.com/meltface-80/MusicD-Remote/<branch>/public/<file>`.
+- "Play something unheard" is the FIRST TILE of the Not-played row plus the
+  top-bar icon — not a side-menu row (v1.0.62, matching Roon). It is built
+  AFTER `renderHomeUnplayed`'s empty check, deliberately: appending it ahead of
+  that check made `rowHasContent()` always true, so the "Loading…" placeholder
+  never showed and a failed load was never retried. Any test that clicks "the
+  first .album" must exclude `.home-unheard-tile`.
+- The Focus sheet's `openSections` is THREE-VALUED (`{}` with undefined =
+  untouched), never a Set (v1.0.62). A boolean Set recomputed `activeCount > 0`
+  on every repaint, so tapping the header of a section that had filters in it
+  re-opened it instantly — it read as stuck. Once the user writes a value it is
+  authoritative. Held across repaints, dropped on each opening.
+- Focus chips DO NOT re-run the wall (v1.0.62). `applyLibView()` is called once,
+  from "Show albums" — a tap-per-query fired a request for every intermediate
+  state the user never asked to see. The e2e counts `/api/library/albums`
+  requests, because the difference is invisible in the DOM.
+- The theme picker is STAGED: pick, then Apply (v1.0.62). The row that is
+  actually applied says "· in use" in its own label; the tick follows the
+  PENDING choice. `pendingThemeId` is cleared on every Settings open so the
+  sheet never reopens mid-decision. The swatch carries `data-theme`/
+  `data-palette` and reads `--bg`/`--accent` off ITSELF, so a preview cannot
+  drift from the stylesheet — the old version resolved them through a hidden
+  probe element.
+- Format / Sample rate / Bit depth facets ride in on the added-time sweep
+  (v1.0.62): `stampAlbumFormats()` keeps `fmtType`/`fmtRate`/`fmtBits` beside
+  the derived `quality` badge, so they cost no extra LMS traffic. There is NO
+  Channels facet — the `titles` sweep carries no channel count and asking per
+  track would be a query per track. `lib/liveplaylists.js` FACET_IDS must be
+  kept in step or a saved playlist silently drops the new rules.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
