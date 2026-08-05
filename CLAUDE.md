@@ -573,9 +573,33 @@ Layout section of README.md.
   (v1.0.59): a sheet can be opened over the album modal, which sets
   `overflow:hidden` itself, and blanking it unlocked the page behind a still-open
   modal.
-- Import lives in the PLAYLISTS overlay header, not the side menu where the Roon
-  build puts it: that menu is already at its height budget and one more row puts
-  Settings back off the bottom of a phone (v1.0.56).
+- Import lives in the SIDE MENU (owner decision, v1.0.61), matching the Roon
+  build — it is a thing you DO, not a place you browse. That takes the menu to
+  14 rows / ~750px on a 375x667 phone against the 800px budget the v1.0.56 e2e
+  enforces; the next row added needs something else removed first.
+- DELETING a stored playlist is the one action in this app that destroys
+  something irrecoverably (v1.0.61). LMS's `playlistsDeleteCommand` →
+  `_wipePlaylist` → `removePlaylistFromDisk` does a bare `unlink` of the .m3u —
+  no trash, no backup, and a rescan restores nothing. It does NOT touch music
+  files or library track rows (the read-only rule holds). So: the confirm names
+  the playlist AND its track count and says plainly that it cannot be undone.
+  Delete is OFFERED ONLY for a playlist the owner made — `isOwnPlaylist()`
+  requires no `extid`, `remote` falsy, and a url that is a playlist FILE
+  (`file:` or a bare path ending .m3u/.pls/.xspf); any other scheme, or no url
+  at all, hides the button. It FAILS CLOSED because a missing button is an
+  annoyance and the alternative is someone's playlist collection. Two reasons it
+  must never be offered on an imported playlist: `removePlaylistFromDisk` falls
+  back to unlinking `<playlistdir>/<title>.m3u` when the recorded path doesn't
+  exist (which is every remote playlist), so it can take a same-titled LOCAL
+  file with it; and deleting one is either useless (the plugin re-imports it on
+  the next online-library scan, which begins by wiping and re-fetching all of
+  them) or misleading (it makes no Qobuz API call, so the playlist is still in
+  the account). The provenance comes from `tags:uEx` on the `playlists` query —
+  `extid` and `remote` are what actually answer the question; a title prefix is
+  cosmetic. A failed delete is INDETERMINATE, never a clean failure: a stale id
+  makes LMS close the socket, and the id goes stale precisely because the
+  playlist is already gone — so the client returns to the list and re-reads
+  rather than asserting either outcome.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
