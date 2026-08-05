@@ -438,6 +438,41 @@ Layout section of README.md.
   direction button — re-tapping the selected sort row reverses it. The old
   `.lib-pill` / `.lib-dir-btn` pair is gone; anything selecting controls
   positionally must remember Focus is index 0 and Sort index 1.
+- A STREAMING track has no cover in LMS's database, and asking for one gets you
+  a PLACEHOLDER AT HTTP 200, not a 404 (v1.0.60). `Slim::Schema::RemoteTrack`
+  sets `id => -int($self)` and `coverid => id`, so tag `c` answers a NEGATIVE
+  number; `Slim::Web::Graphics` sees the leading "-" and serves
+  `html/images/radio_<size>.png` — its grey radio tower — with a 200. So the
+  image loads, `onerror` never fires, and a Qobuz playlist's mosaic fills with
+  towers. `coverKey()` therefore treats a negative id as NO cover (local ids are
+  8-hex, `artwork_track_id` is a positive track id — nothing legitimate is
+  negative) and falls through to `artwork_url`. Tag `K` does NOT return the
+  origin URL either: it returns `proxiedImage($url)` = a RELATIVE
+  `/imageproxy/<enc>/image.jpg`, which re-wrapped in another imageproxy call
+  404s — so `coverKey()` unwraps it, and returns null for anything that isn't
+  absolute afterwards rather than minting a key that resolves to a placeholder.
+  ANY fixture for this must use the real shapes; the old one used a raw absolute
+  `artwork_url`, which no live server sends, and every one of these defects
+  passed because of it.
+- `playlistArt()` stops on `want` COVERS, never on `want` ALBUMS (v1.0.60).
+  Stopping at four albums meant a playlist whose first four albums carried no
+  usable cover returned ONE cover and a mosaic of placeholders. It dedupes on
+  album+artist (album alone collapsed two different records sharing a title) and
+  SKIPS a row with no album name — keying those on the cover made an album-less
+  playlist show four different placeholders, because a remote row's pseudo-id is
+  unique per track.
+- `playlistArtCache` must be dropped for any playlist that is WRITTEN to
+  (`forgetPlaylistArt()`, called from create/delete/rename/add/share-save), and
+  an EMPTY probe is never cached at all (v1.0.60). The comment used to claim it
+  was keyed on the track count as well; it was not, and a probe that ran while a
+  playlist was still empty — exactly the state between "created" and "tracks
+  appended", which the add-to-playlist sheet's own listing can observe — pinned
+  "0 tracks" and a blank mosaic on the tile for the full 10-minute TTL while
+  opening that same playlist showed its tracks. Not caching an empty result is
+  the half that does NOT depend on our knowing about the write: LMS's web UI,
+  the Material skin and the Qobuz plugin all fill playlists without telling us.
+  A generation counter stops a probe already in flight writing its stale answer
+  back over an invalidation.
 - Playlist / Live-Playlist mosaic tiles get their four covers from the INDEX, not
   from LMS artwork ids: `lms.playlistArt()` returns `albums:[{album,artist,cover}]`
   and `findRecordByName(title, artist)` resolves each to a record whose image key
