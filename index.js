@@ -515,6 +515,10 @@ async function refreshConnection() {
   finally { refreshing = false; }
 }
 async function refreshConnectionInner() {
+  // The playlist-folder answer is cached in the adapter; drop it on every
+  // reconnect so fixing the setting on the server takes effect here without
+  // restarting the app.
+  if (state.lms && state.lms.forgetPlaylistFolder) state.lms.forgetPlaylistFolder();
   if (!state.lms) {
     if (!rebuildAdapter()) {
       // No configured host — try one round of UDP discovery.
@@ -1829,6 +1833,22 @@ app.get("/api/playlist/tracks", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// LMS answers a status-error (bad config, bad params, unknown verb) by CLOSING
+// THE SOCKET rather than returning an error payload, so the app sees a bare
+// "socket hang up" / ECONNRESET with nothing to say what went wrong. For
+// playlist writes the overwhelmingly likely cause is a server with no Playlists
+// folder configured, so say that instead of showing the user a transport error
+// they can do nothing with.
+function playlistWriteError(e) {
+  const m = String((e && e.message) || e || "");
+  if (/socket hang up|ECONNRESET|aborted/i.test(m)) {
+    return "The server rejected the playlist command and closed the connection. " +
+           "This usually means it has no Playlists folder set — check LMS Settings → " +
+           "Basic Settings → Playlists folder, and that the folder is writable.";
+  }
+  return m;
+}
+
 app.post("/api/playlists/create", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const name = String((req.body && req.body.name) || "").trim();
@@ -1873,17 +1893,24 @@ app.post("/api/playlists/add", async (req, res) => {
     await ensureIndex();
     // Resolve the selection to concrete tracks, preserving the order asked for.
     const picked = [];
+    // Through tracksForRecord(), NOT albumTracks() — a merged multi-disc album
+    // has to walk every part in disc order. albumTracks(rec.id) returns only the
+    // PRIMARY part, so on a merge the client's indices (which came from
+    // /api/album, i.e. from tracksForRecord) meant different tracks here: disc-2
+    // picks fell off the end and were silently dropped, and if every pick was on
+    // a later disc the whole request 409'd with "Nothing to add". Track identity
+    // is (offset, array index) and only one function may decide that ordering.
     if (Array.isArray(offsets) && offsets.length) {
       for (const off of offsets) {
         const rec = index.byOffset.get(off);
         if (!rec) continue;
-        const ts = await state.lms.albumTracks(rec.id);
+        const ts = await tracksForRecord(rec);
         for (const t of ts) picked.push(t);
       }
     } else if (Number.isFinite(offset) && Array.isArray(trackIdxs) && trackIdxs.length) {
       const rec = index.byOffset.get(offset);
       if (!rec) return res.status(404).json({ error: "Unknown album offset" });
-      const ts = await state.lms.albumTracks(rec.id);
+      const ts = await tracksForRecord(rec);
       for (const i of trackIdxs) { if (ts[i]) picked.push(ts[i]); }
     } else {
       return res.status(400).json({ error: "offsets, or offset + tracks, required" });
@@ -1901,11 +1928,19 @@ app.post("/api/playlists/add", async (req, res) => {
     for (const t of picked) {
       if (!t.url) { skipped++; continue; }
       try { await state.lms.playlistAddTrack(id, { title: t.title, url: t.url }); added++; }
-      catch (e) { skipped++; log.debug("playlist add failed for", t.title, "-", e.message); }
+      // WARN, not debug: this is the failure the user actually sees, and at the
+      // default level there was no server-side trace of it at all.
+      catch (e) { skipped++; log.warn("playlist add failed for", t.title, "-", e.message); }
     }
-    if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
+    if (!added) {
+      log.warn("playlist add: every track failed for playlist", id);
+      return res.status(500).json({ error: "Could not add any of those tracks" });
+    }
     res.json({ ok: true, playlist_id: String(id), created, added, skipped });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    log.warn("playlist add failed:", e.message);
+    res.status(500).json({ error: playlistWriteError(e) });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -2063,11 +2098,14 @@ app.post("/api/share/save", async (req, res) => {
     let added = 0;
     for (const t of picked) {
       try { await state.lms.playlistAddTrack(made.id, t); added++; }
-      catch (e) { skipped++; log.debug("share save: add failed for", t.title, "-", e.message); }
+      catch (e) { skipped++; log.warn("share save: add failed for", t.title, "-", e.message); }
     }
     if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
     res.json({ ok: true, playlist_id: String(made.id), created: made.created, name: wantName, added, skipped });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    log.warn("share save failed:", e.message);
+    res.status(500).json({ error: playlistWriteError(e) });
+  }
 });
 
 app.post("/api/playlist/play", async (req, res) => {

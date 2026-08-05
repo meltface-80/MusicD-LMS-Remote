@@ -284,7 +284,7 @@
      <a href="https://lyrion.org">Lyrion Music Server</a> — random-album browsing,
      instant whole-library search, rich label &amp; artist pages, and effortless playback.</p>
   <div class="badges">
-    <span class="badge" id="version-badge">v1.0.58</span>
+    <span class="badge" id="version-badge">v1.0.59</span>
     <script>
       /* Live version from main — the static text above is only the fallback
          while this loads (keep it in step with package.json on release). */
@@ -331,6 +331,8 @@
         <p>Native per-player settings (rename, crossfade, replay gain, sync, volume mode) and the full LMS server settings embedded in the app.</p></div>
       <div class="card"><h3><span class="em">📝</span>Playlists</h3>
         <p>Browse and play the playlists saved on your LMS server, and build your own: select albums or tracks anywhere in the app and add them to a new or existing playlist. Adding never disturbs what&rsquo;s currently playing.</p></div>
+      <div class="card"><h3><span class="em">📁</span>Needs a Playlists folder on your server</h3>
+        <p>Saving or importing a playlist writes it to LMS&rsquo;s own <b>Playlists folder</b> &mdash; set it under Settings&nbsp;&rarr;&nbsp;Basic Settings on the server, and make sure the folder is writable. Without one, LMS refuses the command and closes the connection; the app now tells you exactly that instead of showing a raw connection error.</p></div>
       <div class="card"><h3><span class="em">📤</span>Share a playlist with anyone</h3>
         <p>Open a playlist and tap <b>Share</b> for a short code you can paste into a message, or download as a file. Whoever receives it taps the import button on their own Playlists screen and gets the tracks <i>their</i> library can match &mdash; anything missing is listed rather than silently dropped. The same format is read and written by the MusicD Roon extension, so playlists move between the two apps in either direction. A share describes the music, never the files themselves.</p></div>
       <div class="card"><h3><span class="em">🚀</span>Fast to open</h3>

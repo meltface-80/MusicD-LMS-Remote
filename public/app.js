@@ -911,7 +911,11 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     // Must fire for the X, the backdrop AND any footer button that calls
     // close() — a dismissal path that skips it is how an abandoned edit
     // stays armed.
-    const close = () => { backdrop.remove(); document.body.style.overflow = ""; if (onClose) onClose(); };
+    // Restore whatever the scroll-lock WAS, not "". A sheet can be opened over
+    // the album modal, which sets overflow:hidden itself — blanking it here
+    // unlocked the page behind the still-open modal.
+    const lockBefore = document.body.style.overflow;
+    const close = () => { backdrop.remove(); document.body.style.overflow = lockBefore; if (onClose) onClose(); };
     x.addEventListener("click", close);
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
     if (footer) {
@@ -2783,6 +2787,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     // The menu is shared with album selection and rendered into <body>, so it
     // would outlive the row that opened it.
     if (trackOptionsBtn && albumOptionsOwner === trackOptionsBtn) closeAlbumOptionsMenu();
+    // Repaint the (now hidden) row so it can't be revealed later still reading
+    // "2 tracks selected" with its Options button live.
+    updateTrackActionBar();
   }
   function updateTrackActionBar() {
     const n = trackSelected.length;
