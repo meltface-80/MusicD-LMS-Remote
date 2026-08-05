@@ -1439,7 +1439,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   // ----- Toast / banner -----
   let toastTimer = null;
-  function showToast(msg, kind) {
+  // `ms` is for the rare message the user has to be able to READ — a server
+  // failure naming the command that broke is no use if it's gone in 2.4s.
+  function showToast(msg, kind, ms) {
     toast.textContent = msg;
     toast.classList.remove("hidden", "error");
     if (kind === "error") toast.classList.add("error");
@@ -1448,7 +1450,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     toastTimer = setTimeout(() => {
       toast.classList.remove("show");
       setTimeout(() => toast.classList.add("hidden"), 250);
-    }, 2400);
+    }, ms || 2400);
   }
   function setBanner(msg, isError) {
     if (!msg) { banner.classList.add("hidden"); banner.textContent = ""; return; }
@@ -4626,7 +4628,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     document.querySelectorAll(".album .album-fav-heart").forEach(el => el.remove());
   };
   window.__loadRandom = loadRandom;
-  window.__showToast = (msg, kind) => showToast(msg, kind);
+  window.__showToast = (msg, kind, ms) => showToast(msg, kind, ms);
   window.__confirmDialog = (msg) => confirmDialog(msg);
   // Play or queue a set of album offsets — the same batch path the album
   // multi-select bar uses, so there is one place that talks to /api/play-multi.
@@ -7885,9 +7887,18 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         : "playlist";
       const skipped = j.skipped ? " (" + j.skipped + " skipped)" : "";
       if (window.__showToast) window.__showToast("Added " + j.added + " track" + (j.added === 1 ? "" : "s") + " to " + where + skipped);
-      if (window.__afterPlaylistAdd) window.__afterPlaylistAdd();
     } catch (e) {
-      if (window.__showToast) window.__showToast(e.message, "error");
+      if (window.__showToast) window.__showToast(e.message, "error", 9000);
+    } finally {
+      // ALWAYS, not just on success. The teardown used to sit after the
+      // throw, so a failed add left the user stranded in multi-select with
+      // their selection still lit and no obvious way back — which is exactly
+      // how a server-side failure was reported: as the UI being stuck. The
+      // selection has served its purpose either way; the toast carries the
+      // outcome.
+      const after = window.__afterPlaylistAdd;
+      window.__afterPlaylistAdd = null;   // never let a stale one fire later
+      if (after) { try { after(); } catch (e) { /* teardown must not mask the result */ } }
     }
   }
 })();
