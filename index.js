@@ -1530,9 +1530,15 @@ app.post("/api/play-tracks", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Cover mosaics for stored playlists. A playlist has no artwork of its own, so
 // each tile borrows the first four DISTINCT album covers its tracks come from.
-// That costs one extra LMS call per playlist, so it's cached — keyed on the
-// playlist id AND its track count, so adding tracks refreshes the tile but a
-// mere re-open doesn't re-walk every playlist.
+// That costs one extra LMS call per playlist, so it's cached by id.
+//
+// The cache MUST be dropped for a playlist we write to. It used to claim in a
+// comment that it was keyed on the track count as well, but it was not — so a
+// probe that ran while a playlist was still EMPTY (exactly the state a
+// just-created one is in, and the state the add-to-playlist sheet's own listing
+// can observe) pinned "0 tracks" and a blank mosaic on the tile for the whole
+// TTL, while opening that same playlist showed its tracks. Every write path
+// now calls forgetPlaylistArt().
 const playlistArtCache = new Map();   // id -> { art, tracks, at }
 const PLAYLIST_ART_TTL_MS = 10 * 60 * 1000;
 const PLAYLIST_ART_CONCURRENCY = 3;
@@ -1551,7 +1557,12 @@ function findRecordByName(title, artist) {
   return hits.length === 1 ? hits[0] : null;
 }
 
+// Bumped by forgetPlaylistArt so a probe already in flight cannot write its
+// now-stale answer back after the invalidation.
+let playlistArtGen = 0;
+
 async function playlistArtFor(id) {
+  const gen = playlistArtGen;
   const hit = playlistArtCache.get(String(id));
   if (hit && (Date.now() - hit.at) < PLAYLIST_ART_TTL_MS) return hit;
   const { art, albums, total } = await state.lms.playlistArt(id);
@@ -1563,11 +1574,36 @@ async function playlistArtFor(id) {
   for (const a of (albums || [])) {
     if (a.cover) { filled.push(a.cover); continue; }
     const rec = a.album ? findRecordByName(a.album, a.artist) : null;
-    if (rec && rec.image_key) filled.push(rec.image_key);
+    // Push null rather than skipping, so the list stays in probe order and the
+    // caller can tell "no cover for this album" from "no album here".
+    filled.push(rec && rec.image_key ? rec.image_key : null);
   }
-  const rec = { art: filled.length ? filled.slice(0, 4) : art, tracks: total, at: Date.now() };
-  playlistArtCache.set(String(id), rec);
+  // `filled` is every distinct album in probe order with its cover resolved —
+  // take the first four that actually HAVE one, so a run of coverless albums
+  // doesn't cost the mosaic its slots.
+  const covers = filled.filter(Boolean).slice(0, 4);
+  const rec = { art: covers.length ? covers : art.slice(0, 4), tracks: total, at: Date.now() };
+  // NEVER cache an empty playlist. Emptiness is the transient state — a
+  // playlist between "created" and "its tracks appended" — and it is the one
+  // state that makes the tile lie. It is also the cheapest thing to re-probe.
+  // This is the defence that does NOT depend on our knowing about the write:
+  // LMS's own web UI, the Material skin and the Qobuz plugin all fill playlists
+  // without telling us, so forgetPlaylistArt() alone would still leave those
+  // pinned at "0 tracks" for the whole TTL.
+  //
+  // The generation check covers the other race: this `set` runs after an await,
+  // so a listing that started before an invalidation could otherwise write its
+  // stale answer back on top of it.
+  if (total > 0 && gen === playlistArtGen) playlistArtCache.set(String(id), rec);
   return rec;
+}
+
+// Drop a playlist's cached tile so the next listing re-probes it. Called after
+// anything that changes what the playlist holds.
+function forgetPlaylistArt(id) {
+  playlistArtGen++;
+  if (id == null) playlistArtCache.clear();
+  else playlistArtCache.delete(String(id));
 }
 
 // ---------------------------------------------------------------------------
@@ -1855,6 +1891,7 @@ app.post("/api/playlists/create", async (req, res) => {
   if (!name) return res.status(400).json({ error: "name required" });
   try {
     const r = await state.lms.playlistCreate(name);
+    forgetPlaylistArt(r && r.id);
     // created:false means the name already existed and LMS created nothing —
     // report it honestly so the client can say "added to the existing one".
     res.json(r);
@@ -1865,7 +1902,7 @@ app.post("/api/playlists/delete", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const id = req.body && req.body.playlist_id;
   if (!id) return res.status(400).json({ error: "playlist_id required" });
-  try { await state.lms.playlistDelete(id); res.json({ ok: true }); }
+  try { await state.lms.playlistDelete(id); forgetPlaylistArt(id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1875,7 +1912,7 @@ app.post("/api/playlists/rename", async (req, res) => {
   const nm = String(name || "").trim();
   if (!playlist_id) return res.status(400).json({ error: "playlist_id required" });
   if (!nm) return res.status(400).json({ error: "name required" });
-  try { await state.lms.playlistRename(playlist_id, nm); res.json({ ok: true }); }
+  try { await state.lms.playlistRename(playlist_id, nm); forgetPlaylistArt(playlist_id); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1936,6 +1973,10 @@ app.post("/api/playlists/add", async (req, res) => {
       log.warn("playlist add: every track failed for playlist", id);
       return res.status(500).json({ error: "Could not add any of those tracks" });
     }
+    // The tile's cover mosaic and track count come from a cached probe; a
+    // playlist we just wrote to must be re-probed or the tile keeps showing
+    // what it held before (for a brand-new playlist, "0 tracks" and no art).
+    forgetPlaylistArt(id);
     res.json({ ok: true, playlist_id: String(id), created, added, skipped });
   } catch (e) {
     log.warn("playlist add failed:", e.message);
@@ -2101,6 +2142,7 @@ app.post("/api/share/save", async (req, res) => {
       catch (e) { skipped++; log.warn("share save: add failed for", t.title, "-", e.message); }
     }
     if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
+    forgetPlaylistArt(made.id);
     res.json({ ok: true, playlist_id: String(made.id), created: made.created, name: wantName, added, skipped });
   } catch (e) {
     log.warn("share save failed:", e.message);
