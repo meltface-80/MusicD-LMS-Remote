@@ -112,8 +112,9 @@ Layout section of README.md.
   `playlistcontrol`, `playlist_id:` is a SOURCE filter (load that playlist onto
   a player) and never edits the saved list.
 - Lyrion has NO bulk playlist add: `playlists edit cmd:add` appends ONE track
-  addressed by title+URL (there is no track_id form), so `/api/playlists/add`
-  loops. That's why TRACK_TAGS carries `u` — the url is the only handle. The
+  addressed by URL (there is no track_id form, and `title:` must NOT be sent —
+  see below), so `/api/playlists/add` loops. That's why TRACK_TAGS carries `u` —
+  the url is the only handle. The
   rejected alternative was playlistcontrol-into-the-queue + `playlist save`,
   which clobbers whatever is playing. A track with no url is skipped and
   counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
@@ -498,6 +499,45 @@ Layout section of README.md.
   that would otherwise outlive its row. Note for tests: `addLongPress` on a track
   row ALSO selects the row it was held on, so a long-press leaves one already
   picked.
+- Stored-playlist WRITES depend on the server having a Playlists FOLDER, and a
+  server without one fails in the most confusing way possible (v1.0.59).
+  `playlistsNewCommand` bails with `setStatusBadConfig()` when `getPlaylistDir()`
+  is empty, and `Slim/Web/JSONRPC.pm` answers ANY status error by CLOSING THE
+  SOCKET rather than returning an error payload — so it reaches us as a bare
+  "socket hang up". Same failure shape as a missing plugin verb. `playlistCreate`
+  therefore probes `pref playlistdir ?` ONLY AFTER a create has already failed
+  with a socket error, never before: a preflight that blocked on the probe would
+  turn any server whose pref answer we mis-parsed into one that cannot make
+  playlists at all — trading a confusing message for a broken feature. The
+  answer is cached and dropped on every `refreshConnection()` so fixing the
+  setting doesn't need an app restart.
+- NEVER send `title:` with `playlists edit cmd:add` (v1.0.59). Verified against
+  LMS's own `playlistsEditCommand`: the `add` branch does
+  `$playlistTrack->title($title)` + titlesort + titlesearch + `->update`, i.e. it
+  RENAMES THE LIBRARY'S OWN TRACK ROW, not the playlist entry. That is a metadata
+  write back into LMS, which this app never does. `url:` alone is sufficient and
+  is what the Material skin sends. The command also DE-DUPLICATES on url (a track
+  already in the playlist is silently not appended, and still reports success),
+  and each add rewrites the whole list and wipes LMS's caches — so adds must stay
+  sequential.
+- `/api/playlists/add` resolves track indices through `tracksForRecord()`, NOT
+  `albumTracks(rec.id)` (v1.0.59). Track identity is (offset, array index) and
+  the client's indices come from `/api/album`, which walks every `partIds` entry;
+  `albumTracks` returns only the PRIMARY part, so on a MERGED multi-disc album a
+  disc-2 pick either added the wrong track or fell off the end — and if every
+  pick was on a later disc the request 409'd with "Nothing to add", which read to
+  the user as the playlist silently not being created.
+- A failed playlist add must still TEAR DOWN multi-select (v1.0.59). The
+  `window.__afterPlaylistAdd` teardown used to sit after the `throw` in `send()`,
+  so any non-2xx left the user stranded in select mode with the selection still
+  lit and no obvious way back — reported as "the UI is stuck", which is really
+  "the server call failed". It now runs in a `finally` and the handle is nulled
+  so a stale teardown can't fire against a later selection. Same defect had
+  applied to the album path.
+- `openLibSheet()` restores the body scroll-lock it FOUND, never `""`
+  (v1.0.59): a sheet can be opened over the album modal, which sets
+  `overflow:hidden` itself, and blanking it unlocked the page behind a still-open
+  modal.
 - Import lives in the PLAYLISTS overlay header, not the side menu where the Roon
   build puts it: that menu is already at its height budget and one more row puts
   Settings back off the bottom of a phone (v1.0.56).
