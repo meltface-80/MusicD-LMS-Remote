@@ -64,7 +64,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   const grid       = document.getElementById("album-grid");
   const refreshBtn = document.getElementById("refresh-btn");
-  const themeBtn   = document.getElementById("theme-toggle");
   const zoneSel    = document.getElementById("zone-select");
   const banner     = document.getElementById("status-banner");
   const toast      = document.getElementById("toast");
@@ -137,10 +136,14 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // window.__themes so the Settings pane can render the picker without
   // duplicating the list.
   const THEMES = [
-    { id: "dark",         label: "Dark",        theme: "dark",  palette: "classic" },
-    { id: "light",        label: "Light",       theme: "light", palette: "classic" },
-    { id: "copper-dark",  label: "Copper dark", theme: "dark",  palette: "copper"  },
-    { id: "brass-light",  label: "Brass light", theme: "light", palette: "copper"  },
+    { id: "dark",         label: "Dark",         note: "The original — cool grey and cyan",
+      theme: "dark",  palette: "classic" },
+    { id: "light",        label: "Light",        note: "The original — bright and neutral",
+      theme: "light", palette: "classic" },
+    { id: "copper-dark",  label: "Copper dark",  note: "Charcoal and copper, from the MusicD site",
+      theme: "dark",  palette: "copper" },
+    { id: "brass-light",  label: "Brass light",  note: "Warm parchment with a brass accent",
+      theme: "light", palette: "copper" },
   ];
   const THEME_KEY = "rra-theme-v2";
   window.__themes = THEMES;
@@ -161,6 +164,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     return t.id;
   }
   window.__applyTheme = (id) => { applyTheme(id); localStorage.setItem(THEME_KEY, id); };
+  window.__currentThemeId = () => window.__currentTheme;
+  window.__setTheme = (id) => window.__applyTheme(id);
 
   (function initTheme() {
     let id = localStorage.getItem(THEME_KEY);
@@ -174,17 +179,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
     applyTheme(id);
   })();
-
-  // The old single icon-button toggle now just cycles dark <-> light within the
-  // current palette; the Settings pane offers the full four-theme picker.
-  if (themeBtn) {
-    themeBtn.addEventListener("click", () => {
-      const cur = THEMES.find(t => t.id === window.__currentTheme) || THEMES[0];
-      const next = THEMES.find(t => t.palette === cur.palette && t.theme !== cur.theme) || THEMES[0];
-      window.__applyTheme(next.id);
-      document.dispatchEvent(new CustomEvent("themechange", { detail: next.id }));
-    });
-  }
 
   // ----- Sizing -----
   // Returns a fixed album count that exactly fills the responsive grid:
@@ -413,6 +407,45 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     return tile;
   }
 
+  // The action that used to live in the side menu, as the first tile of the
+  // "Not played" row. It reuses .album so the grid/carousel sizing, the hover
+  // state and the art aspect ratio all come for free — only the inside of the
+  // art square differs.
+  function buildUnheardTile() {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "album home-unheard-tile";
+    btn.id = "home-unheard-tile";
+    btn.setAttribute("aria-label", "Play something you haven't heard");
+
+    const art = document.createElement("div");
+    art.className = "album-art-wrap unheard-art";
+    const glyph = document.createElement("span");
+    glyph.className = "unheard-glyph";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = "\u2727";
+    art.appendChild(glyph);
+    btn.appendChild(art);
+
+    const meta = document.createElement("div");
+    meta.className = "album-meta";
+    const t = document.createElement("div");
+    t.className = "album-title";
+    t.textContent = "Play something unheard";
+    const sub = document.createElement("div");
+    sub.className = "album-artist";
+    sub.textContent = "Surprise me";
+    meta.appendChild(t); meta.appendChild(sub);
+    btn.appendChild(meta);
+
+    // One implementation, two triggers: the request, the zone check and the
+    // spin all live in playUnheard, which spins whichever control was pressed.
+    btn.addEventListener("click", () => {
+      if (window.__playUnheard) window.__playUnheard(btn);
+    });
+    return btn;
+  }
+
   // Render helper shared by the live loader and the instant-open cache repaint.
   function renderHomeUnplayed(aotd, albums) {
     albums = albums || [];
@@ -422,6 +455,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       return;
     }
     const frag = document.createDocumentFragment();
+    // "Play something unheard" leads the row it belongs to: this carousel IS
+    // the unheard albums, so the action and the row mean the same thing, and
+    // it sits at the top of Home without needing a place of its own. Built as
+    // a tile so it inherits the carousel's sizing on every screen rather than
+    // carrying breakpoints of its own. It comes AFTER the empty check above,
+    // so a row holding only the action tile can't read as content.
+    frag.appendChild(buildUnheardTile());
     if (aotd) {
       const tile = homeTile(aotd, "home-aotd");
       const wrap = tile.querySelector(".album-art-wrap");
@@ -612,13 +652,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     { id: "artist", label: "Artist",       asc: "A → Z", desc: "Z → A" },
     { id: "genre",  label: "Genre",        asc: "A → Z", desc: "Z → A",
       note: "from the genre LMS reports for each album" },
-    { id: "year",   label: "Release year", asc: "Oldest first", desc: "Newest first",
+    { id: "year",   label: "Release year", asc: "Oldest first", desc: "Newest first", dir: "desc",
       note: "albums with no year are listed last" },
-    { id: "added",  label: "Date added",   asc: "Oldest first", desc: "Newest first",
+    { id: "added",  label: "Date added",   asc: "Oldest first", desc: "Newest first", dir: "desc",
       note: "when the album reached your library, from LMS" },
-    { id: "plays",  label: "Most played",  asc: "Least played first", desc: "Most played first",
+    { id: "plays",  label: "Most played",  asc: "Least played first", desc: "Most played first", dir: "desc",
       note: "from plays this app has seen — roughly the last year" },
-    { id: "lastplayed", label: "Last played", asc: "Longest ago first", desc: "Most recent first",
+    { id: "lastplayed", label: "Last played", asc: "Longest ago first", desc: "Most recent first", dir: "desc",
       note: "from plays this app has seen — roughly the last year" },
     { id: "random", label: "Random" },
   ];
@@ -639,15 +679,38 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     { id: "random", label: "Random" },
   ];
   const LP_ORDER_DEFAULT = "album";
-  // Alphabetical sorts read A→Z by default; quantitative ones read biggest-first.
+  // Alphabetical sorts read A→Z by default; quantitative ones read
+  // biggest-first. The default lives ON the option so adding a sort is one
+  // entry, not an entry plus a name in a list somewhere else.
   const libSortHasDir     = (id) => id !== "random";
   const libSortDefaultDir = (id) =>
-    (id === "year" || id === "added" || id === "plays" || id === "lastplayed") ? "desc" : "asc";
+    ((LIB_SORT_OPTIONS.find(o => o.id === id) || {}).dir === "desc") ? "desc" : "asc";
   const libNextSeed = () => 1 + Math.floor(Math.random() * 100000);
 
-  // Every facet id the server can offer. Held generically so adding a facet is
-  // a server-side change only; a value prefixed "!" means EXCLUDE.
-  const LIB_FACET_IDS = ["genre", "source", "decade", "label", "letter", "added"];
+  // Why a facet covers less than the whole library. Every sentence describes
+  // how THIS app gets the value out of LMS — the Roon build's equivalents say
+  // things that are simply untrue here (LMS carries year, genre and added-time
+  // natively), so they are rewritten rather than copied.
+  const COVERAGE_NOTE = {
+    decade: "The year comes from the album's own tags, so an untagged album is in no decade.",
+    label:  "Labels are collected during the label scan, which runs in the background and fills in over time.",
+    format: "Read from the first track of each album during the background library sweep. " +
+            "An album the sweep hasn't reached yet, or that LMS reports no format for, has none.",
+    rate:   "Read from the first track of each album during the background library sweep.",
+    bits:   "Read from the first track of each album during the background library sweep. " +
+            "A lossy album deliberately reports no bit depth \u2014 the number would be the decoder's, not the recording's.",
+    added:  "Derived by sweeping the track table for the earliest added time per album, " +
+            "which runs in the background and fills in over time.",
+  };
+
+  // Every facet id the server can offer — the client's half of libFacetDefs().
+  // Held generically so adding a facet is a server-side change only; a value
+  // prefixed "!" means EXCLUDE. Order matters only for the query string and the
+  // active-filter count; the sheet renders in the order the server sends. No
+  // "chan": the titles sweep carries no channel count, so it would always be
+  // empty.
+  const LIB_FACET_IDS = ["genre", "source", "decade", "label", "format",
+                         "rate", "bits", "letter", "added"];
   const emptyFacets = () => { const o = {}; for (const id of LIB_FACET_IDS) o[id] = []; return o; };
   let libView = { sort: "album", dir: "asc", seed: 1, played: "any", ...emptyFacets() };
   let libraryWallActive = false;
@@ -887,7 +950,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const caret = document.createElement("span");
     caret.className = "lib-ctl-caret"; caret.setAttribute("aria-hidden", "true"); caret.textContent = "\u2304";
     sort.appendChild(stext); sort.appendChild(arrow); sort.appendChild(caret);
-    sort.setAttribute("aria-label", libSortLabel() + " \u2014 " + libDirLabel() + ", change sort");
+    sort.setAttribute("aria-label", libSortHasDir(libView.sort)
+      ? "Sort \u2014 " + libSortLabel() + ", " + libDirLabel()
+      : "Sort \u2014 " + libSortLabel());
     sort.addEventListener("click", openLibSortSheet);
     libControls.appendChild(sort);
   }
@@ -934,8 +999,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   window.__selectedZoneId = () => selectedZoneId;
 
   function openLibSortSheet() {
-    openLibSheet("Sort by", (body) => {
+    const close = openLibSheet("Sort by", (body) => {
       const paint = () => {
+        // Rebuilding the list moves focus to <body>, which strands a keyboard
+        // or screen-reader user mid-sheet after every reverse — so put it back
+        // on the row that replaced the one they were on.
+        const rows0 = [...body.querySelectorAll(".lib-sort-row")];
+        const focused = rows0.indexOf(document.activeElement);
         body.innerHTML = "";
         for (const opt of LIB_SORT_OPTIONS) {
           const on = libView.sort === opt.id;
@@ -944,34 +1014,49 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
           row.className = "lib-sort-row" + (on ? " is-on" : "");
           const arrow = document.createElement("span");
           arrow.className = "lib-sort-arrow";
-          // Only the selected row shows an arrow, so every label stays aligned.
-          arrow.textContent = on ? (libSortHasDir(opt.id) ? (libView.dir === "desc" ? "↓" : "↑") : "⟳") : "";
+          arrow.setAttribute("aria-hidden", "true");
+          // The column is present on every row — empty on the unselected ones —
+          // so all the labels keep one left edge.
+          arrow.textContent = (on && libSortHasDir(opt.id)) ? (libView.dir === "desc" ? "\u2193" : "\u2191") : "";
           const txt = document.createElement("span");
-          const lab = document.createElement("div"); lab.className = "lib-sort-label"; lab.textContent = opt.label;
+          txt.className = "lib-sort-text";
+          const lab = document.createElement("span"); lab.className = "lib-sort-label"; lab.textContent = opt.label;
           txt.appendChild(lab);
-          if (on && libSortHasDir(opt.id)) {
-            const d = document.createElement("div"); d.className = "lib-sort-note"; d.textContent = libDirLabel();
-            txt.appendChild(d);
-          } else if (opt.note) {
-            const nt = document.createElement("div"); nt.className = "lib-sort-note"; nt.textContent = opt.note;
+          // The note says what the sort MEANS. It used to be replaced by the
+          // direction on the selected row, which threw away the explanation on
+          // the one row the user was looking hardest at; the arrow already says
+          // the direction.
+          if (opt.note) {
+            const nt = document.createElement("span"); nt.className = "lib-sort-note"; nt.textContent = opt.note;
             txt.appendChild(nt);
+          }
+          if (on && libSortHasDir(opt.id)) {
+            row.setAttribute("aria-label", opt.label + " \u2014 " + libDirLabel() + ", tap to reverse");
           }
           row.appendChild(arrow); row.appendChild(txt);
           row.addEventListener("click", () => {
+            let stay = false;
             if (on) {
-              // Tapping the current sort reverses it (Roon's pattern — no
-              // separate direction control inside the sheet).
-              if (libSortHasDir(opt.id)) libView.dir = libView.dir === "desc" ? "asc" : "desc";
+              // Tapping the current sort reverses it (no separate direction
+              // control inside the sheet). The sheet STAYS OPEN for that one
+              // case, so the arrow flips under the finger and a second reverse
+              // needs no reopening.
+              if (libSortHasDir(opt.id)) { libView.dir = libView.dir === "desc" ? "asc" : "desc"; stay = true; }
               else libView.seed = libNextSeed();
             } else {
               libView.sort = opt.id;
               libView.dir = libSortDefaultDir(opt.id);
               if (!libSortHasDir(opt.id)) libView.seed = libNextSeed();
             }
-            paint();
+            if (!stay) close();
+            if (document.body.contains(body)) paint();
             applyLibView();
           });
           body.appendChild(row);
+        }
+        if (focused >= 0) {
+          const again = body.querySelectorAll(".lib-sort-row")[focused];
+          if (again) again.focus();
         }
       };
       paint();
@@ -1001,10 +1086,20 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       applyViewToLibView(editTarget.view);
       renderLibraryControls();
     }
-    // Which sections are expanded, remembered across repaints so clearing the
-    // last chip in a section doesn't collapse it under your finger.
-    const openSections = new Set();
-    openLibSheet(editTarget ? "Edit rules" : "Focus", (body) => {
+    // Which sections are expanded. THREE-VALUED on purpose: `undefined` means
+    // "never touched", and only then does an active count (or openByDefault)
+    // open it. Once the user has written a value it is authoritative, so a
+    // section with filters in it can still be collapsed — the old boolean Set
+    // recomputed `activeCount > 0` on every repaint and re-opened it instantly.
+    // Held across repaints (a chip tap rebuilds the body) but NOT across
+    // openings: a sheet that reopens half-collapsed hides filters still on.
+    const openSections = {};
+    // Counts go stale whenever the library is rescanned, and the sheet is
+    // exactly where a stale count is read as fact — so re-read them on open.
+    // Failure leaves the previous answer in place rather than emptying it.
+    let repaintFocus = null;
+    loadLibFacets().then(() => { if (repaintFocus) repaintFocus(); });
+    openLibSheet("Focus", (body) => {
       const paint = () => {
         body.innerHTML = "";
         const f = libFacets || {};
@@ -1026,42 +1121,48 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         // them, and collapsing the two controls this screen exists to set would
         // hide them behind a tap for no gain.
         const section = (id, label, activeCount, build, openByDefault) => {
+          if (openSections[id] === undefined && (activeCount > 0 || openByDefault)) {
+            openSections[id] = true;
+          }
+          const expanded = openSections[id] === undefined ? false : openSections[id];
           const sec = document.createElement("div");
-          sec.className = "lib-facet-sec";
+          sec.className = "lib-sheet-section" + (expanded ? " is-open" : "");
           const head = document.createElement("button");
-          head.type = "button"; head.className = "lib-facet-head";
-          const open = openSections.has(id) || activeCount > 0 || !!openByDefault;
-          head.setAttribute("aria-expanded", open ? "true" : "false");
+          head.type = "button"; head.className = "lib-sheet-section-head";
+          head.setAttribute("aria-expanded", expanded ? "true" : "false");
           const t = document.createElement("span");
           t.className = "lib-sheet-section-label"; t.textContent = label;
           head.appendChild(t);
           if (activeCount > 0) {
             const b = document.createElement("span");
-            b.className = "lib-facet-count"; b.textContent = String(activeCount);
+            b.className = "lib-sheet-section-count"; b.textContent = String(activeCount);
             head.appendChild(b);
           }
           const car = document.createElement("span");
-          car.className = "lib-facet-caret"; car.textContent = open ? "\u2013" : "+";
+          car.className = "lib-sheet-section-caret";
+          car.setAttribute("aria-hidden", "true");
+          car.textContent = expanded ? "\u2303" : "\u2304";
           head.appendChild(car);
           head.addEventListener("click", () => {
-            if (openSections.has(id)) openSections.delete(id); else openSections.add(id);
+            openSections[id] = !expanded;
             paint();
           });
           sec.appendChild(head);
-          if (open) { openSections.add(id); build(sec); }
+          if (expanded) build(sec);
           body.appendChild(sec);
         };
 
-        // `local` marks a chip that changes the PLAYLIST rather than the query —
-        // Order and size don't alter what matches, so they must not re-run the
-        // library view.
-        const chip = (host, label, state, onTap, local) => {
+        // A chip tap only repaints the sheet. The wall is re-queried ONCE, from
+        // "Show albums" in the footer — re-running it per tap meant building a
+        // multi-facet filter fired a query for every intermediate state the
+        // user never asked to see.
+        const chip = (host, label, state, onTap) => {
           const c = document.createElement("button");
           c.type = "button";
           c.className = "lib-chip" + (state === "on" ? " is-on" : state === "not" ? " is-not" : "");
           c.textContent = label;
           if (state === "not") c.setAttribute("aria-label", "Excluding " + label);
-          c.addEventListener("click", () => { onTap(); paint(); if (!local) applyLibView(); });
+          c.addEventListener("click", () => { onTap(); paint(); });
           host.appendChild(c);
         };
         const note = (host, text) => {
@@ -1079,7 +1180,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
             const wrap = document.createElement("div"); wrap.className = "lib-chips";
             sec.appendChild(wrap);
             for (const o of LP_ORDERS) {
-              chip(wrap, o.label, editOrder === o.id ? "on" : "off", () => { editOrder = o.id; }, true);
+              chip(wrap, o.label, editOrder === o.id ? "on" : "off", () => { editOrder = o.id; });
             }
             note(sec, "Album order queues them in the sort you chose. Random shuffles " +
                       "which albums, and what order they play in. The shuffle is fixed " +
@@ -1090,7 +1191,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
             const wrap = document.createElement("div"); wrap.className = "lib-chips";
             sec.appendChild(wrap);
             for (const n of LP_LIMITS) {
-              chip(wrap, String(n), editLimit === n ? "on" : "off", () => { editLimit = n; }, true);
+              chip(wrap, String(n), editLimit === n ? "on" : "off", () => { editLimit = n; });
             }
             note(sec, "How many albums this playlist actually plays. A rule can match your " +
                       "whole library, but every album is a separate command to the server — " +
@@ -1098,9 +1199,32 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
           }, true);
         }
 
+        // Listening leads the filters and is ALWAYS shown. It used to sit after
+        // the facets and disappear entirely when the app had seen no plays yet,
+        // so the one screen that could explain the empty history didn't mention
+        // it — the note below does that instead.
+        section("played", "Listening", libView.played !== "any" ? 1 : 0, (sec) => {
+          const wrap = document.createElement("div"); wrap.className = "lib-chips";
+          sec.appendChild(wrap);
+          for (const p of LIB_PLAYED_OPTIONS) {
+            chip(wrap, p.label, libView.played === p.id ? "on" : "off",
+                 () => { libView.played = p.id; });
+          }
+          if (!f.hasPlays) {
+            note(sec, "MusicD Remote hasn't seen anything play yet, so these use an " +
+                      "empty history \u2014 everything counts as never played.");
+          } else {
+            note(sec, "Based on plays this app has seen, matched by album title.");
+          }
+        });
+
         for (const fc of facets) {
-          const sel = libView[fc.id] || (libView[fc.id] = []);
-          if (!fc.values.length && !sel.length) continue;
+          const sel = libView[fc.id];
+          // An id the client doesn't know is skipped; an EMPTY facet is not —
+          // "Record label (0)" while the label scan is still running is a
+          // truthful thing to show, and hiding it made the sheet look like it
+          // had lost a filter.
+          if (!Array.isArray(sel)) continue;
           section(fc.id, fc.label, sel.length, (sec) => {
             const wrap = document.createElement("div"); wrap.className = "lib-chips";
             sec.appendChild(wrap);
@@ -1120,38 +1244,24 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
               note(sec, "Showing the " + fc.values.length + " most common of " +
                         fc.total_values.toLocaleString() + ".");
             }
+            // Why a facet doesn't cover the whole library — the count alone
+            // reads as a fault. Each sentence is about how THIS app gets that
+            // value out of LMS; none of them are guesses.
             if (f.total && fc.covered != null && fc.covered < f.total) {
               note(sec, fc.covered.toLocaleString() + " of " + f.total.toLocaleString() +
-                        " albums have a value here.");
+                        " albums." + (COVERAGE_NOTE[fc.id] ? " " + COVERAGE_NOTE[fc.id] : ""));
             }
           });
         }
 
-        if (f.hasPlays) {
-          section("played", "Listening", libView.played !== "any" ? 1 : 0, (sec) => {
-            const wrap = document.createElement("div"); wrap.className = "lib-chips";
-            sec.appendChild(wrap);
-            for (const p of LIB_PLAYED_OPTIONS) {
-              chip(wrap, p.label, libView.played === p.id ? "on" : "off",
-                   () => { libView.played = p.id; });
-            }
-            note(sec, "Based on plays this app has seen, matched by album title.");
-          });
-        }
-
-        if (!body.children.length) {
-          const e = document.createElement("div");
-          e.className = "lib-facet-note";
-          e.textContent = "No filters available yet \u2014 the library is still being indexed.";
-          body.appendChild(e);
-        }
         // Tapping a chip twice EXCLUDES rather than clearing — say so once.
         const hint = document.createElement("div");
-        hint.className = "lib-facet-note";
-        hint.style.marginTop = "12px";
-        hint.textContent = "Tap once to include, again to exclude, again to clear.";
+        hint.className = "lib-sheet-note";
+        hint.textContent = "Tap a filter once to include it, again to exclude it, " +
+                           "once more to clear it.";
         body.appendChild(hint);
       };
+      repaintFocus = paint;
       paint();
     }, (foot, close) => {
       const clear = document.createElement("button");
@@ -1168,7 +1278,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       // rather than forking a copy.
       const save = document.createElement("button");
       save.type = "button"; save.className = "action-btn";
-      save.textContent = editTarget ? "Save changes" : "Save as Live Playlist";
+      save.textContent = editTarget ? "Save changes" : "Save as Dynamic Playlist";
       save.addEventListener("click", () => {
         committed = true;
         close();
@@ -1182,7 +1292,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       const done = document.createElement("button");
       done.type = "button"; done.className = "action-btn primary";
       done.textContent = "Show albums";
-      done.addEventListener("click", () => { committed = true; close(); });
+      // The ONE place the wall is re-queried: chip taps only repaint the sheet.
+      done.addEventListener("click", () => { committed = true; close(); applyLibView(); });
       foot.appendChild(clear); foot.appendChild(save); foot.appendChild(done);
     }, () => {
       // Abandoned (X or backdrop) while editing a saved playlist — put the
@@ -1217,7 +1328,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   async function saveLivePlaylistPrompt(existing) {
     const suggested = (existing && existing.name) || suggestLivePlaylistName();
-    const name = window.prompt(existing ? "Rename this Live Playlist" : "Name this Live Playlist", suggested);
+    const name = window.prompt(existing ? "Rename this Dynamic Playlist" : "Name this Dynamic Playlist", suggested);
     if (name === null) return;                       // cancelled
     const trimmed = String(name).trim();
     if (!trimmed) { showToast("Give it a name first", "error"); return; }
@@ -1256,7 +1367,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     if (inc("genre").length)  bits.push(inc("genre").join(" + "));
     if (inc("label").length)  bits.push(inc("label").join(" + "));
     if (inc("source").length && !bits.length) bits.push(inc("source").join(" + "));
-    return bits.length ? bits.join(" ") : "My Live Playlist";
+    return bits.length ? bits.join(" ") : "My Dynamic Playlist";
   }
 
   // Called by the Live Playlists overlay's Edit button: load the saved rules
@@ -2605,6 +2716,42 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
   }
 
+
+  // The three-dots-in-a-circle affordance, used wherever a screen has more
+  // secondary actions than belong on a row. The dropdown itself is the app's
+  // ONE dropdown (openOptionsMenu → .dropdown-menu rendered into <body>), not a
+  // second look: an absolutely-positioned menu nested in the row could not sit
+  // above the full-screen dismiss backdrop, which is the whole reason that
+  // machinery exists.
+  const OVERFLOW_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+    'aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="9"/>' +
+    '<circle cx="7.6" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
+    '<circle cx="16.4" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
+    '</svg>';
+
+  // items: [{ label, note, onClick }]. Returns the button to append.
+  function buildOverflowButton(items, label) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "overflow-btn";
+    btn.setAttribute("aria-label", label || "More actions");
+    btn.setAttribute("aria-haspopup", "menu");
+    btn.setAttribute("aria-expanded", "false");
+    btn.innerHTML = OVERFLOW_SVG;
+    btn.addEventListener("click", () => {
+      openOptionsMenu(btn, (menu) => {
+        const row = optionsRowFactory(menu);
+        // The trigger is passed on so an action can disable it / show progress,
+        // exactly as the pill buttons it replaced did.
+        for (const it of items) row(it.label, it.note || null, false, () => it.onClick(btn));
+      }, label || "More actions");
+    });
+    return btn;
+  }
+
   function closeModal() {
     modal.classList.add("hidden");
     modal.classList.remove("np-mode", "tab-album", "tab-queue");
@@ -2674,10 +2821,15 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (!map.has(a.kind)) map.set(a.kind, a);
     }
 
+    // Play Now and Queue stay on the row; Next / Shuffle / Radio go behind the
+    // overflow menu. Five pills hit a wall on a phone — .action-btn is
+    // `flex: 1 1 0`, so they shrink together instead of wrapping and the
+    // labels start clipping.
+    const ROW_ACTIONS = 2;
     modalActs.innerHTML = "";
+    const available = order.filter(k => map.has(k));
     let first = true;
-    for (const k of order) {
-      if (!map.has(k)) continue;
+    for (const k of available.slice(0, ROW_ACTIONS)) {
       const btn = document.createElement("button");
       btn.className = "action-btn" + (first ? " primary" : "");
       btn.type = "button";
@@ -2686,7 +2838,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       modalActs.appendChild(btn);
       first = false;
     }
-    if (!modalActs.children.length) {
+    const overflow = available.slice(ROW_ACTIONS);
+    if (overflow.length) {
+      modalActs.appendChild(buildOverflowButton(
+        overflow.map(k => ({ label: labels[k], onClick: (b) => invoke(k, b) })),
+        "More playback actions"));
+    }
+    if (!available.length) {
       modalActs.innerHTML =
         `<div class="modal-error">No playback actions available for this album.</div>`;
     }
@@ -4755,18 +4913,41 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // radio POST arrived with no zone at all (HTTP 400), and shuffle/repeat
   // silently went to a nonsense player id. Always CALL it.
   let npModeBusy = false;
+  let lastModeSig = null;
   function paintTransportModes(zone) {
     if (!npShuffle || !npRepeat) return;
     if (npModeBusy) return;                 // don't fight an in-flight change
-    const sh = Number(zone.shuffle) || 0;   // 0 off, 1 songs, 2 albums
-    const rp = Number(zone.repeat)  || 0;   // 0 off, 1 track, 2 queue
+    const live = !!zone;
+    const sh = live ? (Number(zone.shuffle) || 0) : 0;   // 0 off, 1 songs, 2 albums
+    const rp = live ? (Number(zone.repeat)  || 0) : 0;   // 0 off, 1 track, 2 queue
+    const radio = live && !!zone.radio;
+    // The poll runs every 1.5s; without this guard every tick rewrote the same
+    // attributes and classes, invalidating paint for no change.
+    const sig = [live, sh, rp, radio].join("|");
+    if (sig === lastModeSig) return;
+    lastModeSig = sig;
+
+    const shLabel = sh === 2 ? "Shuffle albums" : sh === 1 ? "Shuffle songs" : "Shuffle";
     npShuffle.setAttribute("aria-pressed", sh > 0 ? "true" : "false");
-    npShuffle.title = sh === 2 ? "Shuffle albums" : sh === 1 ? "Shuffle songs" : "Shuffle";
+    npShuffle.classList.toggle("is-on", sh > 0);
+    npShuffle.setAttribute("aria-label", shLabel);
+    npShuffle.title = shLabel;
+    npShuffle.disabled = !live;
+
+    const rpLabel = rp === 1 ? "Repeat this track" : rp === 2 ? "Repeat the queue" : "Repeat off";
     npRepeat.setAttribute("aria-pressed", rp > 0 ? "true" : "false");
-    npRepeat.title = rp === 1 ? "Repeat this track" : rp === 2 ? "Repeat the queue" : "Repeat";
+    npRepeat.classList.toggle("is-on", rp > 0);
+    npRepeat.setAttribute("aria-label", rpLabel);
+    npRepeat.title = rpLabel;
+    npRepeat.disabled = !live;
     // LMS numbers repeat as 1=track, 2=queue. The badge marks the track case.
     if (npRepeatBadge) npRepeatBadge.classList.toggle("hidden", rp !== 1);
-    if (npRadio) npRadio.setAttribute("aria-pressed", zone.radio ? "true" : "false");
+
+    if (npRadio) {
+      npRadio.setAttribute("aria-pressed", radio ? "true" : "false");
+      npRadio.classList.toggle("is-on", radio);
+      npRadio.disabled = !live;
+    }
   }
 
   async function setTransportMode(body) {
@@ -4939,6 +5120,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   function renderZone(zone) {
     currentZone = zone;
     const np = zone && zone.now_playing;
+    // Ahead of the bail below: a STOPPED zone still has shuffle/repeat/radio
+    // state, and skipping this left the previous zone's modes lit.
+    paintTransportModes(zone);
     if (!np) {
       npLen = 0; npPos = 0;
       paintBarProgress();
@@ -4954,7 +5138,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const volOutput = (zone.outputs || []).find(o => o.volume);
     const muted = (zone.outputs || []).some(o => o.is_muted);
     const playing = zone.state === "playing" || zone.state === "loading";
-    paintTransportModes(zone);
     const barSig = [np.line1, np.line2, np.line3, zone.state, muted,
                     volOutput ? volOutput.volume.value : "novol"].join("|");
     if (barSig !== lastBarSig) {
@@ -5912,56 +6095,82 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
   }
 
-  const themePicker = document.getElementById("theme-picker");
-  function swatchFor(t) {
-    const probe = document.createElement("div");
-    probe.dataset.theme = t.theme;
-    probe.dataset.palette = t.palette;
-    probe.style.display = "none";
-    document.body.appendChild(probe);
-    const cs = getComputedStyle(probe);
-    const bg = cs.getPropertyValue("--bg").trim() || "#000";
-    const ac = cs.getPropertyValue("--accent").trim() || "#888";
-    probe.remove();
-    return { bg, ac };
-  }
-  function renderThemePicker() {
-    if (!themePicker || !window.__themes) return;
-    themePicker.innerHTML = "";
+  // ----- Theme picker -----
+  // A single-select list plus Apply, rather than the old instant toggle. The
+  // rows are built from app.js's THEMES table so the list can never offer a
+  // theme the palettes don't define, or miss one they do.
+  //
+  // "Pending" is the row the user has tapped; "current" is what is actually
+  // applied. Apply is disabled while they match, so the button always means
+  // something. Reopening Settings discards a pending choice — the sheet should
+  // never reopen mid-decision.
+  const themeList  = document.getElementById("theme-list");
+  const themeApply = document.getElementById("theme-apply");
+  const themeHint  = document.getElementById("theme-apply-hint");
+  let pendingThemeId = null;
+
+  function renderThemeList() {
+    if (!themeList || !window.__themes) return;
+    const current = window.__currentThemeId();
+    const chosen  = pendingThemeId || current;
+    themeList.innerHTML = "";
     for (const t of window.__themes) {
-      const on = window.__currentTheme === t.id;
+      const on = t.id === chosen;
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "lib-sort-row" + (on ? " is-on" : "");
+      row.className = "theme-row" + (on ? " is-on" : "");
       row.setAttribute("role", "radio");
       row.setAttribute("aria-checked", on ? "true" : "false");
 
+      // A swatch pair — the theme's own background and accent — so the choice
+      // can be made by eye rather than by reading four colour names. The
+      // nested data attributes re-declare that palette locally, so the preview
+      // reads the same tokens as the real thing and can't drift from it.
       const sw = document.createElement("span");
       sw.className = "theme-swatch";
-      const { bg, ac } = swatchFor(t);
-      const a = document.createElement("i"), b = document.createElement("i");
-      a.style.background = bg; b.style.background = ac;
-      sw.appendChild(a); sw.appendChild(b);
+      sw.dataset.theme = t.theme;
+      sw.dataset.palette = t.palette;
+      sw.setAttribute("aria-hidden", "true");
+      row.appendChild(sw);
 
-      const label = document.createElement("span");
-      label.className = "lib-sort-label";
-      label.textContent = t.label;
+      const txt = document.createElement("span");
+      txt.className = "theme-row-text";
+      const lab = document.createElement("span");
+      lab.className = "theme-row-label";
+      lab.textContent = t.label + (t.id === current ? " · in use" : "");
+      const note = document.createElement("span");
+      note.className = "theme-row-note";
+      note.textContent = t.note;
+      txt.appendChild(lab); txt.appendChild(note);
+      row.appendChild(txt);
 
       const tick = document.createElement("span");
-      tick.className = "lib-sort-arrow";
-      tick.textContent = on ? "✓" : "";
+      tick.className = "theme-row-check";
+      tick.setAttribute("aria-hidden", "true");
+      tick.textContent = on ? "\u2713" : "";
+      row.appendChild(tick);
 
-      row.appendChild(sw); row.appendChild(label); row.appendChild(tick);
       row.addEventListener("click", () => {
-        if (window.__applyTheme) window.__applyTheme(t.id);
-        renderThemePicker();
+        pendingThemeId = t.id;
+        renderThemeList();
       });
-      themePicker.appendChild(row);
+      themeList.appendChild(row);
     }
+    const dirty = !!pendingThemeId && pendingThemeId !== current;
+    if (themeApply) themeApply.disabled = !dirty;
+    if (themeHint) themeHint.textContent = dirty ? "Not applied yet" : "";
   }
-  renderThemePicker();
-  // Keep the picker honest if the topbar toggle flips the theme behind its back.
-  document.addEventListener("themechange", renderThemePicker);
+
+  if (themeApply) {
+    themeApply.addEventListener("click", () => {
+      if (!pendingThemeId || !window.__setTheme) return;
+      window.__setTheme(pendingThemeId);
+      pendingThemeId = null;
+      renderThemeList();
+      if (window.__showToast) window.__showToast("Theme applied");
+    });
+  }
+  renderThemeList();
 
   // Don't Stop The Music is configured in Settings → Player settings (per
   // player, LMS-backed) — deliberately NOT duplicated on this pane.
@@ -6599,7 +6808,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     setTimeout(() => { lmsPane.rescanGo.disabled = false; }, 3000);
   });
 
-  const open = () => { showView("home"); loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); overlay.classList.remove("hidden"); };
+  // pendingThemeId is cleared on every open: the sheet should never reopen
+  // mid-decision, showing a tick against a theme that isn't applied.
+  const open = () => { showView("home"); pendingThemeId = null; renderThemeList();
+    loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
   };
@@ -7010,16 +7222,18 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 /*  Play Unheard — topbar compass button with 2-second spin           */
 /* ------------------------------------------------------------------ */
 (function initPlayUnheard() {
-  const btn        = document.getElementById("play-unheard-topbar");
   const zoneSelect = document.getElementById("zone-select");
-  if (!btn) return;
-  btn.addEventListener("click", async () => {
+
+  // One implementation, two triggers: the Home carousel's action tile and the
+  // hidden top-bar control. It spins whichever control was pressed, so the tile
+  // gives feedback on the tile rather than somewhere the user isn't looking.
+  async function playUnheard(spinEl) {
     const zone = zoneSelect && zoneSelect.value;
     if (!zone) { if (window.__showToast) window.__showToast("Select a zone first"); return; }
-    if (btn.classList.contains("spinning")) return;
+    if (spinEl && spinEl.classList.contains("spinning")) return;
 
-    // Spin the compass for 2 seconds, then fetch
-    btn.classList.add("spinning");
+    // Spin the compass for 2 seconds, then fetch.
+    if (spinEl) spinEl.classList.add("spinning");
     await new Promise(r => setTimeout(r, 2000));
 
     try {
@@ -7037,9 +7251,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     } catch (e) {
       if (window.__showToast) window.__showToast("Request failed", "error");
     } finally {
-      btn.classList.remove("spinning");
+      if (spinEl) spinEl.classList.remove("spinning");
     }
-  });
+  }
+  window.__playUnheard = playUnheard;
+
+  const btn = document.getElementById("play-unheard-topbar");
+  if (btn) btn.addEventListener("click", () => playUnheard(btn));
 })();
 
 /* ------------------------------------------------------------------ */
@@ -7337,11 +7555,12 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const browse = overlay.querySelector('.menu-item[data-target="server-browse-toggle"]');
     if (browse) {
       browse.classList.toggle("hidden", !usable.has("qobuz"));
-      // Name it after whatever the server actually runs, so a future Tidal
-      // build doesn't need this string changed in two places.
+      // The label is the bare service name — "Qobuz", not "Browse Qobuz" —
+      // matching the Roon build's menu. Still taken from what the server
+      // reports rather than hard-coded, so a Tidal row needs no new string.
       const q = list.find(s => s.tag === "qobuz");
       const label = browse.querySelector("span");
-      if (label && q) label.textContent = "Browse " + q.name;
+      if (label && q && q.name) label.textContent = q.name;
     }
     if (window.__repaintServiceUI) window.__repaintServiceUI();
   }
@@ -7935,7 +8154,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
           if (!list.length) return;
           const lbl = document.createElement("div");
           lbl.className = "lib-sheet-section-label";
+          // Standing on its own rather than inside a section head, so it needs
+          // the gap the head's flex layout provides for the Focus sheet.
           lbl.style.marginTop = "14px";
+          lbl.style.marginBottom = "7px";
           lbl.textContent = "Existing";
           listWrap.appendChild(lbl);
           for (const pl of list) {
@@ -8036,7 +8258,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   function render() {
     const f = stack[stack.length - 1] || { kind: "list" };
     backBtn.hidden = stack.length <= 1;
-    titleEl.textContent = f.kind === "detail" ? (f.name || "Live Playlist") : "Live Playlists";
+    titleEl.textContent = f.kind === "detail" ? (f.name || "Dynamic Playlist") : "Dynamic Playlists";
     body.scrollTop = 0;
     if (f.kind === "detail") loadDetail(f);
     else loadList();
@@ -8060,13 +8282,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     intro.className = "lp-intro";
     intro.textContent = list.length
       ? "These update themselves — albums join and leave as your library and listening change."
-      : "A Live Playlist is a saved set of rules, not a fixed list, so it keeps itself up to date.";
+      : "A Dynamic Playlist is a saved set of rules, not a fixed list, so it keeps itself up to date.";
     body.appendChild(intro);
 
     if (!list.length) {
       const how = document.createElement("div");
       how.className = "qb-empty";
-      how.textContent = "To make one: open Library, set Sort and Focus how you want, then tap “Save as Live Playlist”.";
+      how.textContent = "To make one: open Library, set Sort and Focus how you want, then tap “Save as Dynamic Playlist”.";
       body.appendChild(how);
       return;
     }

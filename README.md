@@ -85,6 +85,7 @@ Features include:
 * Play album immediately
 * Queue album
 * Queue individual tracks
+* Play Now and Queue on the album row; Next behind an overflow menu
 * Multi-select albums (long-press to start; a top-bar Options menu carries every action)
 * Queue multiple albums
 * Continue playback automatically when the queue finishes
@@ -215,7 +216,7 @@ Designed specifically for large music libraries.
 * Mobile friendly
 * Desktop friendly
 * TV friendly
-* Dark/light themes
+* Four themes — Dark, Light, Copper dark, Brass light (pick one, then Apply)
 * Clean album-first design
   
 ---
@@ -362,7 +363,7 @@ index.js          server: connection, album index, /api routes
 lib/lms.js        LMS JSON-RPC adapter (the Roon replacement)
 lib/search.js     whole-library album/artist search index
 lib/*.test.js     unit tests
-public/           the PWA frontend (shares the Roon build's design language, plus LMS-only screens: album merges, Live Playlists, the native Qobuz browser)
+public/           the PWA frontend (shares the Roon build's design language, plus LMS-only screens: album merges, Dynamic Playlists, the native Qobuz browser)
 SETTINGS.md       Material-skin-level LMS settings catalog (settings-UI blueprint)
 PORTING.md        per-route Roon→LMS port status
 ```

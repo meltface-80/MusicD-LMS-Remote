@@ -801,6 +801,13 @@ function stampAlbumFormats(map) {
     if (!q) continue;
     rec.quality = q;
     rec.hires = albumIsHiRes(f);
+    // The raw fields are kept, not just the derived badge string: the Format /
+    // Sample rate / Bit depth facets need them separately, and re-deriving them
+    // by parsing `quality` back apart would be a lossy round trip (a lossy
+    // container deliberately prints no depth at all).
+    rec.fmtType = f.type ? String(f.type).toLowerCase() : null;
+    rec.fmtRate = f.rate || null;
+    rec.fmtBits = f.bits || null;
     hit++;
   }
   return hit;
@@ -3204,6 +3211,21 @@ function libFacetDefs() {
       // Derived by the background label scan, so coverage is partial — the
       // sheet says so rather than showing a list that doesn't add up.
       values: (r) => { const n = labelNameForRecord(r); return n ? [n] : []; }, sort: "count" },
+    // Format / Sample rate / Bit depth all come off the SAME sweep as the
+    // added times (lib/lms.js albumAddedTimes, tags o/r/T/I on the titles
+    // rows), so they cost no extra LMS traffic. An album LMS gave no format
+    // for simply drops out, exactly like an undated album and the decade.
+    // There is deliberately no Channels facet: the titles sweep carries no
+    // channel count, and asking per track would be a query per track.
+    { id: "format", label: "Format",
+      values: (r) => (r.fmtType ? [String(r.fmtType)] : []),
+      sort: "count", labels: (v) => QUALITY_TYPE_LABELS[v] || v.toUpperCase() },
+    { id: "rate",   label: "Sample rate",
+      values: (r) => (r.fmtRate ? [String(r.fmtRate)] : []),
+      sort: "numeric-desc", labels: (v) => rateShort(Number(v)) + " kHz" },
+    { id: "bits",   label: "Bit depth",
+      values: (r) => (r.fmtBits ? [String(r.fmtBits)] : []),
+      sort: "numeric-desc", labels: (v) => v + "-bit" },
     { id: "letter", label: "Starts with",
       // Free: sortTitle already files "The Beatles" under B.
       values: (r) => {
