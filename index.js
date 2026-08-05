@@ -1903,7 +1903,12 @@ app.post("/api/playlists/delete", async (req, res) => {
   const id = req.body && req.body.playlist_id;
   if (!id) return res.status(400).json({ error: "playlist_id required" });
   try { await state.lms.playlistDelete(id); forgetPlaylistArt(id); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) {
+    // An unknown id makes LMS set a status error, which it answers by closing
+    // the socket — so without this the user would see "socket hang up".
+    log.warn("playlist delete failed:", e.message);
+    res.status(500).json({ error: playlistWriteError(e) });
+  }
 });
 
 app.post("/api/playlists/rename", async (req, res) => {

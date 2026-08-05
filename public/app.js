@@ -7369,6 +7369,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         if (window.__showHome) window.__showHome();
         return;
       }
+      if (action === "import-playlist") {
+        // Lives in the side menu (owner decision), matching the Roon build —
+        // it is a thing you DO, not a place you browse, so it doesn't belong
+        // behind the Playlists screen.
+        if (window.__openImportSheet) window.__openImportSheet();
+        return;
+      }
       if (action === "rescan") {
         // Shortcut for the common case only. The destructive "clear and rescan
         // everything" stays in Settings -> LMS server, where it has its own
@@ -7685,11 +7692,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const backBtn = document.getElementById("pl-back");
   if (!openBtn || !overlay || !body) return;
 
-  {
-    const imp = document.getElementById("pl-import");
-    if (imp) imp.addEventListener("click", () => window.__openImportSheet());
-  }
-
   let stack = [];     // [{kind:"list"} | {kind:"playlist", id, title}]
   let seq = 0;
 
@@ -7745,11 +7747,67 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         title: pl.title || "Untitled",
         subtitle: n == null ? "" : n + (n === 1 ? " track" : " tracks"),
         art: pl.art || [],
-      }, () => { stack.push({ kind: "playlist", id: pl.id, title: pl.title }); render(); });
+      }, () => { stack.push({ kind: "playlist", id: pl.id, title: pl.title,
+                            url: pl.url, extid: pl.extid, remote: pl.remote }); render(); });
       tile.classList.add("is-playlist");
       grid.appendChild(tile);
     }
     body.appendChild(grid);
+  }
+
+  // An affirmative "this is a local playlist we own" — never merely "not known
+  // to be remote".
+  function isOwnPlaylist(f) {
+    if (!f || f.remote) return false;      // the plugin's, not ours
+    if (f.extid) return false;             // imported from an online library
+    const url = typeof f.url === "string" ? f.url : "";
+    if (!url) return false;                // no signal at all — fail closed
+    // A plugin playlist's url is a scheme of its own (qobuz://…, wimp://…).
+    // Ours is a playlist FILE: usually a file:// URL, but some servers report a
+    // bare path, so accept either rather than hiding the button on a perfectly
+    // ordinary playlist. Anything with a non-file scheme is refused.
+    if (/^file:/i.test(url)) return true;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url)) return false;   // some other scheme
+    return /\.(m3u8?|pls|xspf)$/i.test(url);              // a bare path to a playlist file
+  }
+
+  async function deletePlaylist(f, trackCount) {
+    // Names the playlist AND its size: the tile grid is a wall of similar
+    // squares, and a count makes a tap on the wrong one much harder to confirm
+    // by accident. Deliberately blunt about the file, because this is the one
+    // action in the app that removes something from the server for good.
+    const n = Number.isFinite(trackCount) ? trackCount : null;
+    const size = n == null ? "" : " (" + n + (n === 1 ? " track" : " tracks") + ")";
+    const prompt = "Delete the playlist \u201c" + (f.title || "") + "\u201d" + size + "?\n\n" +
+      "It is removed from the server for good and cannot be undone. " +
+      "The tracks themselves are untouched.";
+    const yes = window.__confirmDialog ? await window.__confirmDialog(prompt) : window.confirm(prompt);
+    if (!yes) return;
+    try {
+      // NOTE: this endpoint takes `playlist_id`, where the Live Playlists one
+      // takes `id` — copying that call verbatim would 400.
+      const r = await fetch("/api/playlists/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlist_id: f.id })
+      });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ("HTTP " + r.status)); }
+      if (window.__showToast) window.__showToast("Deleted \u201c" + (f.title || "") + "\u201d");
+      stack = [{ kind: "list", title: "Playlists" }];
+      render();
+    } catch (e) {
+      // A failure here is INDETERMINATE, not a clean "it didn't happen". LMS
+      // answers a stale playlist id by closing the socket, which reaches us as
+      // a transport error — and the id goes stale precisely because the
+      // playlist is already gone, or a rescan renumbered it. We cannot tell
+      // from the error whether the delete landed, so go back to the list and
+      // let it re-read the truth rather than asserting either outcome.
+      if (window.__showToast) {
+        window.__showToast("Couldn't confirm the delete — " + e.message +
+                           ". The list has been refreshed.", "error", 9000);
+      }
+      stack = [{ kind: "list", title: "Playlists" }];
+      render();
+    }
   }
 
   async function loadPlaylist(f) {
@@ -7783,6 +7841,22 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       // and duration that a rendered row doesn't.
       sh.addEventListener("click", () => window.__sharePlaylist(f.title || "Playlist", f.id, sh));
       acts.appendChild(sh);
+    }
+    // Delete is offered ONLY for a playlist the owner made. LMS's delete is not
+    // a database row: it unlinks the .m3u from the Playlists folder, and for a
+    // REMOTE playlist (whose path doesn't exist) its fallback unlinks
+    // <playlistdir>/<title>.m3u — so deleting an imported Qobuz playlist can
+    // take a same-titled local file with it. An imported playlist carries an
+    // extid and remote:1; a hand-made one carries neither.
+    //
+    // Fails CLOSED: a server that tells us nothing hides the button rather than
+    // offering a destructive action we can't vouch for. A missing button is an
+    // annoyance; the other way round is someone's playlist collection.
+    if (isOwnPlaylist(f)) {
+      const del = document.createElement("button");
+      del.type = "button"; del.className = "action-btn"; del.textContent = "Delete";
+      del.addEventListener("click", () => deletePlaylist(f, tracks.length));
+      acts.appendChild(del);
     }
     body.appendChild(acts);
 
