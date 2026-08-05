@@ -28,6 +28,7 @@ const compression = require("compression");
 const { createLms, discover } = require("./lib/lms");
 const { assertPublicUrl } = require("./lib/urlguard");
 const search = require("./lib/search");
+const share  = require("./lib/share");
 const { makePlaysLog } = require("./lib/plays");
 const makeLivePlaylists = require("./lib/liveplaylists");
 const makeHomePicks = require("./lib/homepicks");
@@ -726,17 +727,79 @@ function readAddedCache(sig) {
   try {
     const j = JSON.parse(fs.readFileSync(ADDED_CACHE_FILE, "utf8"));
     if (!j || j.sig !== sig || !j.added) return null;
-    return new Map(Object.entries(j.added));
+    // `format` arrived later than `added`; a cache written by an older build has
+    // no formats and simply re-sweeps for them rather than being thrown away.
+    return { added: new Map(Object.entries(j.added)),
+             format: j.format ? new Map(Object.entries(j.format)) : null };
   } catch (e) { return null; }
 }
-function writeAddedCache(sig, map) {
-  if (!sig || !map.size) return;
+function writeAddedCache(sig, added, format) {
+  if (!sig || !added.size) return;
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     const tmp = ADDED_CACHE_FILE + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(), added: Object.fromEntries(map) }));
+    fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(),
+      added: Object.fromEntries(added),
+      format: format ? Object.fromEntries(format) : undefined }));
     fs.renameSync(tmp, ADDED_CACHE_FILE);
   } catch (e) { if (DEBUG) console.error("[index] added-time cache write failed:", e.message); }
+}
+
+// ---- album quality, derived from the album's first track ------------------
+//
+// LMS reports format per TRACK; there is no album-level tag. The values ride in
+// on the added-time sweep (one pass over the track table, not two).
+
+// Lossless containers. Everything else describes a DECODER rather than the
+// recording — an MP3 reports 16-bit/44.1k because that is what it decodes to,
+// and printing "16/44.1" on it would claim CD quality for a lossy file.
+const LOSSLESS_TYPES = new Set(["flc", "flac", "alc", "alac", "aif", "aiff", "wav",
+                                "wvp", "wv", "ape", "mpc", "dsf", "dff", "ogf"]);
+const QUALITY_TYPE_LABELS = { flc: "FLAC", flac: "FLAC", alc: "ALAC", alac: "ALAC",
+                              aif: "AIFF", aiff: "AIFF", wav: "WAV", dsf: "DSD", dff: "DSD",
+                              mp3: "MP3", mp4: "AAC", aac: "AAC", ogg: "OGG", ops: "Opus",
+                              wma: "WMA", wv: "WavPack", ape: "APE" };
+
+function rateShort(hz) {
+  if (!hz) return null;
+  const k = hz / 1000;
+  return String(Number.isInteger(k) ? k : Math.round(k * 10) / 10);
+}
+
+function albumQualityLabel(f) {
+  if (!f) return null;
+  const t = String(f.type || "").toLowerCase();
+  const label = QUALITY_TYPE_LABELS[t] || (t ? t.toUpperCase() : null);
+  // Lossy first, for the reason above.
+  if (t && !LOSSLESS_TYPES.has(t)) return label;
+  if (f.bits && f.rate) return f.bits + "/" + rateShort(f.rate);
+  if (f.rate) return rateShort(f.rate) + " kHz";
+  return label;
+}
+
+// Better than CD. There is no room to say so in words, so the badge takes the
+// accent colour instead.
+function albumIsHiRes(f) {
+  if (!f) return false;
+  const t = String(f.type || "").toLowerCase();
+  if (t && !LOSSLESS_TYPES.has(t)) return false;
+  return !!((f.bits && f.bits > 16) || (f.rate && f.rate > 48000));
+}
+
+function stampAlbumFormats(map) {
+  let hit = 0;
+  for (const rec of index.records) {
+    // A merged album takes its primary part's format — the parts are discs of
+    // one release and share it.
+    const f = map.get(String(rec.id));
+    if (!f) continue;
+    const q = albumQualityLabel(f);
+    if (!q) continue;
+    rec.quality = q;
+    rec.hires = albumIsHiRes(f);
+    hit++;
+  }
+  return hit;
 }
 
 function stampAddedTimes(map) {
@@ -753,14 +816,21 @@ function stampAddedTimes(map) {
 
 async function applyAddedTimes(sig, albumCount) {
   const cached = readAddedCache(sig);
-  if (cached) { stampAddedTimes(cached); return; }
+  // Only a cache carrying BOTH is a complete hit; one written before formats
+  // existed still supplies the added times while the sweep re-runs for the rest.
+  if (cached) {
+    stampAddedTimes(cached.added);
+    if (cached.format) { stampAlbumFormats(cached.format); return; }
+  }
   if (addedSweeping || !state.lms) return;
   addedSweeping = true;
   try {
-    const map = await state.lms.albumAddedTimes();
-    const hit = stampAddedTimes(map);
-    writeAddedCache(sig, map);
-    if (DEBUG) console.log("[index] added times for", hit, "of", albumCount, "albums");
+    const { added, format } = await state.lms.albumAddedTimes();
+    const hit = stampAddedTimes(added);
+    const qhit = stampAlbumFormats(format);
+    writeAddedCache(sig, added, format);
+    if (DEBUG) console.log("[index] added times for", hit, "and formats for", qhit,
+                           "of", albumCount, "albums");
   } catch (e) {
     // Always warn, not just under DEBUG: a failed sweep means the "Date added"
     // sort silently has nothing to sort by, which is exactly the kind of thing
@@ -916,8 +986,15 @@ app.get("/api/zones", (req, res) => {
 // ---- library reads ----
 
 function albumOut(rec) {
-  return { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null, qobuz_id: search.qobuzIdFromExtid(rec.extid),
+  const o = { offset: rec.offset, title: rec.title || "", subtitle: rec.subtitle || "", image_key: rec.image_key || null, source: rec.source || null, qobuz_id: search.qobuzIdFromExtid(rec.extid),
     merge_id: rec.mergeId || null, part_count: rec.partCount || null };
+  // Omitted entirely when unknown, so the badge is never a guess. The client
+  // always receives it and hides it with one class — rendering it conditionally
+  // would leave every tile already on screen showing its old state until
+  // something rebuilt it, making the Appearance toggle look like it had done
+  // nothing until you navigated away and back.
+  if (rec.quality) { o.quality = rec.quality; if (rec.hires) o.hires = true; }
+  return o;
 }
 
 app.get("/api/random-albums", async (req, res) => {
@@ -1138,7 +1215,8 @@ app.get("/api/album", async (req, res) => {
     const tracks = await tracksForRecord(rec);
     res.json({
       album:  { title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
-                merge_id: rec.mergeId || null, part_count: rec.partCount || null },
+                merge_id: rec.mergeId || null, part_count: rec.partCount || null,
+                quality: rec.quality || null, hires: !!rec.hires },
       tracks: tracks.map(t => ({ title: t.title, subtitle: t.artist || "" })),
       actions: [
         { kind: "play_now",  title: "Play Now" },
@@ -1154,7 +1232,8 @@ app.get("/api/album", async (req, res) => {
 function albumView(rec) {
   return {
     offset: rec.offset, title: rec.title, subtitle: rec.subtitle,
-    year: rec.year, image_key: rec.image_key, source: rec.source, edited: !!rec.edited
+    year: rec.year, image_key: rec.image_key, source: rec.source, edited: !!rec.edited,
+    quality: rec.quality || null, hires: !!rec.hires
   };
 }
 
@@ -1826,6 +1905,168 @@ app.post("/api/playlists/add", async (req, res) => {
     }
     if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
     res.json({ ok: true, playlist_id: String(id), created, added, skipped });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------------------------------------------------------------------------
+// Playlist sharing — the MDRP1 interchange format (lib/share.js).
+//
+// A share describes MUSIC, not our library: no LMS ids, no offsets, no image
+// keys. That is what lets a blob move between this app and the sibling Roon
+// build, which reads and writes the same format. Import therefore RESOLVES
+// against whatever this library happens to hold, and says plainly what it
+// couldn't find.
+// ---------------------------------------------------------------------------
+
+// Gather a shareable track list from a stored LMS playlist.
+async function shareTracksForPlaylist(playlistId) {
+  const r = await state.lms.playlistTracks(playlistId);
+  return (r.tracks || []).map((t, i) => ({
+    title: t.title, artist: t.artist || "", album: t.album || "",
+    track_no: t.tracknum || (i + 1),
+    // JSPF durations are milliseconds; LMS gives seconds. The Roon build has no
+    // track length to put here at all, so filling it is strictly additive.
+    duration_ms: Number.isFinite(t.duration) ? Math.round(t.duration * 1000) : null,
+    year: t.year || null,
+  }));
+}
+
+app.post("/api/share/encode", async (req, res) => {
+  const body = req.body || {};
+  try {
+    let name = String(body.name || "").trim();
+    let tracks = Array.isArray(body.tracks) ? body.tracks : null;
+    // The client can hand us a track list (the Roon build's shape), or just
+    // name a stored playlist and let the server read it — the server has better
+    // metadata than a rendered row does.
+    if (!tracks && body.playlist_id) {
+      if (!state.connected) return notConnected(res);
+      tracks = await shareTracksForPlaylist(body.playlist_id);
+    }
+    if (!tracks || !tracks.length) return res.status(400).json({ error: "tracks required" });
+    if (tracks.length > share.INPUT_MAX) {
+      return res.status(400).json({ error: `Too many entries — ${share.INPUT_MAX} at most` });
+    }
+    const built = share.buildShareDoc({ name, annotation: body.annotation }, tracks, pkg.version);
+    if (!built.track_count) return res.status(400).json({ error: "None of those tracks had a title to share" });
+    const blob = share.encodeSharePayload(built.doc);
+    res.json({
+      blob,
+      bytes: Buffer.byteLength(blob, "utf8"),
+      track_count: built.track_count,
+      skipped: built.skipped,
+      truncated: built.truncated,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Resolve a decoded share against the library. ALBUM-level only and entirely
+// in-memory: no LMS round-trips, so a big paste answers immediately. The track
+// itself is matched by title when the playlist is actually saved, because that
+// is the only point we need its URL.
+function resolveSharedEntry(entry) {
+  const title = share.shareText(entry && entry.title, share.TEXT_MAX);
+  if (!title) return null;
+  const album  = share.shareText(entry && entry.album, share.TEXT_MAX);
+  const artist = share.shareText(entry && entry.creator, share.TEXT_MAX);
+  if (!album) return null;    // nothing to open on this server
+  // findRecordByName refuses a coin toss: exactly one title match, or an exact
+  // artist match, or nothing. A wrong album here would put someone else's track
+  // in the playlist under the right name, which is worse than a reported miss.
+  let rec = findRecordByName(album, artist);
+  if (!rec && artist) {
+    // The credit may list several artists ("A & B") where the share names one.
+    const key = search.artistKey(artist);
+    const hits = index.records.filter(r => r.nTitle === search.normalize(album));
+    if (hits.length) {
+      const byCredit = hits.filter(r =>
+        search.splitArtistNames(r.subtitle || "").some(a => search.artistKey(a) === key));
+      if (byCredit.length === 1) rec = byCredit[0];
+    }
+  }
+  if (!rec) return null;
+  return {
+    offset: rec.offset, title,
+    artist, album_title: rec.title, album_subtitle: rec.subtitle,
+    image_key: rec.image_key || null,
+    track_no: share.shareInt(entry && entry.trackNum, 1, 999),
+  };
+}
+
+app.post("/api/share/import", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const blob = (req.body || {}).blob;
+  if (!blob) return res.status(400).json({ error: "blob required" });
+  let doc;
+  // The decoder's messages are written for the person holding the blob; pass
+  // them through rather than flattening them to "bad request".
+  try { doc = share.decodeSharePayload(blob); }
+  catch (e) { return res.status(400).json({ error: e.message }); }
+  try {
+    await ensureIndex();
+    const entries = doc.playlist.track.slice(0, share.TRACK_MAX);
+    const resolved = [], missing = [];
+    for (const e of entries) {
+      const hit = resolveSharedEntry(e);
+      if (hit) resolved.push(hit);
+      // Reported, never silently dropped: "38 of 45" is the honest outcome and
+      // the missing 7 are the interesting part.
+      else missing.push({
+        title:  share.shareText(e && e.title, 200),
+        artist: share.shareText(e && e.creator, 200),
+        album:  share.shareText(e && e.album, 200),
+      });
+    }
+    res.json({
+      ok: true,
+      name: share.shareText(doc.playlist.title, 200) || "Shared playlist",
+      total: doc.playlist.track.length,
+      truncated: doc.playlist.track.length > share.TRACK_MAX,
+      resolved, missing,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Save an import as a real LMS playlist. Separate from /import on purpose:
+// importing tells you what would happen, saving is the act. This is where the
+// LMS round-trips finally happen, because a stored playlist is addressed by
+// track URL and nothing else can supply one.
+app.post("/api/share/save", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { name, items } = req.body || {};
+  const wantName = String(name || "").trim();
+  if (!wantName) return res.status(400).json({ error: "name required" });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "items required" });
+  try {
+    await ensureIndex();
+    // One LMS read per DISTINCT album, not per track — a shared album usually
+    // arrives as a run of consecutive tracks.
+    const byAlbum = new Map();
+    const picked = [];
+    let skipped = 0;
+    for (const it of items.slice(0, 500)) {
+      const rec = index.byOffset.get(it && it.offset);
+      if (!rec) { skipped++; continue; }
+      if (!byAlbum.has(rec.offset)) {
+        try { byAlbum.set(rec.offset, await tracksForRecord(rec)); }
+        catch (e) { byAlbum.set(rec.offset, []); }
+      }
+      const ts = byAlbum.get(rec.offset);
+      const want = search.normalize(String(it.title || ""));
+      const hit = ts.find(t => search.normalize(t.title || "") === want);
+      if (hit && hit.url) picked.push({ title: hit.title, url: hit.url });
+      else skipped++;
+    }
+    if (!picked.length) return res.status(409).json({ error: "None of those tracks are still in the library" });
+
+    const made = await state.lms.playlistCreate(wantName);
+    let added = 0;
+    for (const t of picked) {
+      try { await state.lms.playlistAddTrack(made.id, t); added++; }
+      catch (e) { skipped++; log.debug("share save: add failed for", t.title, "-", e.message); }
+    }
+    if (!added) return res.status(500).json({ error: "Could not add any of those tracks" });
+    res.json({ ok: true, playlist_id: String(made.id), created: made.created, name: wantName, added, skipped });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3100,13 +3341,33 @@ const livePlaylists = makeLivePlaylists({
   playeds: ["any", "never", "6", "12"],
 });
 
+// Every album a saved playlist matches, in the order it asks for. One function
+// so the screen that LISTS a playlist and the button that PLAYS it can never
+// disagree about what order it is in.
+//
+// UNSLICED on purpose. The caller applies the playlist's limit, because the
+// count of what MATCHED is what makes "100 of 1,179" honest — slicing here
+// would make those two numbers the same and the message meaningless. Shuffling
+// before the slice is also the right way round: a random playlist of 100 should
+// be 100 drawn from the whole match, not the first 100 by title then jumbled.
+function livePlaylistAlbums(rec) {
+  const view = libraryView(rec.view);
+  if ((rec.order || "album") !== "random") return view;
+  // Seeded off the view's own seed, never Math.random(): the listing is paged,
+  // so a fresh shuffle per request would repeat some albums and skip others as
+  // the user scrolls.
+  const seed = (rec.view && rec.view.seed) || 1;
+  return view.slice().sort((a, b) =>
+    seededRank(a.nTitle + a.nArtist, seed) - seededRank(b.nTitle + b.nArtist, seed));
+}
+
 // Up to four covers for a playlist's mosaic tile, plus how many albums it
 // currently resolves to. Both are computed live — that IS the feature.
 function livePlaylistSummary(rec) {
   let albums = [];
   // A rule that somehow can't be evaluated must not take the whole list down
   // — the row just loses its count and mosaic.
-  try { albums = libraryView(rec.view); } catch (e) { albums = []; }
+  try { albums = livePlaylistAlbums(rec); } catch (e) { albums = []; }
   // Up to four DISTINCT covers, walked in the playlist's own order so the
   // mosaic shows what Play Now would actually start with. Distinct because a
   // rule that resolves to one artist would otherwise show one sleeve x4.
@@ -3115,7 +3376,12 @@ function livePlaylistSummary(rec) {
     if (a.image_key && !art.includes(a.image_key)) art.push(a.image_key);
     if (art.length === 4) break;
   }
-  return { id: rec.id, name: rec.name, view: rec.view, total: albums.length, art };
+  // `total` is what this playlist DELIVERS; `matched` is what the rule found.
+  // Reporting only the second made every capped playlist read as a failure to
+  // play the whole thing.
+  return { id: rec.id, name: rec.name, view: rec.view,
+           limit: rec.limit, order: rec.order,
+           total: Math.min(albums.length, rec.limit), matched: albums.length, art };
 }
 
 app.get("/api/live-playlists", async (req, res) => {
@@ -3130,11 +3396,11 @@ app.get("/api/live-playlists", async (req, res) => {
 // lets a playlist be renamed without forking a duplicate.
 app.post("/api/live-playlists", async (req, res) => {
   if (!state.connected) return notConnected(res);
-  const { id, name, view } = req.body || {};
+  const { id, name, view, limit, order } = req.body || {};
   if (!String(name || "").trim()) return res.status(400).json({ error: "name required" });
   try {
     await ensureIndex();
-    const rec = livePlaylists.put({ id, name, view });
+    const rec = livePlaylists.put({ id, name, view, limit, order });
     if (!rec) return res.status(409).json({ error: "You can have at most " + livePlaylists.MAX + " Live Playlists" });
     res.json({ ok: true, playlist: livePlaylistSummary(rec) });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -3157,11 +3423,18 @@ app.get("/api/live-playlist", async (req, res) => {
   if (!rec) return res.status(404).json({ error: "Unknown playlist" });
   try {
     await ensureIndex();
-    const view   = libraryView(rec.view);
+    const matched = livePlaylistAlbums(rec);
+    // Sliced to the playlist's own limit BEFORE paging, so the count the user
+    // scrolls through is the count that will actually play. Applied here rather
+    // than inside libraryView(), whose memo has no limit in its signature —
+    // two playlists sharing a rule set would otherwise share one cache entry
+    // and one limit.
+    const view   = matched.slice(0, rec.limit);
     const total  = view.length;
     const offset = Math.max(0, Math.min(total, parseInt(req.query.offset || "0", 10) || 0));
     const count  = Math.max(1, Math.min(200, parseInt(req.query.count || "60", 10) || 60));
-    res.json({ id: rec.id, name: rec.name, view: rec.view, total, offset,
+    res.json({ id: rec.id, name: rec.name, view: rec.view,
+      limit: rec.limit, order: rec.order, total, matched: matched.length, offset,
       albums: view.slice(offset, offset + count).map(albumOut) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -3175,9 +3448,13 @@ app.get("/api/live-playlist/albums", async (req, res) => {
   if (!rec) return res.status(404).json({ error: "Unknown playlist" });
   try {
     await ensureIndex();
-    const max  = Math.max(1, Math.min(500, parseInt(req.query.max || "200", 10) || 200));
-    const view = libraryView(rec.view);
-    res.json({ total: view.length, truncated: view.length > max,
+    // The caller's ask, the play-time ceiling and the playlist's own limit —
+    // whichever is smallest wins.
+    const asked = Math.max(1, Math.min(500, parseInt(req.query.max || "200", 10) || 200));
+    const max   = Math.min(asked, rec.limit);
+    const view  = livePlaylistAlbums(rec);
+    const total = Math.min(view.length, rec.limit);
+    res.json({ total, matched: view.length, truncated: total > max,
       offsets: view.slice(0, max).map(a => a.offset) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

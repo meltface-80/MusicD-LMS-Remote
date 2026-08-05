@@ -442,6 +442,65 @@ Layout section of README.md.
   and `findRecordByName(title, artist)` resolves each to a record whose image key
   the tile can use. A stored playlist's tracks can name albums LMS gives no
   usable cover id for, which is why the mosaics were blank.
+- Playlist SHARES are an INTEROP CONTRACT with the sibling Roon build
+  (`lib/share.js`, v1.0.58) — both apps read and write `MDRP1:<base64url(gzip(
+  JSON, level 9))>`, a JSPF/ListenBrainz document. Every coercion is matched to
+  that implementation and changing the semantics stops shares round-tripping:
+  the marker is found ANYWHERE after all whitespace is stripped and matched
+  case-INSENSITIVELY (iOS autocorrect lowercases it on paste) while the payload
+  is left untouched (base64url is case-significant); trailing prose is separated
+  by SHAVING up to 40 characters and retrying, because gzip's CRC is the only
+  thing that can tell the sender's words from the payload; empty values are
+  OMITTED, never `""` (in JSPF an empty string is a positive claim); and
+  `playlist.track` is assigned AFTER pruning because an absent list means
+  malformed where an empty one means a playlist with no tracks. Widening the
+  format means MDRP2, never redefining MDRP1. A share describes MUSIC — no LMS
+  id, offset, image key or file URL may enter one, which `shareTrackEntry()`
+  enforces by building a fresh literal from a fixed field list. Import is
+  ALBUM-granular through `findRecordByName()` (which refuses a coin toss); the
+  track is matched by title only at SAVE time, because a stored LMS playlist is
+  addressed by track URL and nothing else can supply one. Owner decision: import
+  builds the playlist from whatever matched and ignores the rest — the misses
+  are listed, never silently dropped. Copy uses `execCommand("copy")` FIRST and
+  `navigator.clipboard` as the fallback: the app is served over plain http, so
+  the secure-context API usually does not exist at all.
+- Album QUALITY (`quality`/`hires`) rides in on the added-time sweep, not a
+  second pass — the format tags (o/r/T/I) arrive on the very same `titles` rows
+  as tag D, so `albumAddedTimes()` returns `{added, format}` and both land in
+  `data/added-times.json` under one signature. A cache written before formats
+  existed still supplies the added times and simply re-sweeps for the rest.
+  Owner decision: the album's format is its FIRST track's (lowest tracknum).
+  LOSSY MUST NOT PRINT A DEPTH: an MP3 reports 16/44.1 because that is what it
+  decodes to, so `albumQualityLabel()` returns the container name for anything
+  outside `LOSSLESS_TYPES`. The badge value is ALWAYS in the payload and shown
+  or hidden by one class on `<body>` (`show-quality`, Settings → Appearance,
+  default off) — rendering it conditionally would leave every tile already on
+  screen showing its old state until something rebuilt it, so the toggle would
+  look broken until you navigated away and back.
+- Live Playlists carry `limit` and `order` BESIDE the view, never inside it
+  (v1.0.58): two playlists can share a rule set and differ in both, and folding
+  them into the query would make `libraryView()`'s memo — keyed on the query
+  alone — hand them one cache entry and one limit. `livePlaylistAlbums()` is the
+  single ordering function so the screen that LISTS a playlist and the button
+  that PLAYS it can't disagree; it returns UNSLICED because the caller's slice is
+  what makes "100 of 1,179" honest, and a random playlist of 100 must be 100
+  drawn from the whole match rather than the first 100 by title then jumbled.
+  The shuffle is SEEDED off `view.seed` (paging would otherwise repeat and skip).
+  There is deliberately no "unlimited": 0 or garbage falls back to the default
+  (100), not to unbounded. `total` is what it delivers, `matched` what the rule
+  found — reporting only the second made every capped playlist read as a failure.
+- Track multi-select uses the SAME Options dropdown as albums (v1.0.58); the old
+  `#track-action-bar` is gone. Its trigger lives in `#track-select-row` above the
+  track list, NOT in the top bar, because the album view paints over the top bar
+  and a row up there would be invisible from the one screen that needs it. The
+  menu is rendered into `<body>` off the button's rect and `albumOptionsOwner`
+  records which button opened it, so `exitTrackSelectMode()` can tear down a menu
+  that would otherwise outlive its row. Note for tests: `addLongPress` on a track
+  row ALSO selects the row it was held on, so a long-press leaves one already
+  picked.
+- Import lives in the PLAYLISTS overlay header, not the side menu where the Roon
+  build puts it: that menu is already at its height budget and one more row puts
+  Settings back off the bottom of a phone (v1.0.56).
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It

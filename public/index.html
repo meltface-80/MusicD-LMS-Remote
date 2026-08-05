@@ -342,13 +342,13 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
           <h2 class="home-section-title home-section-link" id="home-random-title" role="button" tabindex="0">Random albums</h2>
           <div id="home-random" class="home-carousel"></div>
         </div>
-        <div class="home-section home-section-lotw">
-          <h2 class="home-section-title home-section-link" id="home-lotw-title" role="button" tabindex="0">Label of the week</h2>
-          <div id="home-lotw" class="home-carousel home-carousel-1row"></div>
-        </div>
         <div class="home-section home-section-library">
           <h2 class="home-section-title home-section-link" id="home-library-title" role="button" tabindex="0">Library</h2>
           <div id="home-library" class="home-carousel"></div>
+        </div>
+        <div class="home-section home-section-lotw">
+          <h2 class="home-section-title home-section-link" id="home-lotw-title" role="button" tabindex="0">Label of the week</h2>
+          <div id="home-lotw" class="home-carousel home-carousel-1row"></div>
         </div>
         <div class="home-section home-section-genres">
           <h2 class="home-section-title">Browse by genre</h2>
@@ -377,29 +377,12 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     </div>
   </div>
 
-  <!-- The album multi-select actions used to live in a fixed bottom bar here.
-       Five text buttons plus a cancel never fitted one phone row (Merge fell
-       off the right edge), so they moved into the top bar's Options menu —
-       see #album-select-row above. Tracks keep their bottom bar: it is scoped
-       to the open album modal, and carries two actions, not six. -->
-
-  <!-- Track multi-select action bar. Lives OUTSIDE #album-modal but is only
-       shown while the modal is open, and is cleared whenever it closes. Sits
-       above the modal so it stays reachable over a full-screen album sheet. -->
-  <div id="track-action-bar" class="label-merge-bar track-action-bar hidden" role="toolbar" aria-label="Track actions">
-    <span id="track-action-info" class="label-merge-info"></span>
-    <div class="label-merge-actions">
-      <button id="track-play-now-btn" class="action-btn primary" type="button" disabled>Play Now</button>
-      <button id="track-queue-btn" class="action-btn" type="button" disabled>Queue</button>
-      <button id="track-playlist-btn" class="action-btn" type="button" disabled>Add to playlist</button>
-      <button id="track-action-cancel-btn" class="icon-btn" type="button" aria-label="Cancel selection">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M18 6 6 18M6 6l12 12"/>
-        </svg>
-      </button>
-    </div>
-  </div>
+  <!-- Both multi-select action bars used to be fixed bottom bars here. Text
+       buttons in a fixed row never fitted one phone (album Merge fell off the
+       right edge), so both moved into an Options dropdown: albums into the top
+       bar's #album-select-row, tracks into #track-select-row above the track
+       list — the album view paints OVER the top bar, so a row up there would be
+       invisible from that screen. -->
 
   <!-- Label unmerge sheet: slide up to manage merged labels one by one -->
   <div id="label-unmerge-sheet" class="label-unmerge-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="label-unmerge-heading">
@@ -517,6 +500,7 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
         </div>
         <div class="modal-art">
           <img id="modal-img" alt="">
+          <span id="modal-quality" class="album-quality hidden"></span>
         </div>
         <div class="modal-info">
           <h2 id="modal-title">—</h2>
@@ -671,6 +655,27 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
           <div class="track-list-wrap">
             <h3 class="section-label">Tracks</h3>
+            <!-- Track multi-select actions. Same Options dropdown as albums
+                 (v1.0.58) — the old bottom bar is gone. It sits here rather
+                 than in the top bar because the album view paints OVER the top
+                 bar, so a row up there would be invisible from this screen. -->
+            <div id="track-select-row" class="album-select-row track-select-row hidden">
+              <button id="track-select-cancel" class="icon-btn" type="button" aria-label="Cancel selection" title="Cancel selection">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M18 6 6 18M6 6l12 12"/>
+                </svg>
+              </button>
+              <span id="track-select-info" class="album-select-info" aria-live="polite"></span>
+              <button id="track-options-btn" class="album-options-btn" type="button"
+                      aria-haspopup="menu" aria-expanded="false">
+                <span>Options</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            </div>
             <ol id="modal-tracks" class="track-list"></ol>
           </div>
 
@@ -881,6 +886,13 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <h2 id="pl-title">Playlists</h2>
+          <!-- Import lives here rather than in the side menu (which the Roon
+               build uses): that menu is already at its height budget and one
+               more row pushes Settings off a phone again — see v1.0.56. This is
+               also where playlists are, which is where you would look. -->
+          <button id="pl-import" class="icon-btn" type="button" aria-label="Import a playlist" title="Import a playlist">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          </button>
           <button id="pl-close" class="icon-btn" type="button" aria-label="Close" data-pl-close>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -1295,6 +1307,16 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
           <div class="lib-sheet-section-label">Theme</div>
           <div id="theme-picker" class="theme-picker" role="radiogroup" aria-label="Theme"></div>
           <button id="theme-toggle" class="visually-hidden" type="button" aria-label="Toggle theme"></button>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Show sample rate on artwork <button class="settings-info-btn" data-info="Puts the bit depth and sample rate on every album cover — 24/96, 16/44.1, or the file type for a lossy one. Hi-res albums are picked out in the accent colour. The value comes from each album's first track, read during the background library sweep, so it may take a few minutes to appear on a fresh install." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="quality-toggle" aria-label="Show sample rate on artwork">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
         </div>
       </div>
 
