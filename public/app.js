@@ -14,6 +14,41 @@ function esc(s) {
     c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// Sample rate / bit depth on artwork. Top-level for the same reason as esc():
+// tiles are built in one IIFE and the album modal paints in another, and both
+// need the identical badge.
+//
+// The VALUE is always in the payload; the switch is one class on <body>, not a
+// refetch. Server omits `quality` when it doesn't know, so the badge is never a
+// guess.
+const QUALITY_KEY = "musicd-show-quality";
+let showQuality = false;
+try { showQuality = localStorage.getItem(QUALITY_KEY) === "1"; }
+catch (e) { /* private browsing — the default (off) stands */ }
+function applyShowQuality() { document.body.classList.toggle("show-quality", showQuality); }
+window.__showQuality = () => showQuality;
+window.__setShowQuality = (on) => {
+  showQuality = !!on;
+  try { localStorage.setItem(QUALITY_KEY, showQuality ? "1" : "0"); }
+  catch (e) { /* still applies for this session */ }
+  applyShowQuality();
+};
+window.__qualityBadge = function (a) {
+  if (!a || !a.quality) return null;
+  const el = document.createElement("span");
+  el.className = "album-quality" + (a.hires ? " is-hires" : "");
+  el.textContent = a.quality;
+  // "24/96" is unreadable to a screen reader; say it in words.
+  const words = /\//.test(a.quality)
+    ? a.quality.split("/")[0] + "-bit, " + a.quality.split("/")[1] + " kHz"
+    : a.quality;
+  el.title = words;
+  el.setAttribute("aria-label", words);
+  return el;
+};
+if (document.body) applyShowQuality();
+else document.addEventListener("DOMContentLoaded", applyShowQuality);
+
 (() => {
   // Disable pinch-zoom on iOS Safari (which ignores user-scalable=no since iOS 10)
   ["gesturestart", "gesturechange", "gestureend"].forEach((evt) => {
@@ -46,11 +81,10 @@ function esc(s) {
   const albumSelectInfo      = document.getElementById("album-select-info");
   const albumOptionsBtn      = document.getElementById("album-options-btn");
   const albumActionCancelBtn = document.getElementById("album-select-cancel");
-  const trackActionBar       = document.getElementById("track-action-bar");
-  const trackActionInfo      = document.getElementById("track-action-info");
-  const trackPlayNowBtn      = document.getElementById("track-play-now-btn");
-  const trackQueueBtn        = document.getElementById("track-queue-btn");
-  const trackActionCancelBtn = document.getElementById("track-action-cancel-btn");
+  const trackSelectRow       = document.getElementById("track-select-row");
+  const trackSelectInfo      = document.getElementById("track-select-info");
+  const trackOptionsBtn      = document.getElementById("track-options-btn");
+  const trackSelectCancel    = document.getElementById("track-select-cancel");
 
   let currentAlbum = null;         // {offset,title,subtitle,image_key}
   let zones = [];
@@ -594,6 +628,17 @@ function esc(s) {
     { id: "6",     label: "Not in 6 months" },
     { id: "12",    label: "Not in 12 months" },
   ];
+  // A Live Playlist's own properties, distinct from the rules that pick its
+  // albums. These mirror the server's vocabulary (lib/liveplaylists.js) — the
+  // server re-validates anyway, so a drift here is a UI that offers a value
+  // that silently becomes the default rather than a broken playlist.
+  const LP_LIMITS        = [25, 50, 100, 200, 400];
+  const LP_LIMIT_DEFAULT = 100;
+  const LP_ORDERS        = [
+    { id: "album",  label: "Album order" },
+    { id: "random", label: "Random" },
+  ];
+  const LP_ORDER_DEFAULT = "album";
   // Alphabetical sorts read A→Z by default; quantitative ones read biggest-first.
   const libSortHasDir     = (id) => id !== "random";
   const libSortDefaultDir = (id) =>
@@ -933,7 +978,16 @@ function esc(s) {
   // sheet-open lifecycle, so an edit the user abandons cannot still be armed
   // when they later save something unrelated from this same sheet.
   function openLibFocusSheet(editTarget) {
-    editTarget = (editTarget && editTarget.id) ? editTarget : null;   // ignore stray Events
+    // A bare handler receives a click Event, which must never be mistaken for a
+    // playlist to edit. Testing for an Event says exactly that, where the old
+    // `.id` test also threw away a legitimate id-less target.
+    if (editTarget instanceof Event || !editTarget || typeof editTarget !== "object") editTarget = null;
+    // The playlist's own properties, held OUTSIDE libView: two playlists can
+    // share a rule set and differ in how many albums they deliver or what order
+    // they come out in, which is also why the server slices rather than folding
+    // them into the query.
+    let editLimit = (editTarget && editTarget.limit) || LP_LIMIT_DEFAULT;
+    let editOrder = (editTarget && editTarget.order) || LP_ORDER_DEFAULT;
     // Editing loads the playlist's rules into the live view WITHOUT persisting
     // them: opening Edit and closing again must leave the user's own Library
     // sort/focus exactly as they left it.
@@ -963,12 +1017,16 @@ function esc(s) {
           else { arr.push(v); }
         };
 
-        const section = (id, label, activeCount, build) => {
+        // `openByDefault` is for the sections that aren't filters at all — the
+        // playlist's own Order and size. They have no "active count" to open
+        // them, and collapsing the two controls this screen exists to set would
+        // hide them behind a tap for no gain.
+        const section = (id, label, activeCount, build, openByDefault) => {
           const sec = document.createElement("div");
           sec.className = "lib-facet-sec";
           const head = document.createElement("button");
           head.type = "button"; head.className = "lib-facet-head";
-          const open = openSections.has(id) || activeCount > 0;
+          const open = openSections.has(id) || activeCount > 0 || !!openByDefault;
           head.setAttribute("aria-expanded", open ? "true" : "false");
           const t = document.createElement("span");
           t.className = "lib-sheet-section-label"; t.textContent = label;
@@ -990,13 +1048,16 @@ function esc(s) {
           body.appendChild(sec);
         };
 
-        const chip = (host, label, state, onTap) => {
+        // `local` marks a chip that changes the PLAYLIST rather than the query —
+        // Order and size don't alter what matches, so they must not re-run the
+        // library view.
+        const chip = (host, label, state, onTap, local) => {
           const c = document.createElement("button");
           c.type = "button";
           c.className = "lib-chip" + (state === "on" ? " is-on" : state === "not" ? " is-not" : "");
           c.textContent = label;
           if (state === "not") c.setAttribute("aria-label", "Excluding " + label);
-          c.addEventListener("click", () => { onTap(); paint(); applyLibView(); });
+          c.addEventListener("click", () => { onTap(); paint(); if (!local) applyLibView(); });
           host.appendChild(c);
         };
         const note = (host, text) => {
@@ -1004,6 +1065,34 @@ function esc(s) {
           n.className = "lib-facet-note"; n.textContent = text;
           host.appendChild(n);
         };
+
+        // The playlist's OWN properties lead, ahead of every filter. They are
+        // decisions about the playlist rather than about which albums match,
+        // and burying them under a stack of collapsed facets meant scrolling
+        // past the whole sheet to reach them.
+        if (editTarget) {
+          section("lp-order", "Order", 0, (sec) => {
+            const wrap = document.createElement("div"); wrap.className = "lib-chips";
+            sec.appendChild(wrap);
+            for (const o of LP_ORDERS) {
+              chip(wrap, o.label, editOrder === o.id ? "on" : "off", () => { editOrder = o.id; }, true);
+            }
+            note(sec, "Album order queues them in the sort you chose. Random shuffles " +
+                      "which albums, and what order they play in. The shuffle is fixed " +
+                      "per playlist, so it stays put while you scroll rather than " +
+                      "reshuffling under you.");
+          }, true);
+          section("lp-limit", "Playlist size", 0, (sec) => {
+            const wrap = document.createElement("div"); wrap.className = "lib-chips";
+            sec.appendChild(wrap);
+            for (const n of LP_LIMITS) {
+              chip(wrap, String(n), editLimit === n ? "on" : "off", () => { editLimit = n; }, true);
+            }
+            note(sec, "How many albums this playlist actually plays. A rule can match your " +
+                      "whole library, but every album is a separate command to the server — " +
+                      "400 albums is thousands of tracks.");
+          }, true);
+        }
 
         for (const fc of facets) {
           const sel = libView[fc.id] || (libView[fc.id] = []);
@@ -1079,7 +1168,12 @@ function esc(s) {
       save.addEventListener("click", () => {
         committed = true;
         close();
-        saveLivePlaylistPrompt(editTarget);
+        // Carry the chosen order and size into the save — this sheet is the
+        // only place they can be set, so they have to travel with the thing
+        // being saved.
+        saveLivePlaylistPrompt(editTarget
+          ? Object.assign({}, editTarget, { limit: editLimit, order: editOrder })
+          : null);
       });
       const done = document.createElement("button");
       done.type = "button"; done.className = "action-btn primary";
@@ -1126,12 +1220,23 @@ function esc(s) {
     try {
       const r = await fetch("/api/live-playlists", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: existing && existing.id, name: trimmed, view: currentLibViewSnapshot() })
+        body: JSON.stringify({
+          id: existing && existing.id, name: trimmed, view: currentLibViewSnapshot(),
+          // Absent for a brand-new playlist, which takes the server's defaults
+          // and can be adjusted from Edit.
+          limit: existing && existing.limit, order: existing && existing.order,
+        })
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
-      const n = j.playlist ? j.playlist.total : 0;
-      showToast("Saved “" + trimmed + "” — " + n + " album" + (n === 1 ? "" : "s") + " right now");
+      const pl = j.playlist || {};
+      const n = pl.total || 0, matched = pl.matched != null ? pl.matched : n;
+      // What it DELIVERS vs what the rule FOUND. Reporting only the second made
+      // every capped playlist read as a failure to play the whole thing.
+      showToast(matched > n
+        ? "Saved “" + trimmed + "” — it plays " + n + " of the " +
+          matched.toLocaleString() + " albums that match. Change that with Edit."
+        : "Saved “" + trimmed + "” — " + n + " album" + (n === 1 ? "" : "s") + " right now");
       if (window.__refreshLivePlaylists) window.__refreshLivePlaylists();
     } catch (e) { showToast(e.message, "error"); }
   }
@@ -1527,6 +1632,13 @@ function esc(s) {
       artWrap.appendChild(badge);
     }
 
+    // Sample rate / bit depth, bottom-left. ALWAYS built, shown or hidden by one
+    // class on <body>: rendering it conditionally would mean every tile already
+    // on screen kept its old state until something rebuilt it, so the Appearance
+    // toggle would look like it had done nothing until you navigated away.
+    const qb = window.__qualityBadge && window.__qualityBadge(a);
+    if (qb) artWrap.appendChild(qb);
+
     // Mark tiles already in this app's Favourites. The key is stamped on the
     // element so a later refresh can repaint without rebuilding the grid —
     // /api/favourites/keys exists precisely for this.
@@ -1635,18 +1747,22 @@ function esc(s) {
   let albumOptionsMenu = null;
   let albumOptionsBackdrop = null;
 
+  // The button the open menu belongs to, so closing resets the right one —
+  // albums and tracks share this machinery (v1.0.58).
+  let albumOptionsOwner = null;
   function closeAlbumOptionsMenu() {
     if (albumOptionsBackdrop) albumOptionsBackdrop.remove();
     if (albumOptionsMenu) albumOptionsMenu.remove();
     albumOptionsBackdrop = null;
     albumOptionsMenu = null;
-    if (albumOptionsBtn) albumOptionsBtn.setAttribute("aria-expanded", "false");
+    if (albumOptionsOwner) albumOptionsOwner.setAttribute("aria-expanded", "false");
+    albumOptionsOwner = null;
   }
 
-  function buildAlbumOptionsMenu(menu) {
-    menu.innerHTML = "";
-    const n = albumSelected.length;
-    const row = (label, note, disabled, onClick) => {
+  // One row builder for both menus. Returns a `row(label, note, disabled, fn)`
+  // bound to this menu element.
+  function optionsRowFactory(menu) {
+    return (label, note, disabled, onClick) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "lib-sort-row";
@@ -1671,6 +1787,48 @@ function esc(s) {
       menu.appendChild(b);
       return b;
     };
+  }
+
+  // Rendered into <body> with fixed positioning off the button's rect: the top
+  // bar is its own stacking context, and the album view paints over it — a
+  // nested menu could not sit above either.
+  function openOptionsMenu(btn, build, label) {
+    if (albumOptionsMenu) {
+      const same = albumOptionsOwner === btn;
+      closeAlbumOptionsMenu();
+      if (same) return;
+    }
+    if (!btn) return;
+    albumOptionsBackdrop = document.createElement("div");
+    albumOptionsBackdrop.className = "dropdown-backdrop";
+    albumOptionsBackdrop.addEventListener("click", closeAlbumOptionsMenu);
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu";
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", label);
+    albumOptionsMenu = menu;
+    albumOptionsOwner = btn;
+    build(menu);
+    document.body.appendChild(albumOptionsBackdrop);
+    document.body.appendChild(menu);
+    // Right-align under the button, clamped into the viewport.
+    const r = btn.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    let left = r.right - w;
+    if (left < 8) left = 8;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
+    menu.style.left = left + "px";
+    menu.style.top  = (r.bottom + 6) + "px";
+    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 20) + "px";
+    btn.setAttribute("aria-expanded", "true");
+  }
+  window.__closeOptionsMenu = closeAlbumOptionsMenu;
+  window.__openOptionsMenu  = openOptionsMenu;
+
+  function buildAlbumOptionsMenu(menu) {
+    menu.innerHTML = "";
+    const n = albumSelected.length;
+    const row = optionsRowFactory(menu);
 
     row("Play now", null, n === 0, () => invokeAlbumMulti("play_now"));
     row("Add to end of queue", null, n === 0, () => invokeAlbumMulti("queue"));
@@ -1691,29 +1849,7 @@ function esc(s) {
   }
 
   function openAlbumOptionsMenu() {
-    if (albumOptionsMenu) { closeAlbumOptionsMenu(); return; }
-    if (!albumOptionsBtn) return;
-    albumOptionsBackdrop = document.createElement("div");
-    albumOptionsBackdrop.className = "dropdown-backdrop";
-    albumOptionsBackdrop.addEventListener("click", closeAlbumOptionsMenu);
-    const menu = document.createElement("div");
-    menu.className = "dropdown-menu";
-    menu.setAttribute("role", "menu");
-    menu.setAttribute("aria-label", "Album actions");
-    albumOptionsMenu = menu;
-    buildAlbumOptionsMenu(menu);
-    document.body.appendChild(albumOptionsBackdrop);
-    document.body.appendChild(menu);
-    // Right-align under the button, clamped into the viewport.
-    const r = albumOptionsBtn.getBoundingClientRect();
-    const w = menu.offsetWidth;
-    let left = r.right - w;
-    if (left < 8) left = 8;
-    if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
-    menu.style.left = left + "px";
-    menu.style.top  = (r.bottom + 6) + "px";
-    menu.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 20) + "px";
-    albumOptionsBtn.setAttribute("aria-expanded", "true");
+    openOptionsMenu(albumOptionsBtn, buildAlbumOptionsMenu, "Album actions");
   }
 
   if (albumOptionsBtn) albumOptionsBtn.addEventListener("click", openAlbumOptionsMenu);
@@ -2090,6 +2226,10 @@ function esc(s) {
     exitTrackSelectMode();
     currentAlbum = album;
     window.__currentAlbum = album;
+    // Cleared here and repainted from the server album — otherwise the previous
+    // album's badge sits over the new artwork until the fetch lands, and stays
+    // forever on one the server has no quality for.
+    setModalQuality(album);
     paintModalFav();
     // Keys may not have loaded yet on a cold open — repaint when they do.
     if (window.__refreshFavKeys) window.__refreshFavKeys().then(paintModalFav);
@@ -2443,6 +2583,22 @@ function esc(s) {
     return type || "";
   }
 
+  // The album view's artwork is far bigger than a tile, so the badge is drawn
+  // larger there (#modal-quality in the CSS) — but it is the same element and
+  // the same class, so the Appearance toggle governs both.
+  function setModalQuality(album) {
+    const mq = document.getElementById("modal-quality");
+    if (!mq) return;
+    const q = album && album.quality;
+    mq.className = "album-quality" + (q ? (album.hires ? " is-hires" : "") : " hidden");
+    mq.textContent = q || "";
+    if (q) {
+      const words = /\//.test(q) ? q.split("/")[0] + "-bit, " + q.split("/")[1] + " kHz" : q;
+      mq.title = words;
+      mq.setAttribute("aria-label", words);
+    }
+  }
+
   function closeModal() {
     modal.classList.add("hidden");
     modal.classList.remove("np-mode", "tab-album", "tab-queue");
@@ -2492,6 +2648,11 @@ function esc(s) {
         // Subtitle already set as a clickable button by openAlbum(); don't overwrite.
       }
     }
+
+    // Quality badge on the album's own artwork. Painted from the SERVER album,
+    // not the tile that was tapped — a tile from a search result or a Qobuz row
+    // carries no quality at all.
+    setModalQuality(j.album);
 
     // Build action buttons in preferred order
     const order  = ["play_now", "queue", "play_next", "shuffle", "radio"];
@@ -2603,7 +2764,7 @@ function esc(s) {
     const open = modalTracks.querySelector("li.is-open");
     if (open) closeTrackRow(open);
     modalTracks.classList.add("is-selecting");
-    if (trackActionBar) trackActionBar.classList.remove("hidden");
+    if (trackSelectRow) trackSelectRow.classList.remove("hidden");
     updateTrackActionBar();
   }
   function exitTrackSelectMode() {
@@ -2616,16 +2777,32 @@ function esc(s) {
       b.setAttribute("aria-pressed", "false");
       b.setAttribute("aria-label", "Select track");
     });
-    if (trackActionBar) trackActionBar.classList.add("hidden");
+    if (trackSelectRow) trackSelectRow.classList.add("hidden");
+    // The menu is shared with album selection and rendered into <body>, so it
+    // would outlive the row that opened it.
+    if (trackOptionsBtn && albumOptionsOwner === trackOptionsBtn) closeAlbumOptionsMenu();
   }
   function updateTrackActionBar() {
     const n = trackSelected.length;
-    if (trackActionInfo) trackActionInfo.textContent = n === 0
+    if (trackSelectInfo) trackSelectInfo.textContent = n === 0
       ? "Tap tracks to select" : n + " track" + (n === 1 ? "" : "s") + " selected";
-    if (trackPlayNowBtn) trackPlayNowBtn.disabled = n === 0;
-    if (trackQueueBtn)   trackQueueBtn.disabled   = n === 0;
-    const tplBtn = document.getElementById("track-playlist-btn");
-    if (tplBtn) tplBtn.disabled = n === 0;
+    if (trackOptionsBtn) trackOptionsBtn.disabled = n === 0;
+    // Rebuild in place so a menu left open while the selection changes doesn't
+    // keep offering actions for a count that no longer holds.
+    if (albumOptionsMenu && albumOptionsOwner === trackOptionsBtn) buildTrackOptionsMenu(albumOptionsMenu);
+  }
+
+  // Track actions, in the same Options dropdown albums use (v1.0.58). The old
+  // fixed bottom bar is gone: three text buttons plus a cancel could not wrap,
+  // and a vertical list cannot overflow.
+  function buildTrackOptionsMenu(menu) {
+    menu.innerHTML = "";
+    const n = trackSelected.length;
+    const row = optionsRowFactory(menu);
+    row("Play now", null, n === 0, () => invokeTrackMulti("play_now"));
+    row("Add to end of queue", null, n === 0, () => invokeTrackMulti("queue"));
+    row("Add to playlist", null, n === 0, trackActPlaylist);
+    row("Clear selection", null, false, () => exitTrackSelectMode());
   }
   function handleTrackSelect(li, idx) {
     const at = trackSelected.indexOf(idx);
@@ -2644,8 +2821,7 @@ function esc(s) {
     if (!trackSelected.length) return;
     if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
     if (trackSelectSufficient() === false) { showToast("Album changed — reopen it and try again", "error"); return; }
-    if (trackPlayNowBtn) trackPlayNowBtn.disabled = true;
-    if (trackQueueBtn)   trackQueueBtn.disabled   = true;
+    if (trackOptionsBtn) trackOptionsBtn.disabled = true;
     const n = trackSelected.length;
     try {
       const r = await fetch("/api/play-tracks", {
@@ -2673,18 +2849,19 @@ function esc(s) {
     return !currentAlbum || currentAlbum.offset === trackSelectOffset;
   }
 
-  const trackPlaylistBtn = document.getElementById("track-playlist-btn");
-  if (trackPlaylistBtn) trackPlaylistBtn.addEventListener("click", () => {
+  function trackActPlaylist() {
     if (!trackSelected.length || !window.__addToPlaylistSheet) return;
     const n = trackSelected.length;
     window.__afterPlaylistAdd = exitTrackSelectMode;
     window.__addToPlaylistSheet(
       { offset: trackSelectOffset, tracks: trackSelected.slice() },
       n + " selected track" + (n === 1 ? "" : "s") + ".");
-  });
-  if (trackPlayNowBtn)      trackPlayNowBtn.addEventListener("click", () => invokeTrackMulti("play_now"));
-  if (trackQueueBtn)        trackQueueBtn.addEventListener("click",   () => invokeTrackMulti("queue"));
-  if (trackActionCancelBtn) trackActionCancelBtn.addEventListener("click", exitTrackSelectMode);
+  }
+  if (trackOptionsBtn) {
+    trackOptionsBtn.addEventListener("click", () =>
+      openOptionsMenu(trackOptionsBtn, buildTrackOptionsMenu, "Track actions"));
+  }
+  if (trackSelectCancel) trackSelectCancel.addEventListener("click", exitTrackSelectMode);
 
   // Expand/collapse the per-track action row. Only one row is open at a time.
   function closeTrackRow(li) {
@@ -5714,6 +5891,18 @@ function esc(s) {
   // from window.__themes so it can't drift from the CSS token blocks. Each row
   // shows a two-tone swatch rendered by momentarily resolving that theme's
   // tokens, so the preview can never disagree with the real stylesheet.
+  // Appearance -> Show sample rate on artwork. A pure class flip on <body>:
+  // every tile already carries its badge, so nothing is refetched or rebuilt.
+  {
+    const qt = document.getElementById("quality-toggle");
+    if (qt) {
+      qt.checked = !!(window.__showQuality && window.__showQuality());
+      qt.addEventListener("change", () => {
+        if (window.__setShowQuality) window.__setShowQuality(qt.checked);
+      });
+    }
+  }
+
   const themePicker = document.getElementById("theme-picker");
   function swatchFor(t) {
     const probe = document.createElement("div");
@@ -7210,6 +7399,268 @@ function esc(s) {
 })();
 
 /* ------------------------------------------------------------------ */
+/*  Playlist sharing — the MDRP1 interchange format.                     */
+/*                                                                      */
+/*  A share describes the MUSIC, not the files: whoever imports it gets  */
+/*  whatever their own library can match. The same format is read and    */
+/*  written by the sibling Roon build, so a playlist moves between the   */
+/*  two — see lib/share.js for the wire contract.                        */
+/* ------------------------------------------------------------------ */
+(function initPlaylistShare() {
+  const toast = (m, k) => window.__showToast && window.__showToast(m, k);
+
+  // ---- Share -------------------------------------------------------------
+  window.__sharePlaylist = async function (name, playlistId, btn) {
+    if (btn) btn.disabled = true;
+    let j;
+    try {
+      const r = await fetch("/api/share/encode", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        // The server reads the playlist itself — it has the album, track number
+        // and duration that a rendered row doesn't.
+        body: JSON.stringify({ name, playlist_id: playlistId })
+      });
+      j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    } catch (e) { toast(e.message, "error"); return; }
+    finally { if (btn) btn.disabled = false; }
+    openShareSheet(name, j);
+  };
+
+  function openShareSheet(name, j) {
+    window.__openLibSheet("Share " + name, (body) => {
+      const n = j.track_count || 0;
+      const sum = document.createElement("div");
+      sum.className = "share-sum";
+      sum.textContent = n + " track" + (n === 1 ? "" : "s");
+      body.appendChild(sum);
+
+      const warn = (t) => {
+        const w = document.createElement("div");
+        w.className = "share-warn"; w.textContent = t;
+        body.appendChild(w);
+      };
+      if (j.truncated) warn("This playlist is longer than one share can carry — the end was left out.");
+      if (j.skipped)   warn(j.skipped + " entr" + (j.skipped === 1 ? "y" : "ies") + " had no title and were left out.");
+      // Past this size a paste gets mangled by chat apps far more often than
+      // not, so say so before they try rather than after it fails.
+      if (j.bytes > 40000) {
+        warn("This is " + Math.round(j.bytes / 1024) + " KB — too big to paste reliably. Use Download and send the file.");
+      }
+
+      const note = document.createElement("div");
+      note.className = "share-note";
+      note.textContent = "This describes the music, not the music itself. Whoever imports it " +
+                         "gets whatever their own library can match.";
+      body.appendChild(note);
+
+      const ta = document.createElement("textarea");
+      ta.className = "share-blob"; ta.id = "share-blob";
+      ta.readOnly = true; ta.rows = 4;
+      // The payload is base64url and CASE-SIGNIFICANT; autocorrect must not
+      // touch it.
+      ta.setAttribute("autocapitalize", "none");
+      ta.setAttribute("autocorrect", "off");
+      ta.spellcheck = false;
+      ta.value = j.blob || "";
+      body.appendChild(ta);
+    }, (foot, close) => {
+      const copy = document.createElement("button");
+      copy.type = "button"; copy.className = "action-btn primary"; copy.textContent = "Copy";
+      copy.addEventListener("click", async () => {
+        // navigator.clipboard is a SECURE-CONTEXT api and this app is served
+        // over plain http on the LAN, so on most devices it does not exist —
+        // the "modern" path would never be taken and every user gets pushed to
+        // hand-selecting the blob, which is how a copy comes back short.
+        // execCommand still works on http, so it is tried FIRST and the async
+        // API is the fallback, not the other way round.
+        const el = document.getElementById("share-blob");
+        if (el) {
+          el.focus();
+          el.setSelectionRange(0, (j.blob || "").length);
+          try {
+            if (document.execCommand && document.execCommand("copy")) {
+              toast("Copied — paste it to whoever you're sharing with");
+              return;
+            }
+          } catch (e) { /* falls through to the async API */ }
+        }
+        try {
+          await navigator.clipboard.writeText(j.blob || "");
+          toast("Copied — paste it to whoever you're sharing with");
+        } catch (e) {
+          // Both refused. The text is selected, so a manual copy still works —
+          // say so rather than failing silently.
+          toast("Couldn't copy automatically — the text is selected, copy it by hand", "error");
+        }
+      });
+      const dl = document.createElement("button");
+      dl.type = "button"; dl.className = "action-btn"; dl.textContent = "Download";
+      dl.addEventListener("click", () => {
+        const file = String(name || "playlist").replace(/[^a-z0-9]+/gi, "_").slice(0, 60) + ".musicd";
+        const url = URL.createObjectURL(new Blob([j.blob || ""], { type: "text/plain" }));
+        const a = document.createElement("a");
+        a.href = url; a.download = file;
+        document.body.appendChild(a); a.click(); a.remove();
+        // Revoking immediately can race the download on some browsers.
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      });
+      const done = document.createElement("button");
+      done.type = "button"; done.className = "action-btn"; done.textContent = "Done";
+      done.addEventListener("click", close);
+      foot.appendChild(copy); foot.appendChild(dl); foot.appendChild(done);
+    });
+  }
+
+  // ---- Import ------------------------------------------------------------
+  window.__openImportSheet = function () {
+    window.__openLibSheet("Import a playlist", (body) => {
+      const note = document.createElement("div");
+      note.className = "share-note";
+      note.textContent = "Paste a playlist someone shared with you. It describes the music, " +
+                         "so you'll get the tracks your own library can match — the rest are " +
+                         "listed so you know what's missing.";
+      body.appendChild(note);
+
+      const ta = document.createElement("textarea");
+      ta.className = "share-blob"; ta.id = "import-blob";
+      ta.rows = 4; ta.placeholder = "MDRP1:…";
+      // iOS autocorrect treats MDRP1 as a word it doesn't know and lowercases
+      // it on paste. The marker survives that (it is matched case-insensitively)
+      // but the payload is base64url and case-SENSITIVE, so this must be off.
+      ta.setAttribute("autocapitalize", "none");
+      ta.setAttribute("autocorrect", "off");
+      ta.setAttribute("autocomplete", "off");
+      ta.spellcheck = false;
+      body.appendChild(ta);
+
+      const pick = document.createElement("label");
+      pick.className = "action-btn import-file";
+      pick.textContent = "Choose a file…";
+      const file = document.createElement("input");
+      file.type = "file"; file.id = "import-file"; file.className = "visually-hidden";
+      file.accept = ".musicd,text/plain";
+      file.addEventListener("change", () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        const rd = new FileReader();
+        rd.onload = () => {
+          ta.value = String(rd.result || "");
+          const res = document.getElementById("import-result");
+          if (res) res.textContent = "Loaded " + f.name + " — press Import.";
+        };
+        rd.readAsText(f);
+      });
+      pick.appendChild(file);
+      body.appendChild(pick);
+
+      const result = document.createElement("div");
+      result.className = "import-result"; result.id = "import-result";
+      body.appendChild(result);
+    }, (foot, close) => {
+      const imp = document.createElement("button");
+      imp.type = "button"; imp.className = "action-btn primary"; imp.textContent = "Import";
+      imp.addEventListener("click", () => runImport(imp));
+      const done = document.createElement("button");
+      done.type = "button"; done.className = "action-btn"; done.textContent = "Close";
+      done.addEventListener("click", close);
+      foot.appendChild(imp); foot.appendChild(done);
+    });
+  };
+
+  async function runImport(btn) {
+    const ta = document.getElementById("import-blob");
+    const out = document.getElementById("import-result");
+    if (!ta || !out) return;
+    out.textContent = "Matching against your library…";
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/share/import", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blob: ta.value })
+      });
+      const j = await r.json().catch(() => ({}));
+      // The server's messages are written for the person holding the blob
+      // ("it may have been cut short in transit"); show them verbatim.
+      if (!r.ok) { out.textContent = j.error || ("HTTP " + r.status); return; }
+      renderImportResult(out, j);
+    } catch (e) {
+      out.textContent = "Couldn't reach the server";
+    } finally { btn.disabled = false; }
+  }
+
+  function renderImportResult(out, j) {
+    out.innerHTML = "";
+    const found = (j.resolved || []).length;
+    const miss  = j.missing || [];
+
+    const sum = document.createElement("div");
+    sum.className = "share-sum";
+    sum.textContent = found + " of " + j.total + " track" + (j.total === 1 ? "" : "s") +
+                      " found in your library";
+    out.appendChild(sum);
+
+    const warn = (t) => {
+      const w = document.createElement("div");
+      w.className = "share-warn"; w.textContent = t;
+      out.appendChild(w);
+    };
+    if (j.truncated) warn("That playlist is longer than one import can take — the end was left out.");
+
+    // Reported, never silently dropped: "38 of 45" is the honest outcome and
+    // the missing 7 are the interesting part.
+    if (miss.length) {
+      warn(miss.length + " couldn't be matched:");
+      const ul = document.createElement("ul");
+      ul.className = "import-missing";
+      // Capped: a share with 500 unmatched tracks would bury the save button.
+      for (const m of miss.slice(0, 25)) {
+        const li = document.createElement("li");
+        li.textContent = [m.title, m.artist, m.album].filter(Boolean).join(" · ");
+        ul.appendChild(li);
+      }
+      if (miss.length > 25) {
+        const li = document.createElement("li");
+        li.textContent = "…and " + (miss.length - 25) + " more";
+        ul.appendChild(li);
+      }
+      out.appendChild(ul);
+    }
+
+    if (!found) { warn("Nothing here matched, so there's nothing to save."); return; }
+
+    const save = document.createElement("button");
+    save.type = "button"; save.className = "action-btn primary import-save";
+    save.textContent = "Save " + found + " track" + (found === 1 ? "" : "s") + " as a playlist";
+    save.addEventListener("click", async () => {
+      const name = window.prompt("Name this playlist", j.name || "Shared playlist");
+      if (name === null) return;
+      const trimmed = String(name).trim();
+      if (!trimmed) { toast("Give it a name first", "error"); return; }
+      save.disabled = true;
+      try {
+        const r = await fetch("/api/share/save", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed, items: j.resolved })
+        });
+        const res = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(res.error || ("HTTP " + r.status));
+        save.textContent = "Saved";
+        toast("Added " + res.added + " track" + (res.added === 1 ? "" : "s") + " to “" + trimmed + "”" +
+              // LMS creates nothing on a name collision and reports the existing
+              // id, so say which playlist the tracks actually went into.
+              (res.created === false ? " (the playlist that already had that name)" : "") +
+              (res.skipped ? " — " + res.skipped + " couldn't be stored" : ""));
+      } catch (e) {
+        save.disabled = false;
+        toast(e.message, "error");
+      }
+    });
+    out.appendChild(save);
+  }
+})();
+
+/* ------------------------------------------------------------------ */
 /*  Playlists — LMS stored playlists, plus the shared "add selection to */
 /*  a playlist" sheet used by both the album and track action bars.     */
 /*                                                                      */
@@ -7224,6 +7675,11 @@ function esc(s) {
   const titleEl = document.getElementById("pl-title");
   const backBtn = document.getElementById("pl-back");
   if (!openBtn || !overlay || !body) return;
+
+  {
+    const imp = document.getElementById("pl-import");
+    if (imp) imp.addEventListener("click", () => window.__openImportSheet());
+  }
 
   let stack = [];     // [{kind:"list"} | {kind:"playlist", id, title}]
   let seq = 0;
@@ -7311,6 +7767,14 @@ function esc(s) {
     };
     acts.appendChild(mk("Play Now", "play_now", true));
     acts.appendChild(mk("Queue", "queue", false));
+    {
+      const sh = document.createElement("button");
+      sh.type = "button"; sh.className = "action-btn"; sh.textContent = "Share";
+      // The server reads the playlist itself — it has the album, track number
+      // and duration that a rendered row doesn't.
+      sh.addEventListener("click", () => window.__sharePlaylist(f.title || "Playlist", f.id, sh));
+      acts.appendChild(sh);
+    }
     body.appendChild(acts);
 
     if (!tracks.length) {
@@ -7527,7 +7991,14 @@ function esc(s) {
   function tile(pl) {
     const btn = window.__buildAlbumTile({
       title: pl.name,
-      subtitle: pl.total + (pl.total === 1 ? " album" : " albums") + " · " + ruleSummary(pl.view),
+      // "100 of 1,179 albums" when the size cap is doing something, plain
+      // "N albums" when it isn't — the two numbers only differ when the cap
+      // actually left something out, and that is the interesting case.
+      subtitle: (pl.matched != null && pl.matched > pl.total
+                  ? pl.total + " of " + pl.matched.toLocaleString() + " albums"
+                  : pl.total + (pl.total === 1 ? " album" : " albums"))
+                + (pl.order === "random" ? " · random" : "")
+                + " · " + ruleSummary(pl.view),
       art: pl.art || [],
     }, () => { stack.push({ kind: "detail", id: pl.id, name: pl.name }); render(); });
     btn.classList.add("is-playlist");
