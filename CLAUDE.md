@@ -640,6 +640,49 @@ Layout section of README.md.
   Channels facet — the `titles` sweep carries no channel count and asking per
   track would be a query per track. `lib/liveplaylists.js` FACET_IDS must be
   kept in step or a saved playlist silently drops the new rules.
+- SMART PICKS (v1.0.63) is six albums a day by artists NOT in the library:
+  five "adjacent" from the neighbourhood it lives in, one "stretch" from a
+  genre it barely touches. `lib/smartpickalgo.js` holds the CHOOSING as pure
+  functions (like `radioDecision()`), `lib/discovery.js` the three keyless
+  public reads (ListenBrainz similar-artists + world chart, MusicBrainz tag
+  roster), `lib/smartpicks.js` the JSON store, `lib/smartcache.js` the TTL
+  cache; index.js is the I/O around them. THE IDEA THAT MAKES IT WORK:
+  similarity quality INVERTS with seed popularity — seed from the library's
+  biggest names and you get Nirvana/Coldplay, seed from its obscure end and you
+  get real finds. So seeds are the library's least famous WELL-PLAYED artists,
+  "famous" is decided by the world listen chart, and if that chart can't be
+  fetched THE WHOLE BUILD ABORTS rather than inverting.
+- Two Smart Picks constraints are forced by LMS and differ from the Roon build.
+  (a) A pick CANNOT carry an addable handle: the LMS Qobuz plugin exposes no
+  album ids, only menu nodes that expire with the session — so a pick stores
+  artist + album TITLE and `/api/smart-picks/add` re-resolves by search at the
+  moment it is tapped. `smartResolveAlbum` returns the live `favItemId` but
+  STRIPS it before caching. (b) Every `qobuz` dispatch is needs-client=1, so a
+  build needs a CONNECTED PLAYER; with none it is skipped WITHOUT marking the
+  day attempted, so it retries rather than writing the day off.
+- Auto-add defaults OFF here, ON in the Roon build (v1.0.63). There it makes
+  Roon import overnight; on LMS favouriting is favourite-only (no rescan,
+  owner decision v1.0.22), so it would write five albums a day into the owner's
+  Qobuz account unasked and they still wouldn't play until a scan.
+- The Qobuz menu row's ARTIST carries a trailing year — the label is
+  "Album\nArtist (Year)" and `qobuzTitleArtist` keeps the whole second line. Any
+  identity check against it must strip that first (`qobuzRowArtist`, and
+  `qobuzFavKey` does its own): without it `artistKey("Labradford (1997)")` never
+  matches and every resolve silently returns nothing.
+- ONE MusicBrainz rate gate for the whole app (`lib/musicbrainz.js`, v1.0.63).
+  albumart, albuminfo and labels each held their own `mbLast` timestamp, so
+  three lookups could fire in the same second — and WITHIN one module the
+  timestamp compare let N concurrent callers all read the same `last` and go
+  together (measured: 4 callers, all at 1103ms). The shared gate serialises on
+  a promise CHAIN instead. Smart Picks is the heaviest consumer (~24 seed
+  lookups a build), which is what forced the fix.
+- `enterFullWall(title)` is the shared entry ritual for every screen that takes
+  over `#album-grid` (Not played, Library, Smart Picks) — it clears the other
+  views, drops the genre filter, sets the top-bar chrome and TAKES THE GRID
+  EMPTY. That last part matters: each wall paints asynchronously, so inheriting
+  the previous one's content leaves it on screen until the fetch lands.
+  `showLibraryWall` must set `libraryWallActive` AFTER calling it, because
+  `enterFullWall` calls `exitLibraryWall()`.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
