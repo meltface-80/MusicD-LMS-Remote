@@ -683,6 +683,18 @@ Layout section of README.md.
   the previous one's content leaves it on screen until the fetch lands.
   `showLibraryWall` must set `libraryWallActive` AFTER calling it, because
   `enterFullWall` calls `exitLibraryWall()`.
+- The app is an INSTALLABLE PWA wearing the MusicD duck (v1.0.64):
+  `public/manifest.webmanifest` + `public/icons/`, generated from the owner's
+  logo. `any` and `maskable` are SEPARATE artwork, never one file listed twice
+  — Android crops a maskable icon to a shape of its choosing and only
+  guarantees the central 80%, so the maskable pair is drawn at 0.72 inset to
+  sit inside that safe zone while `any` fills the tile at 0.88. iOS reads NONE
+  of the manifest's icons, so `apple-touch-icon` + the apple-mobile-web-app
+  metas are what make an iPhone install it rather than bookmark a screenshot.
+  The 16/32px favicons get a contrast boost before they are committed: the
+  logo is a fine engraving and its hatching averages to grey mush at that size.
+  Regenerate from a new logo with `tools/make-icons.py <logo.png>`; don't
+  hand-resize, or the sizes stop framing the art identically.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It

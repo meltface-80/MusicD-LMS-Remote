@@ -214,7 +214,7 @@ Designed specifically for large music libraries.
 
 * Responsive interface
 * Fast navigation
-* Mobile friendly
+* Mobile friendly — installs to the home screen as a full-screen app
 * Desktop friendly
 * TV friendly
 * Four themes — Dark, Light, Copper dark, Brass light (pick one, then Apply)
