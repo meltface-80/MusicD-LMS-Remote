@@ -4310,9 +4310,17 @@ app.get("/api/smart-picks", async (req, res) => {
     if (usable && rows.length) {
       try { favKeys = (await qobuzFavorites(false)).keys; } catch (e) { spLog.debug("fav state:", e.message); }
     }
+    // Why the sixth card isn't there. A day that produced only the five
+    // adjacent picks looks broken from the screen, and it usually isn't — the
+    // stretch reaches outside the library and can legitimately find nothing.
+    // Carried from the build's own attempt record so the screen says what the
+    // log says. Absent when the stretch succeeded, or on a day with no picks.
+    const att = smartPicks.attempted(day);
+    const stretchNote = (rows.length && att && att.stretch) ? String(att.stretch) : null;
     res.json({
       day, building,
       service_ready: usable,
+      stretch_note: stretchNote,
       picks: rows.map(p => smartPickJson(p, favKeys)),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -4479,6 +4487,87 @@ app.post("/api/smart-picks/rebuild", (req, res) => {
   smartPicks.deleteDay(day);
   const building = kickSmartPicks(day, true);
   res.json({ ok: true, building });
+});
+
+/* Diagnostic: why the STRETCH pick did or did not happen.
+ *
+ * It can come up empty at four stages and the difference decides the fix —
+ * "no genre outside the library" and "no artist resolved to a Qobuz album" ask
+ * for opposite things. The build log names the stage, but reading it means
+ * finding a log file; this walks the SAME pipeline and hands back every
+ * decision as JSON.
+ *
+ * It WRITES NOTHING: no pick is stored, no artist is marked seen, no favourite
+ * is touched, and the day's attempt record is left alone. Safe to open at any
+ * time. Deliberately NOT gated on debug logging, unlike /api/qobuz/debug —
+ * that one echoes raw plugin payloads and player ids, this one reports genre
+ * counts and artist names off the owner's own library.
+ *
+ *   GET /api/smart-picks/debug            the cheap half (genres + rosters)
+ *   GET /api/smart-picks/debug?resolve=1  also try the Qobuz lookups, which
+ *                                         are a menu walk per artist
+ */
+app.get("/api/smart-picks/debug", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    const day = smartDayKey();
+    const playerId = state.players[0] && state.players[0].id;
+    const { weights, total } = smartGenreWeights();
+    const rank = [...weights.entries()]
+      .map(([genre, albums]) => ({ genre, albums, share: total ? Math.round(albums / total * 1000) / 10 : 0 }))
+      .sort((a, b) => a.albums - b.albums);
+    const outside = smartAlgo.smartStretchGenres(weights, total).slice(0, smartAlgo.MAX_STRETCH_GENRES);
+
+    const hubs = (await smartHubSet()) || new Set();
+    const sets = { library: await smartLibraryArtists(), hubs,
+                   blocked: smartPicks.blockedSet(), seen: smartPicks.seenSet() };
+    // The same four tests smartPickExcluded applies, but NAMED — "excluded" on
+    // its own doesn't tell you whether to widen the genre or the roster.
+    const why = (canon) =>
+      !canon                    ? "unnamed" :
+      sets.library.has(canon)   ? "already owned" :
+      sets.hubs.has(canon)      ? "world-famous" :
+      sets.blocked.has(canon)   ? "blocked" :
+      sets.seen.has(canon)      ? "shown recently" : null;
+
+    const probeQobuz = String(req.query.resolve || "") === "1" && !!playerId;
+    const stages = [];
+    for (const g of outside) {
+      const roster = await smartTagArtists(g.genre);
+      const artists = [];
+      let probes = 0;
+      for (const a of roster.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
+        const excluded = why(search.artistKey(a.name));
+        const row = { name: a.name, excluded };
+        // Bounded: each probe is a full menu walk against the owner's server.
+        // NOTE this shares smartResolveAlbum's cache, misses included — which
+        // is the point, since a miss here is a miss the build would have had.
+        if (!excluded && probeQobuz && probes < 5) {
+          probes++;
+          const alb = await smartResolveAlbum(a.name, playerId).catch(() => null);
+          row.qobuz_album = alb ? alb.album : null;
+        }
+        artists.push(row);
+      }
+      stages.push({ genre: g.genre, albums: g.albums,
+                    tags_tried: smartAlgo.genreTagCandidates(g.genre),
+                    roster_size: roster.length, artists });
+    }
+
+    res.json({
+      day,
+      last_attempt: smartPicks.attempted(day),
+      albums_with_a_genre: total,
+      genres_distinct: rank.length,
+      rarest_genres: rank.slice(0, 10),
+      commonest_genres: rank.slice(-5).reverse(),
+      stretch_genres_selected: outside.map(g => g.genre),
+      exclusion_set_sizes: { library: sets.library.size, hubs: sets.hubs.size,
+                             blocked: sets.blocked.size, seen: sets.seen.size },
+      qobuz_probed: probeQobuz,
+      stages,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Diagnostic: dump the RAW Qobuz-plugin menu responses so the exact live

@@ -935,6 +935,16 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     wrap.className = "pick-list";
     for (const p of picks) wrap.appendChild(smartPickCard(p, true));
     grid.appendChild(wrap);
+    // The sixth card reaches OUTSIDE the library and can legitimately find
+    // nothing. Five cards with no explanation reads as broken, so the day's
+    // own reason goes under the list — a footnote, not the page banner, which
+    // is already carrying the Qobuz sign-in message.
+    if (j.stretch_note) {
+      const note = document.createElement("p");
+      note.className = "pick-note";
+      note.textContent = "No stretch pick today — " + j.stretch_note + ".";
+      grid.appendChild(note);
+    }
   }
   window.__showSmartPicks = showSmartPicks;
   window.__exitSmartPicks = () => { smartPicksActive = false; };
