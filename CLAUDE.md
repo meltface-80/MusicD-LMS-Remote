@@ -687,6 +687,18 @@ Layout section of README.md.
   up empty now names its stage in the build log — it used to report "built 5
   picks" whether the sixth was considered or not, which is why this went
   unexplained.
+- The stretch pick EXPLAINS ITSELF, in the app and in a diagnostic (v1.0.67).
+  Naming the stage in the log was not enough: reading it means finding a log
+  file, and five cards with no explanation still reads as broken. The build's
+  reason is carried on the attempt record → `/api/smart-picks` `stretch_note` →
+  a quiet `.pick-note` footnote under the cards. `GET /api/smart-picks/debug`
+  walks the SAME pipeline and returns every decision (genre spread and shares,
+  the genres selected, every tag spelling tried, roster sizes, and per artist
+  WHICH exclusion caught it) — it writes nothing, so it is safe to open any
+  time. `?resolve=1` adds the Qobuz lookups, bounded to 5 per genre because
+  each is a menu walk. Unlike `/api/qobuz/debug` it is NOT gated on debug
+  logging: that one echoes raw plugin payloads and player ids, this one reports
+  the owner's own genre counts and artist names.
 - A Smart Pick is PLAYED DIRECTLY, never added first (v1.0.65). Verified in the
   plugin source: `qobuz playlist play item_id:…` → `QobuzGetTracks` →
   XMLBrowser's playlist branch → `playlist loadtracks`, and nothing on that path

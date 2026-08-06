@@ -3200,6 +3200,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    96px art block and the two pill buttons cannot fit. Same rule, and the same
    reason, as .playlist-detail above. */
 .pick-list { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 14px; }
+/* Why the sixth card isn't there. A footnote, deliberately quiet — it explains
+   an absence, it is not a failure. */
+.pick-note {
+  grid-column: 1 / -1;
+  margin: 14px 2px 0;
+  font-size: 13px; line-height: 1.5;
+  color: var(--text-dim);
+}
 .pick-card-full {
   flex-direction: row; align-items: flex-start; gap: 14px;
   padding: 12px; border-radius: 12px;
