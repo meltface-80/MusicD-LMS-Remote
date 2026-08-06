@@ -7919,8 +7919,12 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   window.__refreshServices = () => loadServices(true);
   loadServices(false);
 
-  const openMenu  = () => overlay.classList.remove("hidden");
-  const closeMenu = () => overlay.classList.add("hidden");
+  // `menu-open` on <body> is what lets the CSS hide the mini transport: the bar
+  // is a root-level fixed element and the drawer is inside `.app`, a z-index:0
+  // stacking context, so no z-index on the overlay can lift it above the bar.
+  // See the `body.menu-open .mini-transport` rule.
+  const openMenu  = () => { overlay.classList.remove("hidden"); document.body.classList.add("menu-open"); };
+  const closeMenu = () => { overlay.classList.add("hidden"); document.body.classList.remove("menu-open"); };
 
   toggle.addEventListener("click", openMenu);
   overlay.addEventListener("click", (e) => {

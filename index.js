@@ -3937,12 +3937,35 @@ function smartLibraryProfile() {
     });
 }
 
-// Every artist credited anywhere in the library — the "already owned" set.
-function smartLibraryArtists() {
+// Everything the owner ALREADY HAS, as artist keys. Not just the LMS index:
+// "already owned" has to mean the whole collection, or a Smart Pick can offer
+// back an album that is sitting in the owner's Qobuz favourites — reported,
+// and the reason this is no longer a one-liner over index.records.
+//
+// Three sources, and each covers a gap the others cannot:
+//   * the LMS index — local files, plus any online album a scan has imported;
+//   * the streaming service's own favourites — an album favourited but never
+//     scanned exists ONLY there, so nothing in the index knows about it;
+//   * this app's favourites — which can hold a catalogue album that is in
+//     neither (that is the whole point of them, see lib/favourites.js).
+//
+// A service read is best-effort: it must never be able to fail a build. Losing
+// it costs precision (a few already-owned artists slip through), where letting
+// it throw would cost the day's picks entirely.
+async function smartLibraryArtists() {
   const out = new Set();
-  for (const rec of index.records) {
-    for (const a of search.splitArtistNames(rec.subtitle || "")) if (a.k) out.add(a.k);
-  }
+  const addName = (s) => {
+    for (const a of search.splitArtistNames(s || "")) if (a.k) out.add(a.k);
+  };
+  for (const rec of index.records) addName(rec.subtitle);
+  for (const row of favourites.list()) addName(row.artist);
+  // The Qobuz row's artist carries a trailing year ("Labradford (1997)") — see
+  // qobuzRowArtist. Comparing without stripping it matches nothing at all.
+  try {
+    if (await serviceUsable("qobuz")) {
+      for (const a of (await qobuzFavorites(false)).byKey.values()) addName(qobuzRowArtist(a.artist));
+    }
+  } catch (e) { spLog.debug("qobuz favourites unavailable for the exclusion set:", e.message); }
   return out;
 }
 
@@ -4014,18 +4037,31 @@ async function smartSimilarRows(seedMbids) {
 
 // An artist's roster for a genre, in MusicBrainz's own relevance order (which
 // is what makes a stretch pick defensible — do NOT re-sort it).
+//
+// A library genre is asked for under SEVERAL tag spellings, first hit wins:
+// the file's own GENRE tag is routinely a compound ("Alternative & Punk") and
+// MusicBrainz tags are atomic, so the literal string alone matched nothing.
+// See genreTagCandidates. A FETCH ERROR is not cached — only a real, empty
+// answer is, so a MusicBrainz blip doesn't write the genre off for 30 days.
 async function smartTagArtists(genre) {
-  const key = "tag:" + String(genre).toLowerCase();
-  let rows = smartCache.get(key);
-  if (rows === undefined) {
-    await mbWait();
-    rows = await discovery.artistsByTag(genre, {
-      limit: smartAlgo.MAX_STRETCH_ROSTER, userAgent: MB_UA,
-    }).catch((e) => { spLog.debug("tag roster failed for " + genre + ":", e.message); return null; });
-    if (!rows) return [];
-    smartCache.set(key, rows);
+  for (const tag of smartAlgo.genreTagCandidates(genre)) {
+    const key = "tag:" + tag;
+    let rows = smartCache.get(key);
+    if (rows === undefined) {
+      await mbWait();
+      rows = await discovery.artistsByTag(tag, {
+        limit: smartAlgo.MAX_STRETCH_ROSTER, userAgent: MB_UA,
+      }).catch((e) => { spLog.debug("tag roster failed for \"" + tag + "\":", e.message); return null; });
+      if (rows) smartCache.set(key, rows);
+    }
+    if (rows && rows.length) {
+      spLog.debug("genre " + JSON.stringify(genre) + " → tag " + JSON.stringify(tag) +
+                  " gave " + rows.length + " artists");
+      return rows;
+    }
   }
-  return rows;
+  spLog.debug("genre " + JSON.stringify(genre) + ": no MusicBrainz tag matched");
+  return [];
 }
 
 // Artist name → a real Qobuz album, through the plugin's menu tree.
@@ -4093,7 +4129,7 @@ async function buildSmartPicks(day) {
 
     const profile = smartLibraryProfile();
     const sets = {
-      library: smartLibraryArtists(),
+      library: await smartLibraryArtists(),
       hubs,
       blocked: smartPicks.blockedSet(),
       seen:    smartPicks.seenSet(),
@@ -4150,15 +4186,26 @@ async function buildSmartPicks(day) {
 
     // The stretch pick. Its roster comes back in MusicBrainz's relevance order,
     // which is what makes it defensible rather than a random unknown.
+    //
+    // It can come up empty at any of four stages and used to say so nowhere —
+    // the build logged "built 5 picks" whether the sixth had been considered or
+    // not, which is how "the stretch selection isn't showing" stayed a mystery.
+    // `stretchWhy` names the stage that ran out, is logged, and rides along in
+    // the day's attempt record so the reason survives the build.
+    const stretchBudget = smartAlgo.MAX_RESOLVES + smartAlgo.MAX_STRETCH_ROSTER;
     const { weights, total } = smartGenreWeights();
     const outside = smartAlgo.smartStretchGenres(weights, total).slice(0, smartAlgo.MAX_STRETCH_GENRES);
+    let stretchWhy = outside.length ? "no artist resolved to a Qobuz album" : "no genre outside the library";
+    let rosters = 0;
     for (const g of outside) {
       if (picks.some(p => p.kind === "stretch")) break;
+      if (tries >= stretchBudget) { stretchWhy = "resolve budget spent on the adjacent picks"; break; }
       const roster = await smartTagArtists(g.genre);
+      if (roster.length) rosters++;
       for (const a of roster.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
         const canon = search.artistKey(a.name);
         if (smartAlgo.smartPickExcluded(canon, sets)) continue;
-        if (tries >= smartAlgo.MAX_RESOLVES + smartAlgo.MAX_STRETCH_ROSTER) break;
+        if (tries >= stretchBudget) { stretchWhy = "resolve budget spent on the adjacent picks"; break; }
         tries++;
         const alb = await smartResolveAlbum(a.name, playerId);
         if (!alb) continue;
@@ -4169,12 +4216,17 @@ async function buildSmartPicks(day) {
         break;
       }
     }
+    if (outside.length && !rosters) stretchWhy = "no MusicBrainz tag matched any candidate genre";
+    const gotStretch = picks.some(p => p.kind === "stretch");
 
     const written = smartPicks.writeDay(day, picks);
-    smartPicks.markAttempt(day, { picks: written.length });
+    smartPicks.markAttempt(day, gotStretch ? { picks: written.length }
+                                           : { picks: written.length, stretch: stretchWhy });
     spLog.info("built " + written.length + " picks for " + day +
                " (" + seedMbids.length + " seeds, " + tries + " resolves, " +
-               Math.round((Date.now() - t0) / 1000) + "s)");
+               Math.round((Date.now() - t0) / 1000) + "s)" +
+               (gotStretch ? "" : " — no stretch pick: " + stretchWhy +
+                 " [genres tried: " + (outside.map(g => g.genre).join(", ") || "none") + "]"));
     return written;
   } catch (e) {
     smartPicks.markAttempt(day, { picks: 0, reason: e.message });
