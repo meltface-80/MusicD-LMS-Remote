@@ -652,14 +652,27 @@ Layout section of README.md.
   get real finds. So seeds are the library's least famous WELL-PLAYED artists,
   "famous" is decided by the world listen chart, and if that chart can't be
   fetched THE WHOLE BUILD ABORTS rather than inverting.
+- A Smart Pick is PLAYED DIRECTLY, never added first (v1.0.65). Verified in the
+  plugin source: `qobuz playlist play item_id:…` → `QobuzGetTracks` →
+  XMLBrowser's playlist branch → `playlist loadtracks`, and nothing on that path
+  consults the user's favourites or writes to the library (a remote track is an
+  in-memory `Slim::Schema::RemoteTrack`). The Roon build MUST add before it can
+  play, because Roon's API only plays what is in the library — that is THEIR
+  constraint, and carrying it over here was a porting mistake. Add survives as a
+  KEEP action (favourite it; a later scan imports it).
 - Two Smart Picks constraints are forced by LMS and differ from the Roon build.
-  (a) A pick CANNOT carry an addable handle: the LMS Qobuz plugin exposes no
-  album ids, only menu nodes that expire with the session — so a pick stores
-  artist + album TITLE and `/api/smart-picks/add` re-resolves by search at the
-  moment it is tapped. `smartResolveAlbum` returns the live `favItemId` but
-  STRIPS it before caching. (b) Every `qobuz` dispatch is needs-client=1, so a
-  build needs a CONNECTED PLAYER; with none it is skipped WITHOUT marking the
-  day attempted, so it retries rather than writing the day off.
+  (a) A pick CANNOT carry a stored handle: the LMS Qobuz plugin exposes no album
+  ids, only menu nodes that expire with the session — so a pick stores artist +
+  album TITLE and BOTH `/api/smart-picks/play` and `…/add` re-resolve by search
+  at the moment they are tapped, through the one `smartResolveRow()` so the two
+  buttons on a card cannot mean different albums. `smartResolveAlbum` returns
+  the live `favItemId` but STRIPS it before caching. (b) Every `qobuz` dispatch
+  is needs-client=1, so a build needs a CONNECTED PLAYER; with none it is
+  skipped WITHOUT marking the day attempted, so it retries rather than writing
+  the day off.
+- `.pick-block` is the DISMISS button only (it blocks the artist). Secondary
+  pills share its skin as `.pick-secondary` — reusing `.pick-block` for Queue
+  and Add made "the dismiss button" un-selectable, which an e2e caught.
 - Auto-add defaults OFF here, ON in the Roon build (v1.0.63). There it makes
   Roon import overnight; on LMS favouriting is favourite-only (no rescan,
   owner decision v1.0.22), so it would write five albums a day into the owner's
@@ -710,8 +723,20 @@ Layout section of README.md.
   dispatch is needs-client=1, so a real player id is required (search uses
   `state.players[0].id`). Actions are held SERVER-SIDE in `qobuzActionStore`
   keyed by an opaque token (30-min TTL) the client echoes to `/api/qobuz/play` —
-  the client never submits a raw LMS command. This generalises to Tidal/Deezer
-  (same interface, different tag). Result covers reuse the `url-…` image_key →
+  the client never submits a raw LMS command. NOT yet generalised to Tidal/Deezer
+  (v1.0.65 audit): the MECHANISM is service-neutral — `menuAction` handles both
+  Qobuz's response-level `base.actions` and Tidal's per-item `itemActions` — but
+  every browse/search/favourite function hardcodes the `qobuz` verb and none
+  takes a tag. Known blockers if the tag were simply swapped: Tidal's root has
+  NO favourites node and its album menu no favourite child (both favourite
+  functions need a SECOND IMPLEMENTATION, not a parameter); its root "MY MIX" is
+  `type:playlist`, which `qobuzBrowse` would render as an album; explicit albums
+  get " [E]" welded onto the title, breaking `qobuzFavKey` matching; its search
+  categories are localised AND carry no icon, so `isAlbumCategory` fails on a
+  non-English server; and `_qobuzSearchNode` is a single un-keyed module slot,
+  so a naive tag parameter would let one service reuse the other's cached search
+  node. Tidal DOES expose durable album ids (`tidal://album:<id>`), so the
+  expiring-token design is a Qobuz limitation, not a general one. Result covers reuse the `url-…` image_key →
   `/api/image` → LMS imageproxy path. NOTE: the exact plugin menu shapes are
   unverified against a live server — keep it defensive and logged.
 - Qobuz FAVOURITES (the heart) also use menu-action replay — the plugin has no

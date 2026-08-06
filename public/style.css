@@ -3202,7 +3202,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .pick-card-full .pick-artist { font-size: 15px; white-space: normal; }
 .pick-card-full .pick-album  { font-size: 13px; white-space: normal; }
 .pick-actions { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
-.pick-add, .pick-block {
+/* `.pick-block` is the DISMISS button specifically — it blocks the artist.
+   Secondary playback/keep pills share its skin under their own name, so a
+   selector for "the dismiss button" can't accidentally match Queue or Add. */
+.pick-add, .pick-block, .pick-secondary {
   padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
   border: 1px solid var(--border); background: var(--bg); color: var(--text);
   cursor: pointer; white-space: nowrap;
@@ -3212,14 +3215,19 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* The library already has the album — this is an ordinary play, so it reads
    as the primary action rather than as another "add something" step. */
 .pick-play { letter-spacing: .01em; }
-.pick-add:disabled, .pick-block:disabled { opacity: .6; cursor: default; }
-.pick-block { color: var(--text-dim); }
+.pick-add:disabled, .pick-block:disabled, .pick-secondary:disabled { opacity: .6; cursor: default; }
+.pick-block, .pick-secondary { color: var(--text-dim); }
+/* A pick already saved to the Qobuz account: a state, not an action. */
+.pick-secondary.is-done { color: var(--text-faint); }
 /* On a phone the two buttons sit under the text rather than beside it — a
    96px art block plus two stacked pill buttons does not fit a 360px screen. */
 @media (max-width: 520px) {
   .pick-card-full { flex-wrap: wrap; }
-  .pick-actions { flex-direction: row; width: 100%; }
-  .pick-add, .pick-block { flex: 1 1 0; text-align: center; }
+  /* WRAPS, and the pills keep their intrinsic width. Since Play, Queue, Add
+     and Not-for-me can all be present at once, `flex: 1 1 0` would squeeze four
+     nowrap labels into ~87px each and push the text past the button edge. */
+  .pick-actions { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .pick-add, .pick-block, .pick-secondary { flex: 1 1 auto; text-align: center; }
 }
 /* 12 genre buttons divide evenly into 2 / 3 / 4 / 6 columns, so every screen
    width shows full rows with no lone trailing card. */
