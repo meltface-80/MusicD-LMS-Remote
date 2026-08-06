@@ -9,6 +9,23 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#0e1012">
   <title>MusicD</title>
+
+  <!-- Installed app: the duck head on black, the MusicD mark.
+       `any` and `maskable` are SEPARATE artwork, not the same file listed
+       twice — Android crops a maskable icon to a shape of its choosing and
+       only guarantees the central 80%, so the maskable pair is drawn smaller
+       to sit inside that safe zone. Listing one file as both loses the beak
+       and the headphone cup on every launcher that crops to a circle. -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- iOS reads none of the manifest's icons; it wants this tag. -->
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MusicD">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
