@@ -24,6 +24,7 @@ step-by-step FanArt.tv, YouTube and Discogs API key setup.
 * Album of the day
 * Label of the week
 * Play Unheard albums
+* Smart Picks — six albums a day by artists you don't own, with a reason for each
 * Recently unplayed album recommendations
 * Continue discovering music automatically with Random Album Radio
 

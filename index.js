@@ -32,6 +32,11 @@ const share  = require("./lib/share");
 const { makePlaysLog } = require("./lib/plays");
 const makeLivePlaylists = require("./lib/liveplaylists");
 const makeHomePicks = require("./lib/homepicks");
+const { makeSmartPicks } = require("./lib/smartpicks");
+const { makeSmartCache } = require("./lib/smartcache");
+const smartAlgo = require("./lib/smartpickalgo");
+const discovery = require("./lib/discovery");
+const { mbWait, MB_UA } = require("./lib/musicbrainz");
 const makeFavourites = require("./lib/favourites");
 const makeAlbumMerges = require("./lib/albummerges");
 const makeRadio       = require("./lib/radio");
@@ -3879,6 +3884,494 @@ app.get("/api/services", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ---------------------------------------------------------------------------
+// Smart Picks — six albums a day by artists NOT in the library.
+//
+// Five "adjacent" picks from the neighbourhood the library already lives in,
+// and one "stretch" pick from a genre it barely touches. The choosing is pure
+// and lives in lib/smartpickalgo.js (with its own tests); this section is the
+// I/O around it: ListenBrainz + MusicBrainz for the graph, the LMS Qobuz
+// plugin to turn an artist name into a real, favouritable album, and
+// lib/smartpicks.js to remember the answer.
+//
+// TWO THINGS THAT DIFFER FROM THE ROON BUILD, both forced by LMS:
+//
+//  1. A pick CANNOT carry an addable handle. The Roon build stores a Qobuz
+//     album id; the LMS Qobuz plugin exposes no ids at all, only menu nodes
+//     that expire with the session (see the qobuzActionStore TTL). So a pick
+//     stores artist + album TITLE, and the Add path re-resolves by search at
+//     the moment it is tapped.
+//  2. Every `qobuz` dispatch is needs-client=1, so resolving needs a CONNECTED
+//     PLAYER. With none, the build is skipped WITHOUT marking the day
+//     attempted, so it retries on the next tick rather than writing off the
+//     day — a server whose amp is off overnight would otherwise never get
+//     picks at all.
+// ---------------------------------------------------------------------------
+const smartPicks = makeSmartPicks({ dataDir: DATA_DIR });
+const smartCache = makeSmartCache({ dataDir: DATA_DIR });
+const spLog = log.child("picks");
+
+const smartDayKey = (d) => {
+  const t = d || new Date();
+  return t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") +
+         "-" + String(t.getDate()).padStart(2, "0");
+};
+
+// The library, as {canon → {canon, name, albums, plays}}. Deliberately NOT
+// cached on index.builtAt: play counts move without the index being rebuilt,
+// and a profile frozen to the index would stop reflecting listening.
+function smartLibraryProfile() {
+  const stats = playsLog.getPlayStats();
+  return smartAlgo.libraryArtistProfile(
+    index.records, search.splitArtistNames,
+    (title) => {
+      const row = stats.get(String(title || "").toLowerCase().trim());
+      return row ? row.count : 0;
+    });
+}
+
+// Every artist credited anywhere in the library — the "already owned" set.
+function smartLibraryArtists() {
+  const out = new Set();
+  for (const rec of index.records) {
+    for (const a of search.splitArtistNames(rec.subtitle || "")) if (a.k) out.add(a.k);
+  }
+  return out;
+}
+
+// Genre shares, from the same rec.genre the Library facet uses so the two
+// cannot disagree about what the library contains.
+function smartGenreWeights() {
+  const w = new Map();
+  let total = 0;
+  for (const rec of index.records) {
+    const g = rec.genre ? String(rec.genre).trim() : "";
+    if (!g) continue;
+    w.set(g, (w.get(g) || 0) + 1);
+    total++;
+  }
+  return { weights: w, total };
+}
+
+// The world's most-listened artists. Used twice: never seed from one, and
+// never offer one as a discovery. If this is empty the WHOLE BUILD ABORTS —
+// with no hub list the seed policy inverts and the feature starts recommending
+// Radiohead.
+async function smartHubSet() {
+  let rows = smartCache.get("hubs");
+  if (rows === undefined) {
+    rows = await discovery.topArtists({}).catch((e) => {
+      spLog.debug("hub chart failed:", e.message);
+      return null;
+    });
+    if (!rows) return null;                 // NOT cached — a failure is not an answer
+    smartCache.set("hubs", rows);
+  }
+  const out = new Set();
+  for (const r of rows || []) if (r && r.name) out.add(search.artistKey(r.name));
+  out.delete("");
+  return out;
+}
+
+// Similar artists for a set of seeds, cached per seed.
+//
+// NEGATIVE CACHING TRAP, inherited from the Roon build: if rows come back but
+// none is attributable to a seed we asked about, writing an empty array for
+// every seed poisons the cache for 30 days and the feature dies silently. So
+// a seed is only cached when the response actually mentioned it.
+async function smartSimilarRows(seedMbids) {
+  const out = [];
+  const ask = [];
+  for (const id of seedMbids) {
+    const hit = smartCache.get("sim:" + id);
+    if (hit === undefined) ask.push(id);
+    else for (const r of hit || []) out.push(r);
+  }
+  if (!ask.length) return out;
+  const rows = await discovery.similarArtistsBatched(ask, {
+    onError: (e, batch) => spLog.debug("similar batch failed (" + batch.length + " seeds):", e.message),
+  });
+  const bySeed = new Map();
+  for (const r of rows) {
+    if (!r.seed) continue;
+    if (!bySeed.has(r.seed)) bySeed.set(r.seed, []);
+    bySeed.get(r.seed).push(r);
+  }
+  for (const id of ask) {
+    const mine = bySeed.get(id);
+    if (mine) smartCache.set("sim:" + id, mine);   // only what was answered
+    for (const r of mine || []) out.push(r);
+  }
+  return out;
+}
+
+// An artist's roster for a genre, in MusicBrainz's own relevance order (which
+// is what makes a stretch pick defensible — do NOT re-sort it).
+async function smartTagArtists(genre) {
+  const key = "tag:" + String(genre).toLowerCase();
+  let rows = smartCache.get(key);
+  if (rows === undefined) {
+    await mbWait();
+    rows = await discovery.artistsByTag(genre, {
+      limit: smartAlgo.MAX_STRETCH_ROSTER, userAgent: MB_UA,
+    }).catch((e) => { spLog.debug("tag roster failed for " + genre + ":", e.message); return null; });
+    if (!rows) return [];
+    smartCache.set(key, rows);
+  }
+  return rows;
+}
+
+// Artist name → a real Qobuz album, through the plugin's menu tree.
+//
+// A MISS IS CACHED. "This artist has nothing findable" is the expensive answer
+// and re-asking it every day is what makes a build slow.
+// A Qobuz menu row's artist carries a trailing year — the label is
+// "Album\nArtist (Year)" and qobuzTitleArtist keeps the whole second line. So
+// the identity check has to strip it, exactly as qobuzFavKey does, or NOTHING
+// ever matches and every build silently resolves nothing.
+const qobuzRowArtist = (s) => String(s || "").replace(/\s*\(\d{4}\)\s*$/, "").trim();
+
+async function smartResolveAlbum(name, playerId) {
+  const canon = search.artistKey(name);
+  const key = "alb:" + canon;
+  const hit = smartCache.get(key);
+  if (hit !== undefined) return hit;
+  let found = null;
+  try {
+    const rows = await state.lms.qobuzSearchAlbums(playerId, name, 20);
+    // The plugin's search is loose — require the ROW's artist to be the artist
+    // we asked for, or a pick ends up credited to whoever happened to rank
+    // first for the name.
+    const row = (rows || []).find(r => r && r.title && search.artistKey(qobuzRowArtist(r.artist)) === canon);
+    if (row) found = { album: row.title, artist: qobuzRowArtist(row.artist) || name, image: row.image || null,
+                       favItemId: row.favItemId != null ? row.favItemId : null };
+  } catch (e) {
+    spLog.debug("resolve failed for " + name + ":", e.message);
+    return undefined;    // an ERROR is not a miss — don't cache it
+  }
+  // The favItemId is a MENU NODE and expires with the session, so it is
+  // stripped before caching — a stale one would silently favourite nothing, or
+  // worse, something else. It is only usable on the call that produced it.
+  smartCache.set(key, found ? { album: found.album, artist: found.artist, image: found.image } : null);
+  return found;
+}
+
+let smartBuilding = false;
+
+// Build (or rebuild) one day's picks. Never throws — a failure marks the day
+// attempted so the next request doesn't start it all over again.
+async function buildSmartPicks(day) {
+  if (smartBuilding) return null;
+  smartBuilding = true;
+  const t0 = Date.now();
+  try {
+    smartCache.prune();
+    const playerId = state.players[0] && state.players[0].id;
+    // No player → no Qobuz call is possible. Retry later rather than writing
+    // off the day (see the header note).
+    if (!playerId) { spLog.debug("no connected player — deferring"); return null; }
+    if (!index.records.length) { spLog.debug("no library index yet — deferring"); return null; }
+    if (!(await serviceUsable("qobuz"))) {
+      smartPicks.markAttempt(day, { picks: 0, reason: "no service" });
+      spLog.info("no usable Qobuz plugin — nothing to resolve against");
+      return [];
+    }
+
+    const hubs = await smartHubSet();
+    if (!hubs || !hubs.size) {
+      // Deliberately NOT marked attempted: this is our failure, not the day's.
+      spLog.warn("no hub chart — skipping (without it the seed policy inverts)");
+      return null;
+    }
+
+    const profile = smartLibraryProfile();
+    const sets = {
+      library: smartLibraryArtists(),
+      hubs,
+      blocked: smartPicks.blockedSet(),
+      seen:    smartPicks.seenSet(),
+    };
+
+    const autoAdd = smartPicksAutoAdd();
+    const seeds = smartAlgo.smartPickSeeds(profile, hubs, smartAlgo.SEED_COUNT);
+    const seedNameByMbid = new Map();
+    const seedMbids = [];
+    for (const s of seeds) {
+      const mbid = await albumInfo.artistMbid(s.name);
+      if (!mbid) continue;
+      seedMbids.push(mbid);
+      seedNameByMbid.set(mbid, s.name);
+    }
+    if (!seedMbids.length) {
+      smartPicks.markAttempt(day, { picks: 0, reason: "no seed mbids" });
+      spLog.info("no seed artist could be resolved to a MusicBrainz id");
+      return [];
+    }
+
+    const rows = await smartSimilarRows(seedMbids);
+    const cands = smartAlgo.collectSmartCandidates(rows, seedNameByMbid, search.artistKey);
+    const pool = smartAlgo.diversifySmartCandidates(
+      smartAlgo.rankSmartCandidates(cands.filter(c => !smartAlgo.smartPickExcluded(c.canon, sets))))
+      .slice(0, smartAlgo.POOL_COUNT);
+
+    const picks = [];
+    let tries = 0;
+    for (const c of pool) {
+      if (picks.length >= smartAlgo.PICK_COUNT) break;
+      if (tries >= smartAlgo.MAX_RESOLVES) break;
+      tries++;
+      const alb = await smartResolveAlbum(c.name, playerId);
+      if (!alb) continue;
+      const rec = { kind: "adjacent", mbid: c.mbid, artist: c.name, canon: c.canon,
+                    album: alb.album, image: alb.image, genre: "",
+                    seedNames: c.seedNames };
+      rec.reason = smartAlgo.smartPickReason(rec);
+      delete rec.seedNames;
+      // Auto-add, when the owner has asked for it. Only possible on the call
+      // that resolved the album — a cache hit has no live favItemId, and that
+      // is the right outcome: a cache hit means we resolved it recently, so it
+      // was already offered (and added) then. The STRETCH pick is never
+      // auto-added; that one is always the owner's to accept or reject.
+      if (autoAdd && alb.favItemId != null) {
+        try {
+          await state.lms.qobuzAlbumFavoriteToggle(playerId, alb.favItemId, true);
+          qobuzFavCache.at = 0;
+        } catch (e) { spLog.debug("auto-add failed for " + c.name + ":", e.message); }
+      }
+      picks.push(rec);
+    }
+
+    // The stretch pick. Its roster comes back in MusicBrainz's relevance order,
+    // which is what makes it defensible rather than a random unknown.
+    const { weights, total } = smartGenreWeights();
+    const outside = smartAlgo.smartStretchGenres(weights, total).slice(0, smartAlgo.MAX_STRETCH_GENRES);
+    for (const g of outside) {
+      if (picks.some(p => p.kind === "stretch")) break;
+      const roster = await smartTagArtists(g.genre);
+      for (const a of roster.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
+        const canon = search.artistKey(a.name);
+        if (smartAlgo.smartPickExcluded(canon, sets)) continue;
+        if (tries >= smartAlgo.MAX_RESOLVES + smartAlgo.MAX_STRETCH_ROSTER) break;
+        tries++;
+        const alb = await smartResolveAlbum(a.name, playerId);
+        if (!alb) continue;
+        const rec = { kind: "stretch", mbid: a.mbid, artist: a.name, canon,
+                      album: alb.album, image: alb.image, genre: g.genre };
+        rec.reason = smartAlgo.smartPickReason(rec);
+        picks.push(rec);
+        break;
+      }
+    }
+
+    const written = smartPicks.writeDay(day, picks);
+    smartPicks.markAttempt(day, { picks: written.length });
+    spLog.info("built " + written.length + " picks for " + day +
+               " (" + seedMbids.length + " seeds, " + tries + " resolves, " +
+               Math.round((Date.now() - t0) / 1000) + "s)");
+    return written;
+  } catch (e) {
+    smartPicks.markAttempt(day, { picks: 0, reason: e.message });
+    spLog.warn("build failed:", e.message);
+    return [];
+  } finally {
+    smartBuilding = false;
+  }
+}
+
+// Kick a build in the background. Never awaited by a request — the first build
+// takes a minute or two and no page load should wait for it.
+function kickSmartPicks(day, force) {
+  const d = day || smartDayKey();
+  if (smartBuilding) return false;
+  if (!force && smartPicks.attempted(d)) return false;
+  buildSmartPicks(d).catch((e) => spLog.debug("kick:", e.message));
+  return true;
+}
+
+// A pick as the client sees it. `added` and `offset` are DERIVED HERE, never
+// stored — the Roon build learned that the hard way: latching "Added" into the
+// stored row meant it didn't survive a reload, and a stored offset goes stale
+// on the next rescan.
+function smartPickJson(p, favKeys) {
+  const out = {
+    kind: p.kind, artist: p.artist, mbid: p.mbid,
+    album: p.album, image: p.image, reason: p.reason, genre: p.genre,
+    service: "qobuz",
+    added: null, offset: null, id: null,
+    library_title: null, library_subtitle: null, image_key: null,
+  };
+  if (favKeys) out.added = favKeys.has(qobuzFavKey(p.album || "", p.artist || ""));
+  const rec = smartLibraryRecord(p.album, p.artist);
+  if (rec) {
+    // The LIBRARY's own strings travel with the offset: the play routes check
+    // identity against the index, and Qobuz's title (with its edition suffix)
+    // would be refused as a stale offset.
+    out.offset = rec.offset;
+    out.id = rec.id;
+    out.library_title = rec.title;
+    out.library_subtitle = rec.subtitle;
+    out.image_key = rec.image_key || null;
+  }
+  return out;
+}
+
+// Has the library got this album yet? Rebuilt only when the index is, because
+// it is a full sweep of every record.
+//
+// Keyed on qobuzFavKey — the same normaliser the Qobuz heart already matches
+// library albums with, including its trailing-(YYYY) strip. It is not exact:
+// an edition suffix Qobuz carries and the file tag doesn't will miss, and the
+// card then keeps saying "waiting for the next scan". That is the safe
+// direction — the alternative is a Play button that opens the wrong album.
+let smartLibIndex = { builtAt: -1, byKey: new Map() };
+function smartLibraryRecord(album, artist) {
+  if (!album) return null;
+  if (smartLibIndex.builtAt !== index.builtAt) {
+    const byKey = new Map();
+    for (const rec of index.records) {
+      const k = qobuzFavKey(rec.title, rec.subtitle);
+      if (!byKey.has(k)) byKey.set(k, rec);
+    }
+    smartLibIndex = { builtAt: index.builtAt, byKey };
+  }
+  return smartLibIndex.byKey.get(qobuzFavKey(album, artist)) || null;
+}
+
+app.get("/api/smart-picks", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try {
+    const day = smartDayKey();
+    let rows = smartPicks.readDay(day);
+    let building = false;
+    if (!rows.length) building = kickSmartPicks(day, false);
+    const usable = await serviceUsable("qobuz");
+    // Favourite state is best-effort: an unreachable Qobuz leaves `added` null,
+    // which the client reads as "couldn't ask" rather than "not added".
+    let favKeys = null;
+    if (usable && rows.length) {
+      try { favKeys = (await qobuzFavorites(false)).keys; } catch (e) { spLog.debug("fav state:", e.message); }
+    }
+    res.json({
+      day, building,
+      service_ready: usable,
+      picks: rows.map(p => smartPickJson(p, favKeys)),
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// "Not for me" — never suggest this artist again, and take their cards away
+// now rather than at the next rebuild.
+app.post("/api/smart-picks/block", (req, res) => {
+  const artist = String((req.body && req.body.artist) || "").trim();
+  if (!artist) return res.status(400).json({ error: "artist required" });
+  const canon = search.artistKey(artist);
+  if (!canon) return res.status(400).json({ error: "unrecognisable artist name" });
+  smartPicks.block(canon, artist);
+  const removed = smartPicks.deleteByCanon(canon);
+  res.json({ ok: true, artist, removed });
+});
+
+// Favourite a pick's album in the owner's Qobuz account.
+//
+// The album is RE-RESOLVED here rather than addressed by a stored id: the LMS
+// Qobuz plugin exposes no album ids, only menu nodes that expire with the
+// session, so nothing addable can survive in a JSON file overnight. One search
+// per tap is the price of that, and it is paid at the moment the owner asks
+// for it rather than six times per page view.
+app.post("/api/smart-picks/add", async (req, res) => {
+  if (!await requireService("qobuz", res)) return;
+  const player = state.players[0] && state.players[0].id;
+  if (!player) return res.status(503).json({ error: "No player available" });
+  const artist = String((req.body && req.body.artist) || "").trim();
+  const album  = String((req.body && req.body.album) || "").trim();
+  if (!artist || !album) return res.status(400).json({ error: "artist and album required" });
+  try {
+    const rows = await state.lms.qobuzSearchAlbums(player, artist, 20);
+    const wantArtist = search.artistKey(artist);
+    const wantAlbum = search.normalize(album);
+    const row = (rows || []).find(r => r && search.artistKey(qobuzRowArtist(r.artist)) === wantArtist &&
+                                       search.normalize(r.title) === wantAlbum);
+    if (!row || row.favItemId == null) {
+      // The catalogue moved, or the plugin no longer offers a favourite action
+      // for it. Say so — silently reporting success would leave a card claiming
+      // to be added that never appears.
+      return res.status(404).json({ error: "Couldn’t find that album on Qobuz any more" });
+    }
+    await state.lms.qobuzAlbumFavoriteToggle(player, row.favItemId, true);
+    qobuzFavCache.at = 0;                       // the heart state just changed
+    res.json({ ok: true, artist, album });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ---- Smart Picks: schedule + settings --------------------------------------
+// Defaults chosen for an overnight build: it does 24 MusicBrainz lookups at
+// one a second, plus a menu walk per candidate against the owner's own LMS.
+const SMART_HOUR_DEFAULT = 4;
+const smartPicksHour = () => {
+  const h = parseInt(loadSettings().smartPicksHour, 10);
+  return Number.isFinite(h) && h >= 0 && h <= 23 ? h : SMART_HOUR_DEFAULT;
+};
+// DEFAULTS OFF here, where the Roon build defaults it on. There, auto-adding
+// makes Roon import the album overnight so it is playable by morning. On LMS
+// favouriting is favourite-only (owner decision, v1.0.22) — no rescan is
+// triggered — so it would write five albums a day into the owner's Qobuz
+// account unasked and they still would not appear until a scan. Off is the
+// honest default; the toggle is there for anyone who wants it.
+const smartPicksAutoAdd = () => loadSettings().smartPicksAutoAdd === true;
+
+// Ticks every 10 minutes and fires once the hour has been REACHED, not once it
+// EQUALS — a server switched off at 04:00 still gets its picks when it comes
+// back, and `attempted` stops it running twice.
+function startSmartPicksMaintenance() {
+  const t = setInterval(() => {
+    if (!state.connected || !index.records.length) return;
+    // No connected player means no Qobuz call can resolve anything. Skip
+    // WITHOUT marking the day attempted, so it retries on the next tick.
+    if (!(state.players[0] && state.players[0].id)) return;
+    if (new Date().getHours() < smartPicksHour()) return;
+    kickSmartPicks(smartDayKey(), false);
+  }, 10 * 60 * 1000);
+  if (t.unref) t.unref();   // never hold the process open
+  return t;
+}
+
+app.get("/api/settings/smart-picks", async (req, res) => {
+  res.json({
+    hour: smartPicksHour(),
+    auto_add: smartPicksAutoAdd(),
+    service_ready: state.connected ? await serviceUsable("qobuz").catch(() => false) : false,
+  });
+});
+
+app.post("/api/settings/smart-picks", (req, res) => {
+  const body = req.body || {};
+  const patch = {};
+  if (body.hour !== undefined) {
+    const h = parseInt(body.hour, 10);
+    if (!Number.isFinite(h) || h < 0 || h > 23) return res.status(400).json({ error: "hour must be 0-23" });
+    patch.smartPicksHour = h;
+  }
+  if (body.auto_add !== undefined) patch.smartPicksAutoAdd = !!body.auto_add;
+  saveSettings(patch);
+  res.json({ ok: true, hour: smartPicksHour(), auto_add: smartPicksAutoAdd() });
+});
+
+// Throw today's set away and choose again. The build is kicked, not awaited —
+// it takes a minute or two and the request must not hold a connection open
+// for it.
+app.post("/api/smart-picks/rebuild", (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const day = smartDayKey();
+  smartPicks.deleteDay(day);
+  const building = kickSmartPicks(day, true);
+  res.json({ ok: true, building });
+});
+
 // Diagnostic: dump the RAW Qobuz-plugin menu responses so the exact live
 // menu shapes can be inspected (the parsers were built without a live server).
 // Read-only. GET /api/qobuz/debug?q=radiohead
@@ -4166,6 +4659,7 @@ app.listen(PORT, () => {
   // and means a long-lived instance refreshes labels without a UI visit.
   const labelTimer = setInterval(() => { if (state.connected) labels.maybeAutoRescan(); }, 60 * 60 * 1000);
   if (labelTimer.unref) labelTimer.unref();
+  startSmartPicksMaintenance();
 });
 
 module.exports = app;

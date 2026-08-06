@@ -286,6 +286,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const homeSections = document.getElementById("home-sections");
   const homeUnplayed = document.getElementById("home-unplayed");
   const homeRandom   = document.getElementById("home-random");
+  const homePicks    = document.getElementById("home-picks");
   const homeLotw     = document.getElementById("home-lotw");
   const homeGenres   = document.getElementById("home-genres");
   const homeLibrary  = document.getElementById("home-library");
@@ -307,6 +308,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // Show the Home landing (hide the wall). The wall loads lazily when entered.
   function showHome() {
     unplayedWallActive = false;
+    smartPicksActive = false;   // a late pick fetch must not paint over Home
     exitLibraryWall();   // retire the Sort/Focus bar with the wall it drove
     exitAlbumSelectMode();   // never strand the selection bar over Home
     if (window.__clearSearchIfActive) window.__clearSearchIfActive();  // drop stale search results
@@ -323,6 +325,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     if (homeView) homeView.classList.remove("hidden");
     if (homeSections) homeSections.classList.remove("hidden");  // in case a search hid them
     grid.classList.add("hidden");
+    grid.innerHTML = "";   // Home doesn't use the grid; don't hold a dead screen in it
     setTopbarNav(false, false, true);   // Home: search box, no Back/Refresh
     const m = document.querySelector("main");
     if (m) m.scrollTop = 0;
@@ -343,6 +346,12 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     // Label of the week depends on the background labels scan, which may not be
     // ready on the first visit — retry each visit until it populates, then stop.
     if (!homeLotwLoaded) loadHomeLabelOfWeek();
+    // Compared by DAY KEY rather than a loaded-once flag: a phone left open
+    // overnight has to pick up the next day's picks.
+    const today = new Date();
+    const dayKey = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") +
+                   "-" + String(today.getDate()).padStart(2, "0");
+    if (homePicksDay !== dayKey) loadHomeSmartPicks();
     if (!homeSectionsLoaded) loadHomeGenres();
     if (homeLibraryStale || !rowHasContent(homeLibrary)) loadHomeLibrary();
   }
@@ -602,20 +611,39 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // Full-screen "Not played in 6 months" grid — reached by tapping the section
   // header. Fills the main grid with a larger unplayed list (tiles open
   // unfiltered, like the Home row) and shows a Back button to Home.
-  async function showUnplayedWall() {
-    unplayedWallActive = true;
+  // Shared entry ritual for every full-screen wall that takes over the album
+  // grid (Not played, Library, Smart Picks): leave the other views, drop the
+  // genre filter, reveal the grid, set the top-bar chrome and title, scroll to
+  // the top. Both wall flags are cleared here; a caller that owns one sets it
+  // afterwards. Written once because three copies of it had already started to
+  // disagree about which views they cleaned up.
+  function enterFullWall(title) {
+    unplayedWallActive = false;
+    libraryWallActive = false;
+    smartPicksActive = false;
     exitLibraryWall();
     exitAlbumSelectMode();
     if (window.__exitLabels) window.__exitLabels();
+    if (window.__exitArtistView) window.__exitArtistView();
     if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
     if (homeView) homeView.classList.add("hidden");
     if (homeSections) homeSections.classList.remove("hidden");
     grid.classList.remove("hidden");
-    clearWallGridSizing();  // standard grid, not phone-fit wall
+    // Take the grid EMPTY. Each wall paints its own content asynchronously, so
+    // inheriting the last one's leaves the previous screen on display until the
+    // fetch lands — Smart Picks over a Library wall showed a grid of albums
+    // until its request came back.
+    grid.innerHTML = "";
+    clearWallGridSizing();              // standard grid, not the phone-fit wall
     setTopbarNav(true, false, false);   // Back (to Home), no Refresh, no search
-    setCountText("Not played in 6 months");
+    setCountText(title);
     const m = document.querySelector("main");
     if (m) m.scrollTop = 0;
+  }
+
+  async function showUnplayedWall() {
+    enterFullWall("Not played in 6 months");
+    unplayedWallActive = true;
     renderSkeletons(computeAlbumCount());
     try {
       const r = await fetch("/api/home/unplayed?months=6&count=96");
@@ -640,6 +668,231 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       setBanner("Couldn’t load: " + e.message, true);
     }
   }
+
+
+  // The Home row. Hidden until there is something in it, deliberately: the
+  // first build takes a minute or two, and an empty row with a heading reads
+  // as broken where an absent one reads as "not yet".
+  let homePicksDay = null;
+  function renderHomePicks(picks) {
+    const sec = homePicks && homePicks.closest(".home-section");
+    if (!homePicks) return;
+    if (!picks || !picks.length) { if (sec) sec.classList.add("hidden"); return; }
+    homePicks.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    for (const p of picks) {
+      const tile = smartPickCard(p, false);
+      // On Home the whole tile opens the full screen, where the reason and the
+      // actions live — a tile that did nothing on tap would read as broken. A
+      // pick the library already has behaves like any other album tile.
+      tile.setAttribute("role", "button");
+      tile.tabIndex = 0;
+      const open = () => {
+        if (p.offset !== null && p.offset !== undefined) {
+          openAlbum({ offset: p.offset, title: p.library_title || p.album || "",
+                      subtitle: p.library_subtitle || p.artist || "",
+                      image_key: p.image_key || null }, { filter: null });
+        } else showSmartPicks();
+      };
+      tile.addEventListener("click", open);
+      tile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      });
+      frag.appendChild(tile);
+    }
+    homePicks.appendChild(frag);
+    if (sec) sec.classList.remove("hidden");
+  }
+
+  async function loadHomeSmartPicks() {
+    if (!homePicks) return;
+    try {
+      const r = await fetch("/api/smart-picks", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      homePicksDay = j.day || null;
+      renderHomePicks(j.picks || []);
+    } catch (e) { /* the row simply stays hidden */ }
+  }
+
+  // ----- Smart Picks -------------------------------------------------------
+  // Six albums a day by artists NOT in the library: five drawn from the
+  // neighbourhood it already lives in, and one deliberate stretch. The server
+  // does the choosing; this is the screen.
+  let smartPicksActive = false;
+  let smartPicksSeq = 0;
+
+  // One pick. `full` adds the reason line and the action buttons — the Home
+  // carousel stays a plain tile so it reads like the rows around it.
+  function smartPickCard(pick, full) {
+    const card = document.createElement("div");
+    card.className = "pick-card" + (full ? " pick-card-full" : "") +
+                     (pick.kind === "stretch" ? " pick-card-stretch" : "");
+    const art = document.createElement("div");
+    art.className = "pick-art";
+    if (pick.image) {
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = "";
+      img.src = pick.image;
+      art.appendChild(img);
+    }
+    if (pick.kind === "stretch") {
+      const flag = document.createElement("span");
+      flag.className = "pick-flag";
+      flag.textContent = "Stretch";
+      art.appendChild(flag);
+    }
+    card.appendChild(art);
+
+    const meta = document.createElement("div");
+    meta.className = "pick-meta";
+    const artist = document.createElement("div");
+    artist.className = "pick-artist";
+    artist.textContent = pick.artist;
+    meta.appendChild(artist);
+    const album = document.createElement("div");
+    album.className = "pick-album";
+    album.textContent = pick.album || "";
+    meta.appendChild(album);
+    if (full && pick.reason) {
+      const why = document.createElement("div");
+      why.className = "pick-reason";
+      why.textContent = pick.reason;
+      meta.appendChild(why);
+    }
+    card.appendChild(meta);
+
+    if (full) {
+      const actions = document.createElement("div");
+      actions.className = "pick-actions";
+      // Three states, decided entirely by whether the LIBRARY has it yet:
+      //   PLAY     — the album is in the library, so it opens like any other.
+      //   WAITING  — favourited on Qobuz but not scanned in yet. The server
+      //              decides when that happens, so there is nothing to press.
+      //   ADD      — not favourited. The stretch pick lives here permanently:
+      //              it is the one that is yours to accept or reject.
+      if (pick.offset !== null && pick.offset !== undefined) {
+        const play = document.createElement("button");
+        play.type = "button";
+        play.className = "pick-add pick-play";
+        play.textContent = "▶ Play";
+        play.addEventListener("click", () => openAlbum({
+          offset:    pick.offset,
+          // The LIBRARY's own strings, not Qobuz's — the play routes check
+          // identity against the index, and an edition suffix that differs
+          // would be refused as a stale offset.
+          title:     pick.library_title || pick.album || "",
+          subtitle:  pick.library_subtitle || pick.artist || "",
+          image_key: pick.image_key || null
+        }, { filter: null }));
+        actions.appendChild(play);
+      } else if (pick.added) {
+        const wait = document.createElement("button");
+        wait.type = "button";
+        wait.className = "pick-add is-done";
+        wait.disabled = true;
+        wait.textContent = "✓ Added — waiting for the next scan";
+        actions.appendChild(wait);
+      } else {
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "pick-add";
+        add.textContent = "＋ Add";
+        add.addEventListener("click", () => addSmartPick(pick, add));
+        actions.appendChild(add);
+      }
+
+      const nope = document.createElement("button");
+      nope.type = "button";
+      nope.className = "pick-block";
+      nope.textContent = "Not for me";
+      nope.addEventListener("click", () => blockSmartPick(pick, card));
+      actions.appendChild(nope);
+      card.appendChild(actions);
+    }
+    return card;
+  }
+
+  // Favourite the album on Qobuz. The card can't just say "added" — the album
+  // still has to be scanned into the library before it can play, and a bare
+  // "Added" left people wondering why they still couldn't listen to it.
+  async function addSmartPick(pick, btn) {
+    const was = btn.textContent;
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const r = await fetch("/api/smart-picks/add", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artist: pick.artist, album: pick.album }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t add that album");
+      pick.added = true;
+      btn.classList.add("is-done");
+      btn.textContent = "✓ Added — waiting for the next scan";
+      showToast("Added to Qobuz — it’ll appear after your next library scan");
+    } catch (e) {
+      btn.disabled = false; btn.textContent = was;
+      showToast(e.message, "error");
+    }
+  }
+
+  // "Not for me" — the card goes now, and the artist never comes back.
+  async function blockSmartPick(pick, card) {
+    try {
+      const r = await fetch("/api/smart-picks/block", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artist: pick.artist }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
+      card.remove();
+      showToast("Won’t suggest " + pick.artist + " again");
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  }
+
+  async function showSmartPicks() {
+    enterFullWall("Smart Picks");
+    smartPicksActive = true;
+    const mySeq = ++smartPicksSeq;
+    let j = null;
+    try {
+      const r = await fetch("/api/smart-picks", { cache: "no-store" });
+      j = await r.json();
+      // A 503 while the server is still connecting carries a real explanation.
+      // Dropping it for the generic message throws away the one thing that
+      // tells the owner what to do.
+      if (!r.ok && !(j && j.error)) j = { error: "HTTP " + r.status };
+    } catch (e) {
+      j = null;
+    }
+    if (!smartPicksActive || mySeq !== smartPicksSeq) return;   // moved on
+    grid.innerHTML = "";
+    if (!j || j.error) {
+      setBanner(j && j.error
+        ? ("Couldn’t load Smart Picks — " + j.error)
+        : "Couldn’t load Smart Picks — the server didn’t answer. Try again.", true);
+      return;
+    }
+    const picks = j.picks || [];
+    if (!picks.length) {
+      setBanner(j.service_ready
+        ? "Building today’s picks — this takes a minute the first time. Come back shortly."
+        : "Smart Picks needs the Qobuz plugin signed in on your server, so it can " +
+          "suggest albums you’re able to add.", false);
+      return;
+    }
+    setBanner(j.service_ready ? null
+      : "Sign in to Qobuz on your server to add any of these.", false);
+    const wrap = document.createElement("div");
+    wrap.className = "pick-list";
+    for (const p of picks) wrap.appendChild(smartPickCard(p, true));
+    grid.appendChild(wrap);
+  }
+  window.__showSmartPicks = showSmartPicks;
+  window.__exitSmartPicks = () => { smartPicksActive = false; };
 
   // ----- Library: ordered, paginated browse with Sort + Focus -------------
   // Every other wall in this app is a random SAMPLE; this is the one place the
@@ -851,20 +1104,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
 
   async function showLibraryWall() {
-    unplayedWallActive = false;
+    // NOTE: enterFullWall calls exitLibraryWall(), which retires the control
+    // row — so the flag goes back on afterwards and applyLibView() rebuilds it.
+    enterFullWall("Library");
     libraryWallActive = true;
-    exitAlbumSelectMode();
-    if (window.__exitLabels) window.__exitLabels();
-    if (window.__exitArtistView) window.__exitArtistView();
-    if (activeFilter) { activeFilter = null; try { localStorage.removeItem("rra-filter"); } catch (e) {} }
-    if (homeView) homeView.classList.add("hidden");
-    if (homeSections) homeSections.classList.remove("hidden");
-    grid.classList.remove("hidden");
-    clearWallGridSizing();
-    setTopbarNav(true, false, false);
-    setCountText("Library");
-    const m = document.querySelector("main");
-    if (m) m.scrollTop = 0;
     if (!libFacets) loadLibFacets();
     await applyLibView();
   }
@@ -1403,6 +1646,13 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       randTitle.addEventListener("click", goRandom);
       randTitle.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goRandom(); }
+      });
+    }
+    const picksTitle = document.getElementById("home-picks-title");
+    if (picksTitle) {
+      picksTitle.addEventListener("click", () => showSmartPicks());
+      picksTitle.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showSmartPicks(); }
       });
     }
     const lotwTitle = document.getElementById("home-lotw-title");
@@ -6449,6 +6699,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         showView(pane);
         if (pane === "lms") loadLmsPane();
         if (pane === "player") loadPlayerPane();
+        if (pane === "smartpicks") loadSmartPicksPane();
         return;
       }
       if (e.target.closest("[data-settings-back]")) { showView("home"); return; }
@@ -6807,6 +7058,62 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
     setTimeout(() => { lmsPane.rescanGo.disabled = false; }, 3000);
   });
+
+  // ----- Smart Picks pane -----
+  {
+    const hourSel = document.getElementById("picks-hour");
+    const autoAdd = document.getElementById("picks-autoadd");
+    const rebuild = document.getElementById("picks-rebuild");
+    const svcNote = document.getElementById("picks-service-note");
+
+    window.__loadSmartPicksPane = async function loadSmartPicksPane() {
+      try {
+        const r = await fetch("/api/settings/smart-picks", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (hourSel) hourSel.value = String(j.hour);
+        if (autoAdd) autoAdd.checked = !!j.auto_add;
+        if (svcNote) svcNote.textContent = j.service_ready
+          ? "The stretch pick is never added automatically — that one is always yours to accept or reject."
+          : "Sign in to Qobuz on your server first — without it, picks can be shown but not added.";
+      } catch (e) { /* leave the controls at their last state */ }
+    };
+
+    const save = async (patch, okMsg) => {
+      try {
+        const r = await fetch("/api/settings/smart-picks", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
+        if (okMsg && window.__showToast) window.__showToast(okMsg);
+      } catch (e) { if (window.__showToast) window.__showToast(e.message, "error"); }
+    };
+
+    if (hourSel) hourSel.addEventListener("change", () => {
+      const h = parseInt(hourSel.value, 10);
+      save({ hour: h }, "Smart Picks will build at " + String(h).padStart(2, "0") + ":00");
+    });
+    if (autoAdd) autoAdd.addEventListener("change", () => {
+      save({ auto_add: autoAdd.checked }, autoAdd.checked
+        ? "The genre picks will be added to Qobuz automatically"
+        : "All six picks will ask before adding");
+    });
+    if (rebuild) rebuild.addEventListener("click", async () => {
+      rebuild.disabled = true;
+      try {
+        const r = await fetch("/api/smart-picks/rebuild", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t rebuild");
+        if (window.__showToast) window.__showToast("Rebuilding today’s picks — check back in a minute");
+      } catch (e) {
+        if (window.__showToast) window.__showToast(e.message, "error");
+      } finally { rebuild.disabled = false; }
+    });
+  }
+  const loadSmartPicksPane = () => window.__loadSmartPicksPane && window.__loadSmartPicksPane();
 
   // pendingThemeId is cleared on every open: the sheet should never reopen
   // mid-decision, showing a tick against a theme that isn't applied.
@@ -7586,6 +7893,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
       if (action === "home") {
         if (window.__showHome) window.__showHome();
+        return;
+      }
+      if (action === "smart-picks") {
+        if (window.__showSmartPicks) window.__showSmartPicks();
         return;
       }
       if (action === "import-playlist") {
