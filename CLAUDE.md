@@ -386,6 +386,18 @@ Layout section of README.md.
   running the new test against the pre-fix commit. The e2e guards the other
   half (a menu that outgrows the screen); the iOS half is guarded by the CSS.
   Keep the menu under ~800px of content on a 375x667 phone.
+- The mini transport is HIDDEN while the side menu is open (`body.menu-open`,
+  v1.0.66) and no z-index will do it instead. `.app` is `z-index: 0`, i.e. its
+  own stacking context, and `#menu-overlay` lives INSIDE it while
+  `#mini-transport` is a root-level sibling at 70 — so the overlay's 95 is
+  scoped to .app and can never rise above the bar. With something playing on a
+  360x740 phone the bar sat straight over Settings, and scrolling was no
+  rescue: the drawer's content FITS (scrollHeight === clientHeight), so the row
+  was occluded, not clipped. The v1.0.56 e2e passed on the broken build because
+  its fake LMS reported `mode: "stop"` and the bar never appeared — ANY menu
+  test must assert the transport is really up, and must wait for it: the first
+  poll fires before `#zone-select` is populated and the loop then backs off to
+  6s, so the bar cannot exist before then.
 - The UI is FLAT everywhere (Home v1.0.39, album modal + Queue v1.0.42). No
   section or panel carries a background fill, radius, padding or watermark
   motif — structure comes from hairline separators and whitespace only, so the
@@ -652,6 +664,29 @@ Layout section of README.md.
   get real finds. So seeds are the library's least famous WELL-PLAYED artists,
   "famous" is decided by the world listen chart, and if that chart can't be
   fetched THE WHOLE BUILD ABORTS rather than inverting.
+- "Already owned" means the WHOLE collection, not `index.records` (v1.0.66,
+  owner decision). `smartLibraryArtists()` folds in the streaming service's own
+  favourites and this app's favourites, because an album favourited in Qobuz
+  but never scanned exists in NEITHER the LMS index nor anywhere else the
+  exclusion set could see it — and it came back as a "discovery". The Qobuz row
+  artist carries a trailing year, so it must go through `qobuzRowArtist()`
+  first or nothing matches. The service read is best-effort and must never fail
+  a build: losing it costs precision, letting it throw costs the whole day.
+- The STRETCH pick had two independent ways to never happen (v1.0.66), and a
+  library could hit both at once. (a) `smartStretchGenres` returned only genres
+  at or under `STRETCH_SHARE` (2%), so a library with a FLAT genre spread — 300
+  albums over eight genres, thinnest holding 12 — selected nothing and the
+  sixth pick was never attempted; "barely touches" is relative to THIS library,
+  so it now falls back to the rarest genres, never including the single
+  most-owned one. (b) A file's GENRE tag is routinely a COMPOUND
+  ("Alternative & Punk", "Hip-Hop/Rap") and MusicBrainz tags are atomic and
+  lower case, so one `tag:"alternative & punk"` matched nothing;
+  `genreTagCandidates()` yields the literal string first, then the `&`→`and`
+  form (so "Drum & Bass" is tried whole before it becomes "drum" and "bass",
+  which are not genres), then the split parts. Every way the stretch can come
+  up empty now names its stage in the build log — it used to report "built 5
+  picks" whether the sixth was considered or not, which is why this went
+  unexplained.
 - A Smart Pick is PLAYED DIRECTLY, never added first (v1.0.65). Verified in the
   plugin source: `qobuz playlist play item_id:…` → `QobuzGetTracks` →
   XMLBrowser's playlist branch → `playlist loadtracks`, and nothing on that path

@@ -1048,6 +1048,17 @@ main {
   border-top: 1px solid var(--border);
   box-shadow: 0 -6px 24px rgba(0,0,0,.22);
 }
+/* The side menu is a modal dialog, and this bar is a ROOT-LEVEL fixed element
+   while the drawer lives inside `.app` — which is `z-index: 0`, i.e. its own
+   stacking context. So the overlay's z-index 95 is scoped INSIDE .app and can
+   never rise above this bar's 70, however high it is set. On a short phone
+   with something playing that parked the bar straight over the last menu rows
+   and Settings could not be tapped; scrolling was no rescue either, because
+   the drawer's content FITS the viewport (scrollHeight === clientHeight) — the
+   rows were occluded, not clipped. Hiding the bar while the menu is open is
+   the fix, and is right anyway: a modal shouldn't have a transport floating
+   over it. Both of its popovers are children, so they go with it. */
+body.menu-open .mini-transport { display: none; }
 
 /* Thin Roon-style progress line along the top edge of the bar */
 .mt-progress {
