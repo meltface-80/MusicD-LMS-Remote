@@ -766,41 +766,63 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     if (full) {
       const actions = document.createElement("div");
       actions.className = "pick-actions";
-      // Three states, decided entirely by whether the LIBRARY has it yet:
-      //   PLAY     — the album is in the library, so it opens like any other.
-      //   WAITING  — favourited on Qobuz but not scanned in yet. The server
-      //              decides when that happens, so there is nothing to press.
-      //   ADD      — not favourited. The stretch pick lives here permanently:
-      //              it is the one that is yours to accept or reject.
-      if (pick.offset !== null && pick.offset !== undefined) {
-        const play = document.createElement("button");
-        play.type = "button";
-        play.className = "pick-add pick-play";
-        play.textContent = "▶ Play";
-        play.addEventListener("click", () => openAlbum({
-          offset:    pick.offset,
-          // The LIBRARY's own strings, not Qobuz's — the play routes check
-          // identity against the index, and an edition suffix that differs
-          // would be refused as a stale offset.
-          title:     pick.library_title || pick.album || "",
-          subtitle:  pick.library_subtitle || pick.artist || "",
-          image_key: pick.image_key || null
-        }, { filter: null }));
-        actions.appendChild(play);
-      } else if (pick.added) {
-        const wait = document.createElement("button");
-        wait.type = "button";
-        wait.className = "pick-add is-done";
-        wait.disabled = true;
-        wait.textContent = "✓ Added — waiting for the next scan";
-        actions.appendChild(wait);
-      } else {
+      // PLAY IS ALWAYS OFFERED. LMS plays a streaming album straight from the
+      // catalogue — no favourite, no import, no scan — so there is no such
+      // thing as a pick you cannot listen to right now. (The Roon build has to
+      // add first, because Roon's API only plays what is in the library. That
+      // constraint is theirs, not ours, and carrying it over here was a porting
+      // mistake.) A pick the library already owns opens locally; everything
+      // else streams.
+      const owned = pick.offset !== null && pick.offset !== undefined;
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "pick-add pick-play";
+      play.textContent = "▶ Play";
+      play.addEventListener("click", () => {
+        if (owned) {
+          openAlbum({
+            offset: pick.offset,
+            // The LIBRARY's own strings, not Qobuz's — the play routes check
+            // identity against the index, and an edition suffix that differs
+            // would be refused as a stale offset.
+            title:     pick.library_title || pick.album || "",
+            subtitle:  pick.library_subtitle || pick.artist || "",
+            image_key: pick.image_key || null,
+          }, { filter: null });
+        } else {
+          playSmartPick(pick, "play_now", play);
+        }
+      });
+      actions.appendChild(play);
+
+      // Queue only for a streamed pick: an owned album has the app's whole
+      // queue/play vocabulary on its own screen, which Play opens.
+      if (!owned) {
+        const queue = document.createElement("button");
+        queue.type = "button";
+        queue.className = "pick-secondary pick-queue";
+        queue.textContent = "Queue";
+        queue.addEventListener("click", () => playSmartPick(pick, "queue", queue));
+        actions.appendChild(queue);
+      }
+
+      // Add is a KEEP, not a prerequisite — it favourites the album in the
+      // Qobuz account so it survives and a later scan brings it into the
+      // library. Hidden once that has happened.
+      if (!owned && !pick.added) {
         const add = document.createElement("button");
         add.type = "button";
-        add.className = "pick-add";
+        add.className = "pick-secondary pick-keep";
         add.textContent = "＋ Add";
         add.addEventListener("click", () => addSmartPick(pick, add));
         actions.appendChild(add);
+      } else if (!owned && pick.added) {
+        const kept = document.createElement("button");
+        kept.type = "button";
+        kept.className = "pick-secondary pick-keep is-done";
+        kept.disabled = true;
+        kept.textContent = "✓ Added";
+        actions.appendChild(kept);
       }
 
       const nope = document.createElement("button");
@@ -812,6 +834,27 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       card.appendChild(actions);
     }
     return card;
+  }
+
+  // Play (or queue) a pick straight from the Qobuz catalogue. The album is
+  // re-resolved server-side at the moment of the tap, because a stored pick
+  // carries no playable handle — the plugin's menu nodes expire.
+  async function playSmartPick(pick, kind, btn) {
+    if (!selectedZoneId) { showToast("Pick a zone first", "error"); return; }
+    const was = btn.textContent;
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const r = await fetch("/api/smart-picks/play", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artist: pick.artist, album: pick.album, kind,
+                               zone_or_output_id: selectedZoneId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t play that album");
+      showToast((kind === "queue" ? "Queued" : "Playing") + " → " + zoneName(selectedZoneId));
+    } catch (e) {
+      showToast(e.message, "error");
+    } finally { btn.disabled = false; btn.textContent = was; }
   }
 
   // Favourite the album on Qobuz. The card can't just say "added" — the album
@@ -828,9 +871,11 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t add that album");
       pick.added = true;
+      btn.disabled = true;
       btn.classList.add("is-done");
-      btn.textContent = "✓ Added — waiting for the next scan";
-      showToast("Added to Qobuz — it’ll appear after your next library scan");
+      btn.textContent = "✓ Added";
+      // Deliberately does NOT say "now you can play it" — you always could.
+      showToast("Saved to your Qobuz favourites — it joins the library on the next scan");
     } catch (e) {
       btn.disabled = false; btn.textContent = was;
       showToast(e.message, "error");

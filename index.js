@@ -3897,11 +3897,17 @@ app.get("/api/services", async (req, res) => {
 //
 // TWO THINGS THAT DIFFER FROM THE ROON BUILD, both forced by LMS:
 //
-//  1. A pick CANNOT carry an addable handle. The Roon build stores a Qobuz
-//     album id; the LMS Qobuz plugin exposes no ids at all, only menu nodes
-//     that expire with the session (see the qobuzActionStore TTL). So a pick
-//     stores artist + album TITLE, and the Add path re-resolves by search at
-//     the moment it is tapped.
+//  1. A pick CANNOT carry a stored handle. The Roon build stores a Qobuz album
+//     id; the LMS Qobuz plugin exposes no ids at all, only menu nodes that
+//     expire with the session (see the qobuzActionStore TTL). So a pick stores
+//     artist + album TITLE, and both the Play and the Add paths re-resolve by
+//     search at the moment they are tapped.
+//
+//     LMS is the LESS constrained of the two on the thing that matters, and it
+//     is worth being clear about which way round: Roon's API can only play what
+//     is in the library, so the Roon build MUST add an album before it can be
+//     heard. LMS plays a catalogue album directly, so Play is the primary
+//     action here and Add is merely "keep this".
 //  2. Every `qobuz` dispatch is needs-client=1, so resolving needs a CONNECTED
 //     PLAYER. With none, the build is skipped WITHOUT marking the day
 //     attempted, so it retries on the next tick rather than writing off the
@@ -4280,6 +4286,60 @@ app.post("/api/smart-picks/block", (req, res) => {
 // session, so nothing addable can survive in a JSON file overnight. One search
 // per tap is the price of that, and it is paid at the moment the owner asks
 // for it rather than six times per page view.
+// Find a pick's album in the Qobuz catalogue again, RIGHT NOW.
+//
+// A pick stores artist + album title and nothing else, because the plugin's
+// menu nodes expire with the session — so both Play and Add re-search at the
+// moment they are tapped. One resolver for both, or the two buttons on a card
+// could end up meaning different albums.
+async function smartResolveRow(playerId, artist, album) {
+  const rows = await state.lms.qobuzSearchAlbums(playerId, artist, 20);
+  const wantArtist = search.artistKey(artist);
+  const wantAlbum = search.normalize(album);
+  return (rows || []).find(r => r && search.artistKey(qobuzRowArtist(r.artist)) === wantArtist &&
+                                search.normalize(r.title) === wantAlbum) || null;
+}
+
+// Play (or queue) a pick STRAIGHT FROM THE CATALOGUE — no favourite first.
+//
+// This is a substantive difference from the Roon build, not a shortcut. Roon's
+// API can only play what is already in the library, so the Roon extension must
+// add an album before it can be heard. LMS has no such rule: `qobuz playlist
+// play item_id:…` resolves the album id to `qobuz://…` track URLs and hands
+// them straight to the player (QobuzPlugin.pm QobuzGetTracks → XMLBrowser's
+// playlist branch → `playlist loadtracks`). Verified against the plugin
+// source: nothing on that path consults the user's favourites, and nothing
+// writes to the library — a remote track is an in-memory
+// Slim::Schema::RemoteTrack, not a database row. Play is a pure read, and safe
+// to offer on an album the owner does not own.
+app.post("/api/smart-picks/play", async (req, res) => {
+  if (!await requireService("qobuz", res)) return;
+  const body = req.body || {};
+  // Resolved with ANY player (the menu walk is server-global), but played on
+  // the zone the owner is actually pointed at.
+  const player = state.players[0] && state.players[0].id;
+  const zone = String(body.zone_or_output_id || "").trim() || player;
+  if (!player) return res.status(503).json({ error: "No player available" });
+  const artist = String(body.artist || "").trim();
+  const album  = String(body.album || "").trim();
+  const kind   = body.kind === "queue" ? "queue" : "play_now";
+  if (!artist || !album) return res.status(400).json({ error: "artist and album required" });
+  try {
+    const row = await smartResolveRow(player, artist, album);
+    const action = row && (kind === "queue" ? (row.add || row.play) : row.play);
+    if (!action) return res.status(404).json({ error: "Couldn\u2019t find that album on Qobuz any more" });
+    await state.lms.qobuzRunAction(zone, action);
+    res.json({ ok: true, artist, album, kind });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Favourite a pick's album in the owner's Qobuz account.
+//
+// A KEEP action now, not a prerequisite for listening (see Play above). It
+// still earns its place: a favourite survives, and the next library scan brings
+// the album in properly.
 app.post("/api/smart-picks/add", async (req, res) => {
   if (!await requireService("qobuz", res)) return;
   const player = state.players[0] && state.players[0].id;
@@ -4288,11 +4348,7 @@ app.post("/api/smart-picks/add", async (req, res) => {
   const album  = String((req.body && req.body.album) || "").trim();
   if (!artist || !album) return res.status(400).json({ error: "artist and album required" });
   try {
-    const rows = await state.lms.qobuzSearchAlbums(player, artist, 20);
-    const wantArtist = search.artistKey(artist);
-    const wantAlbum = search.normalize(album);
-    const row = (rows || []).find(r => r && search.artistKey(qobuzRowArtist(r.artist)) === wantArtist &&
-                                       search.normalize(r.title) === wantAlbum);
+    const row = await smartResolveRow(player, artist, album);
     if (!row || row.favItemId == null) {
       // The catalogue moved, or the plugin no longer offers a favourite action
       // for it. Say so — silently reporting success would leave a card claiming
@@ -4316,12 +4372,13 @@ const smartPicksHour = () => {
   const h = parseInt(loadSettings().smartPicksHour, 10);
   return Number.isFinite(h) && h >= 0 && h <= 23 ? h : SMART_HOUR_DEFAULT;
 };
-// DEFAULTS OFF here, where the Roon build defaults it on. There, auto-adding
-// makes Roon import the album overnight so it is playable by morning. On LMS
-// favouriting is favourite-only (owner decision, v1.0.22) — no rescan is
-// triggered — so it would write five albums a day into the owner's Qobuz
-// account unasked and they still would not appear until a scan. Off is the
-// honest default; the toggle is there for anyone who wants it.
+// DEFAULTS OFF here, where the Roon build defaults it on — and the reason is
+// the whole point of the difference. There, auto-adding is what MAKES a pick
+// playable: Roon imports it overnight and it works by morning. Here a pick is
+// already playable without being added, so auto-add buys nothing towards
+// listening and would write five albums a day into the owner's Qobuz account
+// unasked. Off is the honest default; the toggle is there for anyone who wants
+// the albums kept.
 const smartPicksAutoAdd = () => loadSettings().smartPicksAutoAdd === true;
 
 // Ticks every 10 minutes and fires once the hour has been REACHED, not once it
