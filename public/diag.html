@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Same viewport contract as the app, or the numbers below describe a
+     different page from the one being diagnosed. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e1012">
+<title>MusicD — layout diagnostic</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0e1012; color: #e8eaed;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    padding: calc(12px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom));
+    -webkit-text-size-adjust: 100%;
+  }
+  h1 { font-size: 15px; margin-bottom: 2px; }
+  .sub { color: #8a9099; font-size: 12px; margin-bottom: 14px; }
+  h2 { font-size: 12px; color: #c47f4a; margin: 16px 0 6px; letter-spacing: .04em; text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 3px 0; vertical-align: top; border-bottom: 1px solid #23262a; }
+  td:first-child { color: #8a9099; padding-right: 10px; white-space: nowrap; }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .bad  { color: #e0776b; }
+  .good { color: #7fb47f; }
+  button {
+    display: block; width: 100%; margin-top: 18px; padding: 13px;
+    font: 600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #c47f4a; color: #14161a; border: 0; border-radius: 10px; cursor: pointer;
+  }
+  a.back { display: block; margin-top: 10px; text-align: center; color: #8a9099; font-size: 13px; }
+  pre {
+    margin-top: 14px; padding: 10px; background: #16181b; border: 1px solid #23262a;
+    border-radius: 8px; white-space: pre-wrap; word-break: break-all; font-size: 11px; color: #b9bfc6;
+  }
+  /* A 100dvh probe that is never painted — read, not shown. */
+  #dvh-probe { position: fixed; top: 0; left: 0; width: 1px; height: 100dvh; visibility: hidden; pointer-events: none; }
+  #vh-probe  { position: fixed; top: 0; left: 0; width: 1px; height: 100vh;  visibility: hidden; pointer-events: none; }
+  #svh-probe { position: fixed; top: 0; left: 0; width: 1px; height: 100svh; visibility: hidden; pointer-events: none; }
+  #lvh-probe { position: fixed; top: 0; left: 0; width: 1px; height: 100lvh; visibility: hidden; pointer-events: none; }
+  #inset-probe {
+    position: fixed; top: 0; left: 0; width: 1px; visibility: hidden; pointer-events: none;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+  }
+</style>
+</head>
+<body>
+<div id="dvh-probe"></div><div id="vh-probe"></div>
+<div id="svh-probe"></div><div id="lvh-probe"></div><div id="inset-probe"></div>
+
+<h1>MusicD layout diagnostic</h1>
+<p class="sub">Read-only. Nothing here changes any setting or touches your library.</p>
+
+<div id="out"></div>
+
+<button id="copy" type="button">Copy everything</button>
+<a class="back" href="/">← back to the app</a>
+<pre id="raw"></pre>
+
+<script>
+(function () {
+  var out = document.getElementById("out");
+  var px = function (v) { return Math.round(parseFloat(v) || 0); };
+
+  function section(title, rows) {
+    var h = document.createElement("h2"); h.textContent = title; out.appendChild(h);
+    var t = document.createElement("table");
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      var a = document.createElement("td"); a.textContent = r[0];
+      var b = document.createElement("td"); b.textContent = r[1];
+      if (r[2] === true) b.className = "good";
+      if (r[2] === false) b.className = "bad";
+      tr.appendChild(a); tr.appendChild(b); t.appendChild(tr);
+    });
+    out.appendChild(t);
+  }
+
+  var standalone = !!(window.navigator.standalone ||
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+  var insetCs = getComputedStyle(document.getElementById("inset-probe"));
+  var insets = {
+    top: px(insetCs.paddingTop), bottom: px(insetCs.paddingBottom),
+    left: px(insetCs.paddingLeft), right: px(insetCs.paddingRight)
+  };
+  var h = {
+    inner: window.innerHeight,
+    visual: window.visualViewport ? Math.round(window.visualViewport.height) : null,
+    screen: window.screen ? window.screen.height : null,
+    dvh: px(getComputedStyle(document.getElementById("dvh-probe")).height),
+    vh:  px(getComputedStyle(document.getElementById("vh-probe")).height),
+    svh: px(getComputedStyle(document.getElementById("svh-probe")).height),
+    lvh: px(getComputedStyle(document.getElementById("lvh-probe")).height)
+  };
+
+  section("Install", [
+    ["installed as a PWA", standalone ? "yes" : "NO — open from the Home Screen icon", standalone],
+    ["display-mode", (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ? "standalone" : "browser"],
+    ["devicePixelRatio", String(window.devicePixelRatio || "?")]
+  ]);
+
+  // THE QUESTION THIS PAGE EXISTS TO ANSWER. The now-playing panel is sized
+  // with 100dvh. If dvh comes back SHORTER than innerHeight, the panel cannot
+  // reach the bottom of the display however the content inside it is laid out,
+  // and no amount of padding arithmetic will fix it.
+  section("Viewport height", [
+    ["window.innerHeight", h.inner + "px"],
+    ["visualViewport", h.visual === null ? "n/a" : h.visual + "px"],
+    ["screen.height", h.screen === null ? "n/a" : h.screen + "px"],
+    ["100dvh", h.dvh + "px", h.dvh >= h.inner],
+    ["100vh",  h.vh + "px",  h.vh  >= h.inner],
+    ["100svh", h.svh + "px"],
+    ["100lvh", h.lvh + "px"],
+    ["dvh − innerHeight", (h.dvh - h.inner) + "px", h.dvh - h.inner === 0]
+  ]);
+
+  section("Safe-area insets", [
+    ["top", insets.top + "px", insets.top > 0],
+    ["bottom", insets.bottom + "px", insets.bottom > 0],
+    ["left", insets.left + "px"],
+    ["right", insets.right + "px"],
+    ["viewport-fit=cover working", (insets.top > 0 || insets.bottom > 0)
+      ? "yes" : "NO — insets are 0", (insets.top > 0 || insets.bottom > 0)]
+  ]);
+
+  // Ask the app itself, in a hidden iframe, where its now-playing rows
+  // actually land. Same origin, so the frame can be measured directly — and
+  // an iframe is used rather than duplicating the layout here, because a
+  // reimplementation would prove nothing about the real screen.
+  var verdict = [];
+  var frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  // Full-screen but invisible: the layout must be measured at the real size.
+  frame.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;border:0;opacity:0;pointer-events:none;z-index:-1";
+  frame.src = "/";
+  document.body.appendChild(frame);
+
+  function measureApp() {
+    var rows = [];
+    try {
+      var w = frame.contentWindow, d = frame.contentDocument;
+      if (!d) throw new Error("frame not readable");
+      var modal = d.getElementById("album-modal");
+      var panel = d.querySelector(".modal-panel");
+      var body  = d.querySelector("#album-modal .modal-body");
+      var sec   = d.querySelector(".np-secondary");
+      var box = function (el) { return el ? el.getBoundingClientRect() : null; };
+      var pr = box(panel), br = box(body), sr = box(sec);
+      rows.push(["frame innerHeight", w.innerHeight + "px"]);
+      rows.push(["modal classes", modal ? (modal.className || "(none)") : "not found"]);
+      if (pr) rows.push([".modal-panel height", Math.round(pr.height) + "px",
+                          Math.round(pr.height) >= w.innerHeight]);
+      if (br) {
+        var cs = w.getComputedStyle(body);
+        rows.push([".modal-body padding-top", cs.paddingTop]);
+        rows.push([".modal-body padding-bottom", cs.paddingBottom]);
+        rows.push([".modal-body height", Math.round(br.height) + "px"]);
+      }
+      if (sr) {
+        var gap = Math.round(w.innerHeight - sr.bottom);
+        rows.push(["bottom row ends at", Math.round(sr.bottom) + "px"]);
+        rows.push(["GAP below bottom row", gap + "px", gap <= 60]);
+        verdict.push("gap=" + gap);
+      } else {
+        rows.push(["bottom row", "now-playing not open in the frame"]);
+      }
+    } catch (e) {
+      rows.push(["could not measure the app", e.message]);
+    }
+    section("Now playing, measured in the app", rows);
+    document.getElementById("raw").textContent = JSON.stringify({
+      standalone: standalone, heights: h, insets: insets,
+      ua: navigator.userAgent, rows: rows
+    }, null, 1);
+  }
+
+  frame.addEventListener("load", function () {
+    // Drive the frame to the now-playing screen, then let it settle: the
+    // transport poll backs off to 6s, so the screen cannot be measured before
+    // the first successful tick.
+    var tries = 0;
+    var tick = setInterval(function () {
+      tries++;
+      try {
+        var w = frame.contentWindow, d = frame.contentDocument;
+        var m = d && d.getElementById("album-modal");
+        if (m && m.classList.contains("np-mode") && !m.classList.contains("hidden")) {
+          clearInterval(tick); setTimeout(measureApp, 400); return;
+        }
+        var info = d && d.querySelector("#mini-transport .mt-info");
+        var bar = d && d.getElementById("mini-transport");
+        if (info && bar && !bar.classList.contains("hidden")) info.click();
+      } catch (e) { /* frame still loading */ }
+      if (tries > 40) { clearInterval(tick); measureApp(); }
+    }, 500);
+  });
+
+  document.getElementById("copy").addEventListener("click", function () {
+    var txt = document.getElementById("raw").textContent;
+    var ta = document.createElement("textarea");
+    ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    // execCommand first: the app is served over plain http, so the secure
+    // clipboard API usually does not exist at all (same reason as the share
+    // card's copy button).
+    var done = false;
+    try { done = document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+    if (!done && navigator.clipboard) navigator.clipboard.writeText(txt).catch(function () {});
+    this.textContent = done ? "Copied — paste it back" : "Select the text below and copy";
+  });
+})();
+</script>
+</body>
+</html>

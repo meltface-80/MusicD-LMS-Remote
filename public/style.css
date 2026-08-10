@@ -1677,7 +1677,7 @@ main {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%; margin-top: 14px; gap: 14px;
 }
-.np-vol { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: flex-end; }
+.np-vol { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; justify-content: flex-end; }
 .np-vol-slider { flex: 1; max-width: 150px; accent-color: var(--accent); cursor: pointer; }
 .np-mini-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -3904,22 +3904,17 @@ body.show-quality .album-quality.hidden { display: none; }
 }
 .np-mode-badge.hidden { display: none; }
 
-.np-radio-row { display: flex; justify-content: center; margin-top: 10px; }
-.np-radio-row.hidden { display: none; }
-.np-radio-btn {
-  display: inline-flex; align-items: center; gap: 8px;
-  height: 34px; padding: 0 14px;
-  border-radius: 999px;
-  background: transparent; border: 1px solid var(--border);
-  color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
-  transition: color .15s ease, border-color .15s ease, background .15s ease;
-}
-.np-radio-btn svg { width: 16px; height: 16px; }
+/* Random album radio — an ICON in .np-secondary, between the zone picker and
+   the volume control (v1.0.71, Roon parity). It used to be a labelled pill on
+   a row of its own, which cost a whole row on a screen that never scrolls and
+   where the artwork absorbs whatever is left over. It inherits .np-mini-btn's
+   size, so only the on/off state is styled here. */
 .np-radio-btn[aria-pressed="true"] {
-  color: var(--accent-text); border-color: var(--accent);
+  color: var(--accent-text);
   background: var(--accent-soft);
 }
 .np-radio-btn:disabled { opacity: .4; cursor: default; }
+.np-radio-btn.hidden { display: none; }
 
 /* Artist links on the Now Playing line — same affordance as the album view. */
 .np-artist .np-artist-link {
