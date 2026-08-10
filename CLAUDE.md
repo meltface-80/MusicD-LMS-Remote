@@ -672,33 +672,45 @@ Layout section of README.md.
   artist carries a trailing year, so it must go through `qobuzRowArtist()`
   first or nothing matches. The service read is best-effort and must never fail
   a build: losing it costs precision, letting it throw costs the whole day.
-- The STRETCH pick had two independent ways to never happen (v1.0.66), and a
-  library could hit both at once. (a) `smartStretchGenres` returned only genres
-  at or under `STRETCH_SHARE` (2%), so a library with a FLAT genre spread — 300
-  albums over eight genres, thinnest holding 12 — selected nothing and the
-  sixth pick was never attempted; "barely touches" is relative to THIS library,
-  so it now falls back to the rarest genres, never including the single
-  most-owned one. (b) A file's GENRE tag is routinely a COMPOUND
-  ("Alternative & Punk", "Hip-Hop/Rap") and MusicBrainz tags are atomic and
-  lower case, so one `tag:"alternative & punk"` matched nothing;
-  `genreTagCandidates()` yields the literal string first, then the `&`→`and`
-  form (so "Drum & Bass" is tried whole before it becomes "drum" and "bass",
-  which are not genres), then the split parts. Every way the stretch can come
-  up empty now names its stage in the build log — it used to report "built 5
-  picks" whether the sixth was considered or not, which is why this went
-  unexplained.
+- The STRETCH pick is TWO HOPS OUT IN THE TASTE GRAPH, not a genre (owner
+  decision, v1.0.68). It was chosen by "a genre the library barely touches",
+  and on the owner's real library that could never work: album genre comes from
+  the file's GENRE tag via `albumGenre()`, that library carries essentially
+  none, and `smartStretchGenres` therefore had nothing to select however the
+  threshold was tuned (v1.0.66 tried two fixes; both were real defects and
+  neither was the cause). Hop 1 is everything similar to a seed — where the
+  five adjacent picks come from; hop 2 is what those near-neighbours are
+  similar to. A candidate qualifies only if NOTHING near the library reaches it
+  directly: not a seed, not a hop-1 artist, not anything owned (`nearCanons`,
+  built from `cands` UNFILTERED — an already-owned hop-1 artist is still
+  directly reachable, so what it reaches is not two steps out). It reuses
+  `smartSimilarRows`, so hop 2 shares the same per-mbid 30-day cache as hop 1.
+  `rankStretchCandidates` sorts MOST referrers first — the OPPOSITE of
+  `rankSmartCandidates`, deliberately: everything here is already two hops out,
+  so the question is "is this a real cluster" not "how far". There is NO
+  minimum referrer count, because every hard filter added to this path has
+  turned into a new way for the stretch to vanish. `smartPickReason` still
+  emits the old genre wording when a stored pick carries `genre` — a reason is
+  written once, at build time, and last week's card must not re-describe itself
+  under the new rule. The genre helpers (`smartStretchGenres`,
+  `genreTagCandidates`, `smartGenreWeights`, `smartTagArtists`) are GONE;
+  `discovery.artistsByTag` survives unused, to stay in step with the Roon build.
 - The stretch pick EXPLAINS ITSELF, in the app and in a diagnostic (v1.0.67).
   Naming the stage in the log was not enough: reading it means finding a log
   file, and five cards with no explanation still reads as broken. The build's
   reason is carried on the attempt record → `/api/smart-picks` `stretch_note` →
   a quiet `.pick-note` footnote under the cards. `GET /api/smart-picks/debug`
-  walks the SAME pipeline and returns every decision (genre spread and shares,
-  the genres selected, every tag spelling tried, roster sizes, and per artist
-  WHICH exclusion caught it) — it writes nothing, so it is safe to open any
+  walks the SAME pipeline and returns every decision (seeds, hop-1 size before
+  and after exclusions, which near-neighbours were stepped beyond, the hop-2
+  field, and per candidate its referrer count and WHICH exclusion caught it) — it writes nothing, so it is safe to open any
   time. `?resolve=1` adds the Qobuz lookups, bounded to 5 per genre because
-  each is a menu walk. Unlike `/api/qobuz/debug` it is NOT gated on debug
-  logging: that one echoes raw plugin payloads and player ids, this one reports
-  the owner's own genre counts and artist names.
+  each is a menu walk. It holds TODAY'S OWN PICKS out of the `seen` set:
+  marking a pick shown is the last thing a build does, so running the
+  diagnostic straight afterwards — exactly when anyone runs it — would
+  otherwise find every candidate "shown recently" and report an empty graph.
+  Unlike `/api/qobuz/debug` it is NOT gated on debug logging: that one echoes
+  raw plugin payloads and player ids, this one reports artist names from the
+  owner's own library.
 - A Smart Pick is PLAYED DIRECTLY, never added first (v1.0.65). Verified in the
   plugin source: `qobuz playlist play item_id:…` → `QobuzGetTracks` →
   XMLBrowser's playlist branch → `playlist loadtracks`, and nothing on that path
