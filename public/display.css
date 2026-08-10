@@ -214,7 +214,13 @@ body.show-ui .controls { opacity: 1; pointer-events: auto; }
 /* Bottom strip */
 .bottombar {
   position: fixed; left: 0; right: 0; bottom: 0;
-  padding: 18px max(28px, env(safe-area-inset-left)) calc(16px + env(safe-area-inset-bottom));
+  /* Longhands: the 3-value shorthand applied the LEFT inset to both sides, so
+     in landscape with the notch on the right the strip was padded on the
+     wrong edge. */
+  padding-top: 18px;
+  padding-right: max(28px, env(safe-area-inset-right));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding-left: max(28px, env(safe-area-inset-left));
   background: linear-gradient(to top, rgba(0,0,0,.78) 0%, rgba(0,0,0,.45) 65%, transparent 100%);
 }
 .bottombar.hidden { display: none; }

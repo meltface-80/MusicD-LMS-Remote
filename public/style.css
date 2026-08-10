@@ -518,8 +518,18 @@ main {
   --home-gutter: 14px;               /* kept in step with padding — Home carousels bleed by it */
   padding: 14px;
 }
-@media (min-width: 768px) { main { --home-gutter: 18px; padding: 18px; } }
-@media (min-width: 1200px) { main { --home-gutter: 22px; padding: 22px; } }
+/* Longhands, NOT the `padding` shorthand: the bottom reserve that clears the
+   mini transport and the home-indicator inset is set further down the file
+   (see `main { padding-bottom: calc(80px + env(safe-area-inset-bottom)) }`),
+   and a shorthand here would reset it. It happens to survive today only
+   because that rule comes later in source order — which is not something to
+   rely on. */
+@media (min-width: 768px) {
+  main { --home-gutter: 18px; padding-top: 18px; padding-right: 18px; padding-left: 18px; }
+}
+@media (min-width: 1200px) {
+  main { --home-gutter: 22px; padding-top: 22px; padding-right: 22px; padding-left: 22px; }
+}
 
 .album-grid {
   display: grid;
@@ -790,6 +800,12 @@ main {
   display: flex; flex-direction: column;
   gap: 22px;
   padding: 64px 18px 40px;
+  /* The 64px top reserve is for the pinned corner buttons, which sit at
+     `12px + env(safe-area-inset-top)`. Installed as a PWA that inset is
+     ~47-59px, so the buttons dropped to ~59-71px while the body still started
+     at 64px and the first row of content ran straight under them. The reserve
+     has to track the same inset they do. */
+  padding-top: calc(64px + env(safe-area-inset-top));
   /* Leave room at the bottom so the mini transport (≈78px tall + safe area)
      stays visible / not overlapping the last bit of content. */
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
@@ -921,7 +937,13 @@ main {
 /*  Toast                                                              */
 /* ------------------------------------------------------------------ */
 .toast {
-  position: fixed; left: 50%; bottom: 28px;
+  /* 28px was less than the iPhone home-indicator inset (34px), so installed
+     as a PWA the toast sat ON the indicator. (Separately, it outranks the
+     mini transport — z-index 100 vs 70 — so while something is playing it
+     still paints over the transport controls. That is a stacking choice, not
+     a safe-area one, and is left alone here.) */
+  position: fixed; left: 50%;
+  bottom: calc(28px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(8px);
   background: var(--bg-elev); color: var(--text);
   border: 1px solid var(--border);
@@ -1430,7 +1452,14 @@ main {
 .modal.np-mode .modal-share { right: 12px; }
 .modal.np-mode .modal-home {
   display: inline-flex;
-  position: absolute; top: 12px; left: 12px; z-index: 2;
+  /* The inset is NOT optional here. Installed as a PWA the app is
+     `apple-mobile-web-app-status-bar-style: black-translucent`, so the web
+     view runs under the status bar and this button landed on top of the
+     clock, half of it outside the touch area. Its four siblings
+     (.modal-close, .modal-share, .modal-edit, .modal-fav) all carry
+     `12px + inset` — this one was the odd one out, so on the now-playing
+     screen Home and Share sat on visibly different rows. */
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; z-index: 2;
 }
 
 /* The Now playing tab must NEVER scroll (Roon parity): the body clips, the
@@ -2136,6 +2165,13 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* Dark, not white: short pages and load gaps must never flash white
    (the proxied page's own background is forced dark too). */
 .lmsset-frame { flex: 1; width: 100%; border: 0; background: #181818; }
+/* The overlay is full-bleed and only its TOP bar carried an inset, so the
+   frame ran under the home indicator and the last row of any LMS settings
+   page was unreachable. The reserve has to go on this side of the iframe:
+   safe-area insets only resolve in the TOP-LEVEL browsing context, so
+   `env()` inside the embedded document is always 0 — nothing the page itself
+   does could fix this. */
+.lmsset-overlay { padding-bottom: env(safe-area-inset-bottom); }
 
 /* Artist page header: photo + bio + band membership (full grid width) */
 .artist-head {
@@ -2222,7 +2258,12 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .settings-info-btn:hover { color: var(--accent); }
 
 .settings-info-toast {
-  position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%);
+  /* 88px was a hardcoded "just above the transport" guess that did not track
+     the inset, so on a PWA the bar's real top edge (≈72px + 34px) rose past
+     it and the toast rendered behind the bar. Same anchor as
+     .mt-vol-popover, which sits above the transport for the same reason. */
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(78px + env(safe-area-inset-bottom));
   background: var(--bg-elev-2); border: 1px solid var(--border);
   color: var(--text); font-size: 14px; line-height: 1.5;
   padding: 12px 18px; border-radius: 12px; max-width: min(400px, 92vw);
