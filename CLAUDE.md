@@ -386,6 +386,39 @@ Layout section of README.md.
   running the new test against the pre-fix commit. The e2e guards the other
   half (a menu that outgrows the screen); the iOS half is guarded by the CSS.
   Keep the menu under ~800px of content on a 375x667 phone.
+- iOS SAFE AREAS are per-rule, and a rule that forgets the inset CANNOT be
+  caught by the e2e harness (v1.0.69). `viewport-fit=cover` is set on both app
+  pages and ~30 rules carry `env(safe-area-inset-*)`, so the machinery works —
+  what goes wrong is one rule missing it while its neighbours have it. Headless
+  Chromium has no notch or home indicator, so every inset resolves to 0 and a
+  broken rule measures IDENTICALLY to a fixed one; `e2e-v69-safearea.js`
+  therefore fetches the real stylesheet, substitutes concrete iPhone values
+  (59px top / 34px bottom) and appends it as an override sheet, then measures
+  geometry for real. Any new fixed/pinned element needs an assertion there.
+  What was wrong: `.modal.np-mode .modal-home` was the ONLY one of the modal's
+  five corner buttons without the top inset, so installed as a PWA (the app is
+  `apple-mobile-web-app-status-bar-style: black-translucent`, i.e. drawn under
+  the status bar) it sat on the clock; `.modal-body`'s `padding-top: 64px` was
+  inset-free while the buttons pinned above it move down by the inset, so they
+  collided once the inset passed ~52px; `.toast` at `bottom: 28px` was under
+  the 34px home indicator; and `.settings-info-toast`'s hardcoded `bottom:
+  88px` did not track the inset, so it rendered BEHIND the transport bar (use
+  `calc(78px + env(safe-area-inset-bottom))`, the same anchor as
+  `.mt-vol-popover`). The mini transport itself was already right: its
+  background reaches the physical bottom edge while its controls are lifted by
+  the inset — keep both halves.
+- An `env(safe-area-inset-*)` inside an IFRAME is always 0 — insets resolve
+  only in the top-level browsing context (v1.0.69). So the embedded LMS
+  settings frame could not have fixed itself; the reserve lives on OUR side, as
+  `padding-bottom` on `.lmsset-overlay`. Same reason `index.js`'s
+  `LMS_EMBED_VIEWPORT` needs no `viewport-fit=cover`.
+- Use padding LONGHANDS on anything whose bottom reserve carries a safe-area
+  inset (v1.0.69). `main`'s responsive `padding:` shorthands reset
+  `padding-bottom`, and the inset-bearing rule survived only by coming later in
+  source order — one reordering from silently losing it. `display.css`'s
+  `.bottombar` had the live version of this bug: a 3-value shorthand applied
+  `env(safe-area-inset-left)` to BOTH sides, so the wrong edge was padded in
+  landscape.
 - The mini transport is HIDDEN while the side menu is open (`body.menu-open`,
   v1.0.66) and no z-index will do it instead. `.app` is `z-index: 0`, i.e. its
   own stacking context, and `#menu-overlay` lives INSIDE it while
