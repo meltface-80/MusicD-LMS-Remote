@@ -3969,20 +3969,6 @@ async function smartLibraryArtists() {
   return out;
 }
 
-// Genre shares, from the same rec.genre the Library facet uses so the two
-// cannot disagree about what the library contains.
-function smartGenreWeights() {
-  const w = new Map();
-  let total = 0;
-  for (const rec of index.records) {
-    const g = rec.genre ? String(rec.genre).trim() : "";
-    if (!g) continue;
-    w.set(g, (w.get(g) || 0) + 1);
-    total++;
-  }
-  return { weights: w, total };
-}
-
 // The world's most-listened artists. Used twice: never seed from one, and
 // never offer one as a discovery. If this is empty the WHOLE BUILD ABORTS —
 // with no hub list the seed policy inverts and the feature starts recommending
@@ -4033,35 +4019,6 @@ async function smartSimilarRows(seedMbids) {
     for (const r of mine || []) out.push(r);
   }
   return out;
-}
-
-// An artist's roster for a genre, in MusicBrainz's own relevance order (which
-// is what makes a stretch pick defensible — do NOT re-sort it).
-//
-// A library genre is asked for under SEVERAL tag spellings, first hit wins:
-// the file's own GENRE tag is routinely a compound ("Alternative & Punk") and
-// MusicBrainz tags are atomic, so the literal string alone matched nothing.
-// See genreTagCandidates. A FETCH ERROR is not cached — only a real, empty
-// answer is, so a MusicBrainz blip doesn't write the genre off for 30 days.
-async function smartTagArtists(genre) {
-  for (const tag of smartAlgo.genreTagCandidates(genre)) {
-    const key = "tag:" + tag;
-    let rows = smartCache.get(key);
-    if (rows === undefined) {
-      await mbWait();
-      rows = await discovery.artistsByTag(tag, {
-        limit: smartAlgo.MAX_STRETCH_ROSTER, userAgent: MB_UA,
-      }).catch((e) => { spLog.debug("tag roster failed for \"" + tag + "\":", e.message); return null; });
-      if (rows) smartCache.set(key, rows);
-    }
-    if (rows && rows.length) {
-      spLog.debug("genre " + JSON.stringify(genre) + " → tag " + JSON.stringify(tag) +
-                  " gave " + rows.length + " artists");
-      return rows;
-    }
-  }
-  spLog.debug("genre " + JSON.stringify(genre) + ": no MusicBrainz tag matched");
-  return [];
 }
 
 // Artist name → a real Qobuz album, through the plugin's menu tree.
@@ -4184,39 +4141,62 @@ async function buildSmartPicks(day) {
       picks.push(rec);
     }
 
-    // The stretch pick. Its roster comes back in MusicBrainz's relevance order,
-    // which is what makes it defensible rather than a random unknown.
+    // The STRETCH pick: two hops out in the taste graph (owner decision,
+    // v1.0.68). It used to be chosen by GENRE, and on the owner's own library
+    // that could never work — the album genre comes from the file's GENRE tag
+    // and a library can carry none at all, so no threshold could fix it. This
+    // measures "unlike what you listen to" in the same graph that produced the
+    // five adjacent picks, so it needs no metadata those picks don't already
+    // rely on. See collectStretchCandidates.
     //
-    // It can come up empty at any of four stages and used to say so nowhere —
-    // the build logged "built 5 picks" whether the sixth had been considered or
-    // not, which is how "the stretch selection isn't showing" stayed a mystery.
-    // `stretchWhy` names the stage that ran out, is logged, and rides along in
-    // the day's attempt record so the reason survives the build.
+    // It can still come up empty at four stages and must SAY WHICH — the build
+    // used to log "built 5 picks" whether the sixth was considered or not,
+    // which is how this stayed a mystery for three releases. `stretchWhy`
+    // names the stage that ran out, is logged, and rides along in the day's
+    // attempt record so the screen can show it.
     const stretchBudget = smartAlgo.MAX_RESOLVES + smartAlgo.MAX_STRETCH_ROSTER;
-    const { weights, total } = smartGenreWeights();
-    const outside = smartAlgo.smartStretchGenres(weights, total).slice(0, smartAlgo.MAX_STRETCH_GENRES);
-    let stretchWhy = outside.length ? "no artist resolved to a Qobuz album" : "no genre outside the library";
-    let rosters = 0;
-    for (const g of outside) {
-      if (picks.some(p => p.kind === "stretch")) break;
-      if (tries >= stretchBudget) { stretchWhy = "resolve budget spent on the adjacent picks"; break; }
-      const roster = await smartTagArtists(g.genre);
-      if (roster.length) rosters++;
-      for (const a of roster.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
-        const canon = search.artistKey(a.name);
-        if (smartAlgo.smartPickExcluded(canon, sets)) continue;
+    let stretchWhy = "no near neighbours to step beyond";
+    let hop2Field = 0;
+
+    // Everything CLOSE to the library: the seeds, every artist one hop from a
+    // seed (hop-1 — where the adjacent picks come from), and everything owned.
+    // `cands` is used unfiltered on purpose: an already-owned hop-1 artist is
+    // still directly reachable, so what IT reaches is not two steps out.
+    const nearCanons = new Set(sets.library);
+    for (const s of seeds) if (s.canon) nearCanons.add(s.canon);
+    for (const c of cands) if (c.canon) nearCanons.add(c.canon);
+
+    // Step beyond the near-neighbours worth stepping beyond: the diversified
+    // pool is already exclusion-filtered and spread across different corners
+    // of the library, so its head is the best hop-1 frontier available.
+    const hop1 = pool.filter(c => c.mbid).slice(0, smartAlgo.STRETCH_HOP1);
+    if (hop1.length) {
+      const viaNameByMbid = new Map(hop1.map(c => [c.mbid, c.name]));
+      // Same helper (and same per-mbid cache) as the first hop — a hop-1
+      // artist that becomes a seed later reuses the very same entry.
+      const hop2Rows = await smartSimilarRows(hop1.map(c => c.mbid));
+      const field = smartAlgo.rankStretchCandidates(
+        smartAlgo.collectStretchCandidates(hop2Rows, viaNameByMbid, nearCanons, search.artistKey)
+          .filter(c => !smartAlgo.smartPickExcluded(c.canon, sets)));
+      hop2Field = field.length;
+      stretchWhy = field.length ? "no artist resolved to a Qobuz album"
+                                : "nothing two steps out that isn't already known";
+      for (const c of field.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
         if (tries >= stretchBudget) { stretchWhy = "resolve budget spent on the adjacent picks"; break; }
         tries++;
-        const alb = await smartResolveAlbum(a.name, playerId);
+        const alb = await smartResolveAlbum(c.name, playerId);
         if (!alb) continue;
-        const rec = { kind: "stretch", mbid: a.mbid, artist: a.name, canon,
-                      album: alb.album, image: alb.image, genre: g.genre };
+        // No `genre`: that field is what tells smartPickReason a pick predates
+        // the graph rule, and these must read as the two-step picks they are.
+        const rec = { kind: "stretch", mbid: c.mbid, artist: c.name, canon: c.canon,
+                      album: alb.album, image: alb.image, genre: "",
+                      viaNames: c.viaNames };
         rec.reason = smartAlgo.smartPickReason(rec);
+        delete rec.viaNames;
         picks.push(rec);
         break;
       }
     }
-    if (outside.length && !rosters) stretchWhy = "no MusicBrainz tag matched any candidate genre";
     const gotStretch = picks.some(p => p.kind === "stretch");
 
     const written = smartPicks.writeDay(day, picks);
@@ -4226,7 +4206,7 @@ async function buildSmartPicks(day) {
                " (" + seedMbids.length + " seeds, " + tries + " resolves, " +
                Math.round((Date.now() - t0) / 1000) + "s)" +
                (gotStretch ? "" : " — no stretch pick: " + stretchWhy +
-                 " [genres tried: " + (outside.map(g => g.genre).join(", ") || "none") + "]"));
+                 " [hop1 " + hop1.length + ", hop2 field " + hop2Field + "]"));
     return written;
   } catch (e) {
     smartPicks.markAttempt(day, { picks: 0, reason: e.message });
@@ -4492,18 +4472,18 @@ app.post("/api/smart-picks/rebuild", (req, res) => {
 /* Diagnostic: why the STRETCH pick did or did not happen.
  *
  * It can come up empty at four stages and the difference decides the fix —
- * "no genre outside the library" and "no artist resolved to a Qobuz album" ask
- * for opposite things. The build log names the stage, but reading it means
- * finding a log file; this walks the SAME pipeline and hands back every
- * decision as JSON.
+ * "no near neighbours to step beyond" and "no artist resolved to a Qobuz
+ * album" ask for opposite things. The build log names the stage, but reading
+ * it means finding a log file; this walks the SAME pipeline and hands back
+ * every decision as JSON.
  *
  * It WRITES NOTHING: no pick is stored, no artist is marked seen, no favourite
  * is touched, and the day's attempt record is left alone. Safe to open at any
  * time. Deliberately NOT gated on debug logging, unlike /api/qobuz/debug —
- * that one echoes raw plugin payloads and player ids, this one reports genre
- * counts and artist names off the owner's own library.
+ * that one echoes raw plugin payloads and player ids, this one reports artist
+ * names off the owner's own library.
  *
- *   GET /api/smart-picks/debug            the cheap half (genres + rosters)
+ *   GET /api/smart-picks/debug            the graph half (seeds, hop 1, hop 2)
  *   GET /api/smart-picks/debug?resolve=1  also try the Qobuz lookups, which
  *                                         are a menu walk per artist
  */
@@ -4512,17 +4492,18 @@ app.get("/api/smart-picks/debug", async (req, res) => {
   try {
     const day = smartDayKey();
     const playerId = state.players[0] && state.players[0].id;
-    const { weights, total } = smartGenreWeights();
-    const rank = [...weights.entries()]
-      .map(([genre, albums]) => ({ genre, albums, share: total ? Math.round(albums / total * 1000) / 10 : 0 }))
-      .sort((a, b) => a.albums - b.albums);
-    const outside = smartAlgo.smartStretchGenres(weights, total).slice(0, smartAlgo.MAX_STRETCH_GENRES);
-
     const hubs = (await smartHubSet()) || new Set();
+    // TODAY'S OWN PICKS ARE HELD OUT OF `seen`. Marking a pick shown is the
+    // last thing a build does, so running this straight afterwards — which is
+    // exactly when anyone runs it — would find every candidate "shown
+    // recently" and report an empty graph, answering a question nobody asked.
+    // Held out, this reports what TODAY'S BUILD saw, which is the question.
+    const seen = smartPicks.seenSet();
+    for (const p of smartPicks.readDay(day)) if (p.canon) seen.delete(p.canon);
     const sets = { library: await smartLibraryArtists(), hubs,
-                   blocked: smartPicks.blockedSet(), seen: smartPicks.seenSet() };
-    // The same four tests smartPickExcluded applies, but NAMED — "excluded" on
-    // its own doesn't tell you whether to widen the genre or the roster.
+                   blocked: smartPicks.blockedSet(), seen };
+    // The same four tests smartPickExcluded applies, but NAMED — a bare
+    // "excluded" doesn't say whether to widen the graph or the exclusions.
     const why = (canon) =>
       !canon                    ? "unnamed" :
       sets.library.has(canon)   ? "already owned" :
@@ -4530,42 +4511,67 @@ app.get("/api/smart-picks/debug", async (req, res) => {
       sets.blocked.has(canon)   ? "blocked" :
       sets.seen.has(canon)      ? "shown recently" : null;
 
+    const profile = smartLibraryProfile();
+    const seeds = smartAlgo.smartPickSeeds(profile, hubs, smartAlgo.SEED_COUNT);
+    const seedNameByMbid = new Map();
+    const seedMbids = [];
+    for (const s of seeds) {
+      const mbid = await albumInfo.artistMbid(s.name);
+      if (!mbid) continue;
+      seedMbids.push(mbid);
+      seedNameByMbid.set(mbid, s.name);
+    }
+    const rows = seedMbids.length ? await smartSimilarRows(seedMbids) : [];
+    const cands = smartAlgo.collectSmartCandidates(rows, seedNameByMbid, search.artistKey);
+    const pool = smartAlgo.diversifySmartCandidates(
+      smartAlgo.rankSmartCandidates(cands.filter(c => !smartAlgo.smartPickExcluded(c.canon, sets))))
+      .slice(0, smartAlgo.POOL_COUNT);
+
+    const nearCanons = new Set(sets.library);
+    for (const s of seeds) if (s.canon) nearCanons.add(s.canon);
+    for (const c of cands) if (c.canon) nearCanons.add(c.canon);
+    const hop1 = pool.filter(c => c.mbid).slice(0, smartAlgo.STRETCH_HOP1);
+
+    let field = [];
+    if (hop1.length) {
+      const viaNameByMbid = new Map(hop1.map(c => [c.mbid, c.name]));
+      const hop2Rows = await smartSimilarRows(hop1.map(c => c.mbid));
+      field = smartAlgo.rankStretchCandidates(
+        smartAlgo.collectStretchCandidates(hop2Rows, viaNameByMbid, nearCanons, search.artistKey));
+    }
+
     const probeQobuz = String(req.query.resolve || "") === "1" && !!playerId;
-    const stages = [];
-    for (const g of outside) {
-      const roster = await smartTagArtists(g.genre);
-      const artists = [];
-      let probes = 0;
-      for (const a of roster.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
-        const excluded = why(search.artistKey(a.name));
-        const row = { name: a.name, excluded };
-        // Bounded: each probe is a full menu walk against the owner's server.
-        // NOTE this shares smartResolveAlbum's cache, misses included — which
-        // is the point, since a miss here is a miss the build would have had.
-        if (!excluded && probeQobuz && probes < 5) {
-          probes++;
-          const alb = await smartResolveAlbum(a.name, playerId).catch(() => null);
-          row.qobuz_album = alb ? alb.album : null;
-        }
-        artists.push(row);
+    let probes = 0;
+    const stretch = [];
+    for (const c of field.slice(0, smartAlgo.MAX_STRETCH_ROSTER)) {
+      const excluded = why(c.canon);
+      const row = { name: c.name, referrers: c.vias.length, via: c.viaNames.slice(0, 3), excluded };
+      // Bounded: each probe is a full menu walk against the owner's server.
+      // NOTE this shares smartResolveAlbum's cache, misses included — which is
+      // the point, since a miss here is a miss the build would have had.
+      if (!excluded && probeQobuz && probes < 5) {
+        probes++;
+        const alb = await smartResolveAlbum(c.name, playerId).catch(() => null);
+        row.qobuz_album = alb ? alb.album : null;
       }
-      stages.push({ genre: g.genre, albums: g.albums,
-                    tags_tried: smartAlgo.genreTagCandidates(g.genre),
-                    roster_size: roster.length, artists });
+      stretch.push(row);
     }
 
     res.json({
       day,
       last_attempt: smartPicks.attempted(day),
-      albums_with_a_genre: total,
-      genres_distinct: rank.length,
-      rarest_genres: rank.slice(0, 10),
-      commonest_genres: rank.slice(-5).reverse(),
-      stretch_genres_selected: outside.map(g => g.genre),
+      library_artists: sets.library.size,
+      seeds: seeds.slice(0, smartAlgo.SEED_COUNT).map(s => s.name),
+      seeds_with_an_mbid: seedMbids.length,
+      hop1_total: cands.length,
+      hop1_after_exclusions: pool.length,
+      hop1_expanded: hop1.map(c => c.name),
+      hop2_field: field.length,
+      hop2_usable: field.filter(c => !why(c.canon)).length,
       exclusion_set_sizes: { library: sets.library.size, hubs: sets.hubs.size,
                              blocked: sets.blocked.size, seen: sets.seen.size },
       qobuz_probed: probeQobuz,
-      stages,
+      stretch_candidates: stretch,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
