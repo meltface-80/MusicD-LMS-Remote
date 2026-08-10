@@ -386,6 +386,23 @@ Layout section of README.md.
   running the new test against the pre-fix commit. The e2e guards the other
   half (a menu that outgrows the screen); the iOS half is guarded by the CSS.
   Keep the menu under ~800px of content on a 375x667 phone.
+- `.modal.np-mode .modal-body` MUST carry `env(safe-area-inset-top)` ITSELF
+  (v1.0.70). It overrides the base `.modal-body` padding-top — because the
+  np tabs row sits up beside the corner buttons rather than under a tall
+  header band — so the inset the base rule applies never reaches the Now
+  playing screen. With a bare 14px that screen started at the PHYSICAL top of
+  the display: the stack rode up under the dynamic island and the slack came
+  out at the bottom as dead space under the zone/volume row. The Roon build
+  hit the identical defect ("stretched too high above the top of the screen")
+  and its fix is the same line — when a safe-area report comes in about a
+  screen that exists in both builds, DIFF THE RULE AGAINST IT FIRST
+  (`raw.githubusercontent.com/meltface-80/MusicD-Remote/main/public/style.css`);
+  a comment-stripped selector-by-selector diff of the np-mode / np-screen /
+  np-secondary / mini-transport blocks found this in one pass after two
+  releases of guessing. HARNESS LIMIT: at 390x844 the artwork (`flex: 1 1 0`)
+  absorbs the missing 59px, so the e2e can prove the content starts too high
+  but CANNOT reproduce the bottom dead space — that needs the artwork at its
+  `max-height` cap, i.e. a real phone.
 - iOS SAFE AREAS are per-rule, and a rule that forgets the inset CANNOT be
   caught by the e2e harness (v1.0.69). `viewport-fit=cover` is set on both app
   pages and ~30 rules carry `env(safe-area-inset-*)`, so the machinery works —
