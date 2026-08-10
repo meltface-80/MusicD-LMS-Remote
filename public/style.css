@@ -1436,8 +1436,19 @@ main {
   align-items: center;
   gap: 14px;
   /* The tabs row sits up beside the corner buttons (Roon-style) instead of
-     below a tall reserved header band. */
-  padding-top: 14px;
+     below a tall reserved header band — which is exactly why THIS rule has to
+     carry the status-bar inset itself. It overrides the base .modal-body
+     padding-top, so the inset that rule applies never reaches the Now playing
+     screen.
+     With viewport-fit=cover and a bare 14px, that screen started at the
+     PHYSICAL top of the display: the whole stack rode up under the dynamic
+     island, and because the artwork is the flexible piece and is capped, the
+     slack came out at the BOTTOM as dead space under the zone/volume row.
+     Only visible in the installed PWA — in a browser tab the address bar
+     occupies that space anyway, which is why every headless check passed.
+     The Roon build hit this exact defect ("stretched too high above the top
+     of the screen") and fixed it the same way; keep the two in step. */
+  padding-top: calc(14px + env(safe-area-inset-top));
 }
 .modal.np-mode .modal-info {
   width: 100%;
