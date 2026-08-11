@@ -19,18 +19,50 @@ Layout section of README.md.
    `/opt/pw-browsers/chromium`). Never leave a `data/` directory behind in
    the repo (it's gitignored, but clean up after test runs).
 
-3. **Bump the version once a new build is ready.** When a feature set /
+3. **Never let the iOS display geometry regress.** `lib/safearea.test.js`
+   runs in `npm test` and must stay green: the modal family
+   (`.modal-close`, `.modal-share`, `.modal-edit`, `.modal-fav`,
+   `.modal.np-mode .modal-home`, `.modal.np-mode .modal-body`,
+   `.modal-body`'s top padding) must **never** carry
+   `env(safe-area-inset-top)`, and `.topbar` / `.menu-drawer` / the bottom
+   reserves must always keep theirs. Four releases (v1.0.69, .70, .75, .76)
+   shipped fixes that measured GREEN in every harness and all failed on the
+   owner's phone, because **no harness here can see this**: headless Chromium
+   has no notch, so every inset resolves to 0 and a rule that wrongly carries
+   one is indistinguishable from one that does not.
+   THE RULES, in order:
+   - If that test fails, the change is wrong. Don't "fix" the test.
+   - Adding a safe-area inset pushes content OUT of the safe area. If a report
+     says a screen should be *overlaying* / *covering* the safe zone, the
+     answer is to REMOVE an inset, not add one. That misreading is exactly
+     what caused this.
+   - When a display bug only shows on the owner's device, **do not theorise
+     about iOS** — find the last version that looked right and diff it. The
+     Roon build is the reference and **v1.6.50** is the last good one:
+     `git -C /workspace/musicd-remote show v1.6.50:public/style.css`
+     (`add_repo meltface-80/MusicD-Remote`, then
+     `git fetch --depth 1 origin tag v1.6.50` on a shallow clone). Two
+     commands, and they would have ended this in one pass instead of five.
+   - Don't reach for viewport-unit arithmetic, `dvh` juggling, panel-height
+     overrides or a `visualViewport` runtime shim. All four were tried and all
+     four were reasoning about a symptom from geometry that was already
+     correct. Any new fixed/pinned element still needs an assertion in
+     `e2e-v69-safearea.js`, which substitutes real iPhone insets so geometry
+     can be measured — but it can only catch a rule that moves, never one that
+     shouldn't have.
+
+4. **Bump the version once a new build is ready.** When a feature set /
    fix set is complete and verified, bump `version` in `package.json` and
    commit it as `Release v1.0.x` with short release notes in the commit
    body. **Keep v1.0.x numbering for now** — the owner will advise
    explicitly when to move to v1.1.x or beyond.
 
-4. **The version bump IS the release.** This repo has no tags or GitHub
+5. **The version bump IS the release.** This repo has no tags or GitHub
    releases; the in-app updater resolves the latest version from
    `package.json` on `main` and downloads the `main` tarball. Merging the
    bump publishes the update to every install.
 
-5. **Keep the GitHub Pages site in step with every release.** The docs /
+6. **Keep the GitHub Pages site in step with every release.** The docs /
    configurator page (`docs/index.html`, served at
    https://meltface-80.github.io/MusicD-LMS-Remote/) shows the current
    version and must be updated in the same release commit: bump the
@@ -48,7 +80,7 @@ Layout section of README.md.
   `npm test` and the end-to-end checks are green and the version is bumped:
   push the branch, open the PR, and merge it. Don't wait to be asked, and
   don't leave `main` sitting behind a finished build — the merge IS the
-  release (§4 above), so an unmerged bump means no install gets the update.
+  release (§5 above), so an unmerged bump means no install gets the update.
 - Never push straight to `main`; changes reach it only through a merged PR,
   so the history keeps a reviewable record of each release.
 - Report the merged version back to the owner so they know what's live.
