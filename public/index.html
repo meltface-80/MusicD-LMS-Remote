@@ -229,7 +229,7 @@
           <span>Random albums</span>
         </button>
         <div class="menu-sep"></div>
-        <button class="menu-item" type="button" data-target="labels-toggle">
+        <button class="menu-item" type="button" id="menu-item-labels" data-target="labels-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           <span>Labels</span>
         </button>
@@ -249,7 +249,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h7a3 3 0 0 1 3 3v11a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v11a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg>
           <span>Pitchfork</span>
         </button>
-        <button class="menu-item" type="button" data-action="smart-picks">
+        <button class="menu-item" type="button" id="menu-item-picks" data-action="smart-picks">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
           <span>Smart Picks</span>
         </button>
@@ -351,28 +351,33 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     <!-- Home landing: sections of the library. The album wall (#album-grid)
          is one destination, reached from here or the side menu. -->
     <section id="home-view" class="home-view hidden" aria-label="Home">
+      <!-- data-row is each row's identity. The Home Screen settings page and
+           the loader both read it from the HOME_ROWS table in app.js, so the
+           list you reorder and the rows that render cannot drift apart.
+           Reordering MOVES these nodes; it never rebuilds them from markup,
+           or every tile in them loses its listeners. -->
       <div id="home-sections">
-        <div class="home-section home-section-unplayed">
+        <div class="home-section home-section-unplayed" data-row="unplayed">
           <h2 class="home-section-title home-section-link" id="home-unplayed-title" role="button" tabindex="0">Not played in 6 months</h2>
           <div id="home-unplayed" class="home-carousel"></div>
         </div>
-        <div class="home-section home-section-picks hidden">
+        <div class="home-section home-section-picks hidden" data-row="picks">
           <h2 class="home-section-title home-section-link" id="home-picks-title" role="button" tabindex="0">Smart Picks</h2>
           <div id="home-picks" class="home-carousel home-carousel-1row"></div>
         </div>
-        <div class="home-section home-section-random">
+        <div class="home-section home-section-random" data-row="random">
           <h2 class="home-section-title home-section-link" id="home-random-title" role="button" tabindex="0">Random albums</h2>
           <div id="home-random" class="home-carousel"></div>
         </div>
-        <div class="home-section home-section-library">
+        <div class="home-section home-section-library" data-row="library">
           <h2 class="home-section-title home-section-link" id="home-library-title" role="button" tabindex="0">Library</h2>
           <div id="home-library" class="home-carousel"></div>
         </div>
-        <div class="home-section home-section-lotw">
+        <div class="home-section home-section-lotw" data-row="lotw">
           <h2 class="home-section-title home-section-link" id="home-lotw-title" role="button" tabindex="0">Label of the week</h2>
           <div id="home-lotw" class="home-carousel home-carousel-1row"></div>
         </div>
-        <div class="home-section home-section-genres">
+        <div class="home-section home-section-genres" data-row="genres">
           <h2 class="home-section-title">Browse by genre</h2>
           <div id="home-genres" class="home-genre-grid"></div>
         </div>
@@ -1015,6 +1020,16 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
+          <button class="settings-nav-item" type="button" data-pane="homescreen">
+            <span class="settings-nav-ico" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="5" rx="1"/><path d="M3 20h11"/></svg>
+            </span>
+            <span class="settings-nav-txt">
+              <span class="settings-nav-title">Home Screen</span>
+              <span class="settings-nav-desc">Which rows show, and in what order</span>
+            </span>
+            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
           <button class="settings-nav-item" type="button" data-pane="smartpicks">
             <span class="settings-nav-ico" aria-hidden="true">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
@@ -1150,6 +1165,17 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <h2>Labels</h2>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Record labels <button class="settings-info-btn" data-info="Off by default. When on, the app works out each album's record label and fetches label logos, which is the only part of the app that talks to Qobuz's public pages and MusicBrainz for this. When off none of it runs: no scan, no lookups, and labels are left out of search results entirely." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="labels-enabled" aria-label="Record labels">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="settings-note" id="labels-enabled-note">Off by default. Everything below applies only while this is on.</div>
         </div>
 
         <div class="settings-block">
@@ -1353,6 +1379,23 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
         </div>
       </div>
 
+      <!-- Home Screen: which rows appear, and in what order. The list is built
+           by app.js from its HOME_ROW_TITLES table, so the rows you can
+           reorder here and the rows that actually render cannot drift apart. -->
+      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="homescreen">
+        <div class="settings-pane-head">
+          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2>Home Screen</h2>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-note">Hold the handle to drag a row into a new position. A row switched off is not fetched at all &mdash; it does no work in the background.</div>
+          <ul class="home-rows-list" id="home-rows-list"></ul>
+        </div>
+      </div>
+
       <!-- Smart Picks -->
       <div class="settings-view settings-pane hidden" data-view="pane" data-pane="smartpicks">
         <div class="settings-pane-head">
@@ -1360,6 +1403,17 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <h2>Smart Picks</h2>
+        </div>
+
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Smart Picks <button class="settings-info-btn" data-info="Off by default. When on, the app analyses your library once a day and asks ListenBrainz and MusicBrainz for albums by artists you don't own, then looks them up in your server's Qobuz plugin. When off it does nothing at all — no daily build, no timer, no requests to anybody." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="picks-enabled" aria-label="Smart Picks">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="settings-note" id="picks-enabled-note">Off by default. Everything below applies only while this is on.</div>
         </div>
 
         <div class="settings-block">

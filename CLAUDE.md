@@ -403,6 +403,38 @@ Layout section of README.md.
   absorbs the missing 59px, so the e2e can prove the content starts too high
   but CANNOT reproduce the bottom dead space — that needs the artwork at its
   `max-height` cap, i.e. a real phone.
+- OPT-IN FEATURES are gated so the WORK stops, not just the paint (v1.0.72,
+  `lib/features.js`). Labels and Smart Picks both reach the network on their
+  own schedule, so both default OFF. The gates: ONE funnel for Smart Picks
+  (`kickSmartPicks`, and the check sits ABOVE the `force` handling — the
+  rebuild button is reachable from any client showing a stale settings pane);
+  the labels gate wraps the reseed+scan at the index rebuild, the hourly
+  auto-rescan tick, and every write/network route (409). `startSmartPicksMaintenance`
+  returns null while off, so there is not even a timer; the settings route
+  starts/stops it so enabling needs no restart. TWO DELIBERATE DIVERGENCES from
+  the Roon build, both because its version has the defect: (a) SEARCH is
+  explicitly gated rather than relying on `labelsIndex.map` being empty — the
+  reference relies on emptiness and has a live path that fills the map anyway,
+  silently un-omitting labels; (b) the flag is THREE-VALUED (true/false/ABSENT)
+  and absent infers from evidence of prior use, so an upgrade cannot switch an
+  existing install off — and an UNREADABLE store defers rather than answering
+  "no", because writing that down would switch someone off permanently and
+  repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
+  REQUESTS, not by checking a row is hidden.
+- HOME ROWS are server-persisted as an ordered `[{id,on}]` array (v1.0.72) —
+  one array, because order and membership are one fact and splitting them is
+  how they end up contradicting each other. `HOME_ROW_TITLES` in app.js is the
+  single vocabulary (exposed as `window.__homeRowTitles`), matched to each
+  section's `data-row` in index.html. Traps, all pinned by the e2e: reordering
+  must `appendChild` the EXISTING node (it moves it, preserving every tile's
+  listeners) and never rebuild from markup; `applyHomeLayout` must `toggle`
+  `.hidden`, never `add`, or a row switched back on stays hidden for the
+  session because the renderers write into the inner carousel; `saveHomeRows`
+  must REDRAW the settings list after the POST, because the server answers
+  with fresh `{id,on}` objects and replacing the array orphans every checkbox
+  handler still closing over the old one; an id the stored layout has never
+  heard of is appended switched ON, or shipping a new row would mean nobody
+  with an existing install ever saw it.
 - `/diag.html` REPORTS THE DEVICE'S OWN GEOMETRY (v1.0.71). Three releases of
   safe-area guesswork failed because headless Chromium cannot reproduce an
   iPhone: at 393x852 with real insets substituted the now-playing screen

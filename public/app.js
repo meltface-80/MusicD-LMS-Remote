@@ -338,23 +338,92 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       (Date.now() - homeRowsLoadedAt) < HOME_ROWS_TTL_MS &&
       homeUnplayed && homeUnplayed.querySelector(".album") &&
       homeRandom && homeRandom.querySelector(".album");
-    if (!rowsFresh) {
+    // A DISABLED row is never loaded, which is the whole point of the switch:
+    // hiding a row has to stop the work behind it, not just the paint. The
+    // two rows on the shared TTL are asked for individually so switching one
+    // off does not stop the other refreshing.
+    if (!rowsFresh && (homeRowOn("unplayed") || homeRowOn("random"))) {
       homeRowsLoadedAt = Date.now();
-      loadHomeUnplayed();
-      loadHomeRandom();
+      if (homeRowOn("unplayed")) loadHomeUnplayed();
+      if (homeRowOn("random")) loadHomeRandom();
     }
     // Label of the week depends on the background labels scan, which may not be
     // ready on the first visit — retry each visit until it populates, then stop.
-    if (!homeLotwLoaded) loadHomeLabelOfWeek();
+    if (homeRowOn("lotw") && !homeLotwLoaded) loadHomeLabelOfWeek();
     // Compared by DAY KEY rather than a loaded-once flag: a phone left open
     // overnight has to pick up the next day's picks.
     const today = new Date();
     const dayKey = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") +
                    "-" + String(today.getDate()).padStart(2, "0");
-    if (homePicksDay !== dayKey) loadHomeSmartPicks();
-    if (!homeSectionsLoaded) loadHomeGenres();
-    if (homeLibraryStale || !rowHasContent(homeLibrary)) loadHomeLibrary();
+    if (homeRowOn("picks") && homePicksDay !== dayKey) loadHomeSmartPicks();
+    if (homeRowOn("genres") && !homeSectionsLoaded) loadHomeGenres();
+    if (homeRowOn("library") && (homeLibraryStale || !rowHasContent(homeLibrary))) loadHomeLibrary();
   }
+
+  /* ---- Which Home rows show, and in what order ----------------------------
+   *
+   * The vocabulary lives HERE and is exposed to the settings page, so the list
+   * you reorder and the rows that actually render cannot describe different
+   * things. `id` matches each section's data-row attribute in index.html.
+   */
+  const HOME_ROW_TITLES = {
+    unplayed: "Not played in 6 months",
+    picks:    "Smart Picks",
+    random:   "Random albums",
+    library:  "Library",
+    lotw:     "Label of the week",
+    genres:   "Browse by genre",
+  };
+  let homeLayout = Object.keys(HOME_ROW_TITLES).map(id => ({ id, on: true }));
+  window.__homeRowTitles = () => ({ ...HOME_ROW_TITLES });
+
+  // Unknown id → true. A row the stored layout has never heard of renders
+  // rather than vanishing, which is what makes shipping a new row safe.
+  function homeRowOn(id) {
+    const r = homeLayout.find(x => x.id === id);
+    return !r || r.on !== false;
+  }
+  const homeRowEl = (id) => homeSections && homeSections.querySelector('[data-row="' + id + '"]');
+  // Rows that hide themselves when they have nothing in them — re-showing a
+  // row the layout enables must not un-hide one that is simply empty.
+  const rowHidesWhenEmpty = (id) => id === "picks" || id === "lotw";
+  const rowHasAnyContent = (el) => !!(el && el.querySelector(".album, .pick-card, .home-genre-card"));
+
+  function applyHomeLayout() {
+    if (!homeSections) return;
+    for (const row of homeLayout) {
+      const el = homeRowEl(row.id);
+      if (!el) continue;
+      // appendChild MOVES an in-DOM node, preserving every listener on the
+      // tiles inside it. Rebuilding from markup would strand them.
+      homeSections.appendChild(el);
+      // toggle, NOT add: only ever adding meant a row switched back on stayed
+      // hidden for the rest of the session, because the renderers write into
+      // the inner carousel rather than this wrapper.
+      el.classList.toggle("hidden",
+        !row.on || (rowHidesWhenEmpty(row.id) && !rowHasAnyContent(el)));
+    }
+  }
+  window.__applyHomeLayout = (rows) => {
+    if (Array.isArray(rows) && rows.length) homeLayout = rows;
+    applyHomeLayout();
+    showHome();   // apply immediately — a layout that waits for a relaunch reads as broken
+  };
+
+  async function loadHomeLayout() {
+    try {
+      const r = await fetch("/api/settings/home-rows", { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && Array.isArray(j.rows) && j.rows.length) homeLayout = j.rows;
+      }
+    } catch (e) {
+      // Offline or an older server: keep the default order. A Home screen in
+      // the wrong order is recoverable; one that never renders is not.
+    }
+    applyHomeLayout();
+  }
+  window.__loadHomeLayout = loadHomeLayout;
   // Reveal the album wall. opts.loadIfEmpty loads a fresh wall only when it has
   // no content yet (so passive reveals — opening an overlay from the menu —
   // don't leave an empty grid behind, without racing actions that render their
@@ -5122,6 +5191,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   };
 
   async function bootstrap() {
+    // The layout is server-persisted, so every device agrees. Read it BEFORE
+    // the first paint, or Home renders in the default order and then jumps.
+    if (window.__loadHomeLayout) await window.__loadHomeLayout();
+    if (window.__applyFeatureMenuFromServer) window.__applyFeatureMenuFromServer();
     // Instant open: paint the last Home from cache before we've reconnected, so
     // reopening the PWA shows content immediately instead of reloading the whole
     // screen. Skipped when a filtered wall is being restored (activeFilter), and
@@ -7125,6 +7198,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         const r = await fetch("/api/settings/smart-picks", { cache: "no-store" });
         if (!r.ok) return;
         const j = await r.json();
+        const en = document.getElementById("picks-enabled");
+        if (en) en.checked = !!j.enabled;
+        if (window.__applyFeatureMenu) window.__applyFeatureMenu({ smartPicks: !!j.enabled });
         if (hourSel) hourSel.value = String(j.hour);
         if (autoAdd) autoAdd.checked = !!j.auto_add;
         if (svcNote) svcNote.textContent = j.service_ready
@@ -7144,6 +7220,27 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         if (okMsg && window.__showToast) window.__showToast(okMsg);
       } catch (e) { if (window.__showToast) window.__showToast(e.message, "error"); }
     };
+
+    const picksEnabled = document.getElementById("picks-enabled");
+    if (picksEnabled) picksEnabled.addEventListener("change", async () => {
+      const on = picksEnabled.checked;
+      try {
+        const r = await fetch("/api/settings/smart-picks", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: on }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
+        if (window.__showToast) window.__showToast(on
+          ? "Smart Picks on — the first build runs at the hour below"
+          : "Smart Picks off — no builds and no lookups will run");
+        if (window.__applyFeatureMenu) window.__applyFeatureMenu({ smartPicks: on });
+      } catch (e) {
+        // The server refused — do not leave the switch claiming otherwise.
+        picksEnabled.checked = !on;
+        if (window.__showToast) window.__showToast(e.message, "error");
+      }
+    });
 
     if (hourSel) hourSel.addEventListener("change", () => {
       const h = parseInt(hourSel.value, 10);
@@ -7169,10 +7266,174 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
   const loadSmartPicksPane = () => window.__loadSmartPicksPane && window.__loadSmartPicksPane();
 
+  /* ---- Labels on/off ---------------------------------------------------- */
+  const labelsEnabledEl = document.getElementById("labels-enabled");
+  const labelsEnabledNote = document.getElementById("labels-enabled-note");
+  async function loadLabelsEnabled() {
+    if (!labelsEnabledEl) return;
+    try {
+      const r = await fetch("/api/settings/labels", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      labelsEnabledEl.checked = !!j.enabled;
+      if (window.__applyFeatureMenu) window.__applyFeatureMenu({ labels: !!j.enabled });
+      if (labelsEnabledNote) {
+        labelsEnabledNote.textContent = j.enabled
+          ? (j.scanning ? "Scanning now…"
+             : (j.count ? j.count + " label" + (j.count === 1 ? "" : "s") + " found."
+                        : "No labels yet — the first scan runs in the background."))
+          : "Off. No label lookups run, and labels are left out of search.";
+      }
+    } catch (e) { /* keep the last shown value */ }
+  }
+  if (labelsEnabledEl) labelsEnabledEl.addEventListener("change", async () => {
+    const on = labelsEnabledEl.checked;
+    try {
+      const r = await fetch("/api/settings/labels", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: on }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
+      if (window.__showToast) window.__showToast(on
+        ? "Labels on — the first scan is running now"
+        : "Labels off — no label lookups will run");
+      if (window.__applyFeatureMenu) window.__applyFeatureMenu({ labels: on });
+      loadLabelsEnabled();
+    } catch (e) {
+      labelsEnabledEl.checked = !on;   // the server refused — don't lie about it
+      if (window.__showToast) window.__showToast(e.message, "error");
+    }
+  });
+
+  /* ---- Home Screen: which rows show, and in what order -------------------
+   *
+   * Rendered from the same table the Home screen itself loops (exposed as
+   * window.__homeRowTitles), so a row can never appear in one and not the
+   * other.
+   */
+  const homeRowsList = document.getElementById("home-rows-list");
+  let homeRowsDraft = [];
+
+  function renderHomeRowsList() {
+    if (!homeRowsList) return;
+    homeRowsList.innerHTML = "";
+    const titles = window.__homeRowTitles ? window.__homeRowTitles() : {};
+    for (const row of homeRowsDraft) {
+      const li = document.createElement("li");
+      li.className = "home-row-item";
+      li.dataset.row = row.id;
+
+      const grip = document.createElement("span");
+      grip.className = "home-row-grip";
+      grip.setAttribute("aria-hidden", "true");
+      grip.textContent = "⠿";
+
+      const name = document.createElement("span");
+      name.className = "home-row-name";
+      name.textContent = titles[row.id] || row.id;
+
+      const sw = document.createElement("label");
+      sw.className = "switch";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = row.on !== false;
+      cb.setAttribute("aria-label", (titles[row.id] || row.id) + " row");
+      cb.addEventListener("change", () => { row.on = cb.checked; saveHomeRows(); });
+      const track = document.createElement("span");
+      track.className = "switch-track";
+      const thumb = document.createElement("span");
+      thumb.className = "switch-thumb";
+      track.appendChild(thumb);
+      sw.appendChild(cb); sw.appendChild(track);
+
+      li.appendChild(grip); li.appendChild(name); li.appendChild(sw);
+      attachRowDrag(li, grip);
+      homeRowsList.appendChild(li);
+    }
+  }
+
+  /* Hold the grip, then drag. Pointer events so one path covers touch and
+   * mouse; the list reorders live under the finger and the draft array is
+   * rewritten FROM THE DOM on drop, so the two cannot disagree. */
+  function attachRowDrag(li, grip) {
+    let dragging = false;
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      dragging = true;
+      li.classList.add("is-dragging");
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* not captured — drag still works */ }
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!dragging || !homeRowsList) return;
+      // Compare against each row's MIDDLE, so the swap happens once the
+      // dragged row has genuinely passed it rather than flickering per pixel.
+      for (const other of [...homeRowsList.querySelectorAll(".home-row-item")]) {
+        if (other === li) continue;
+        const r = other.getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        if (e.clientY < mid && (other.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+          homeRowsList.insertBefore(li, other); break;
+        }
+        if (e.clientY > mid && (other.compareDocumentPosition(li) & Node.DOCUMENT_POSITION_PRECEDING)) {
+          homeRowsList.insertBefore(li, other.nextSibling); break;
+        }
+      }
+    });
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      li.classList.remove("is-dragging");
+      if (homeRowsList) {
+        const order = [...homeRowsList.querySelectorAll(".home-row-item")].map(x => x.dataset.row);
+        homeRowsDraft.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      }
+      saveHomeRows();
+    };
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  }
+
+  async function saveHomeRows() {
+    try {
+      const r = await fetch("/api/settings/home-rows", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: homeRowsDraft }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || "Couldn’t save that");
+      if (Array.isArray(j.rows)) {
+        homeRowsDraft = j.rows;
+        // REDRAW. The server answers with freshly built {id,on} objects, so
+        // replacing the array orphans every checkbox handler still closing
+        // over the old one — after one save every further toggle would mutate
+        // a discarded object and be silently dropped.
+        renderHomeRowsList();
+      }
+      // Apply immediately: the Home screen is behind this sheet, and a layout
+      // that only takes effect on the next launch reads as a broken control.
+      if (window.__applyHomeLayout) window.__applyHomeLayout(homeRowsDraft);
+    } catch (e) {
+      if (window.__showToast) window.__showToast(e.message, "error");
+      loadHomeRowsSettings();   // resync from the server rather than keep a lie
+    }
+  }
+
+  async function loadHomeRowsSettings() {
+    try {
+      const r = await fetch("/api/settings/home-rows", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (j && Array.isArray(j.rows)) homeRowsDraft = j.rows;
+    } catch (e) { /* keep whatever is shown */ }
+    renderHomeRowsList();
+  }
+
   // pendingThemeId is cleared on every open: the sheet should never reopen
   // mid-decision, showing a tick against a theme that isn't applied.
   const open = () => { showView("home"); pendingThemeId = null; renderThemeList();
-    loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth(); overlay.classList.remove("hidden"); };
+    loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth();
+    loadLabelsEnabled(); loadHomeRowsSettings(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
   };
@@ -7927,6 +8188,33 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
   window.__refreshServices = () => loadServices(true);
   loadServices(false);
+
+  /* Opt-in features reflected into the side menu.
+   *
+   * A menu entry for a feature that is switched off leads to a screen that can
+   * only ever be empty — the Labels browser with no scan behind it, Smart
+   * Picks with no build. Hiding the entry is part of "off", not decoration.
+   *
+   * A key ABSENT from `state` leaves that entry alone, so one failed lookup
+   * cannot hide the other feature's row. Exported because the settings sheet
+   * flips these switches and the menu lives in a different IIFE — both call
+   * this rather than reaching into each other's DOM.
+   */
+  window.__applyFeatureMenu = (state) => {
+    const rows = { labels: document.getElementById("menu-item-labels"),
+                   smartPicks: document.getElementById("menu-item-picks") };
+    for (const [key, el] of Object.entries(rows)) {
+      if (el && typeof state[key] === "boolean") el.classList.toggle("hidden", !state[key]);
+    }
+  };
+  window.__applyFeatureMenuFromServer = async () => {
+    try {
+      const r = await fetch("/api/settings/features", { cache: "no-store" });
+      if (!r.ok) return;                       // older server: leave the markup as-is
+      const j = await r.json();
+      if (j && j.features) window.__applyFeatureMenu(j.features);
+    } catch (e) { /* leave both entries as the markup has them */ }
+  };
 
   // `menu-open` on <body> is what lets the CSS hide the mini transport: the bar
   // is a root-level fixed element and the drawer is inside `.app`, a z-index:0
