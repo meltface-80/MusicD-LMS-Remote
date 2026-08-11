@@ -1118,7 +1118,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const LIB_FACET_IDS = ["genre", "source", "decade", "label", "format",
                          "rate", "bits", "letter", "added"];
   const emptyFacets = () => { const o = {}; for (const id of LIB_FACET_IDS) o[id] = []; return o; };
-  let libView = { sort: "album", dir: "asc", seed: 1, played: "any", ...emptyFacets() };
+  // `prefix` is deliberately NOT in the persisted view: a filter you set to
+  // find one album should not still be narrowing the Library next time you
+  // open the app, with nothing on screen to say why it looks half empty.
+  let libView = { sort: "album", dir: "asc", seed: 1, played: "any", prefix: "", ...emptyFacets() };
   let libraryWallActive = false;
   let libFacets = null;
   const libWall = { seq: 0, offset: 0, loading: false, done: false, total: 0 };
@@ -1139,7 +1142,17 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       }
     } catch (e) {} // corrupt/absent — defaults are fine
   })();
-  const saveLibView = () => { try { localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(libView)); } catch (e) {} };
+  // `prefix` is held OUT of what is persisted, deliberately. A name filter set
+  // to find one album must not still be narrowing the Library next session
+  // with nothing on screen to say why it looks half empty — and stringifying
+  // the whole object was writing it, while the loader's sanitiser dropped it
+  // again, so the stored view churned between two shapes for the same view.
+  const saveLibView = () => {
+    try {
+      const { prefix, ...persisted } = libView;   // eslint-disable-line no-unused-vars
+      localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(persisted));
+    } catch (e) {}
+  };
   const libFocusCount = () =>
     LIB_FACET_IDS.reduce((n, id) => n + (libView[id] || []).length, 0) +
     (libView.played !== "any" ? 1 : 0);
@@ -1155,6 +1168,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     if (libView.sort === "random") p.set("seed", String(libView.seed));
     for (const id of LIB_FACET_IDS) for (const v of (libView[id] || [])) p.append(id, v);
     if (libView.played !== "any") p.set("played", libView.played);
+    // Only when set: an empty prefix in the query string would give the server
+    // a different cache signature for what is the same view.
+    if (libView.prefix) p.set("prefix", libView.prefix);
     return p.toString();
   }
 
@@ -1351,6 +1367,60 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       : "Sort \u2014 " + libSortLabel());
     sort.addEventListener("click", openLibSortSheet);
     libControls.appendChild(sort);
+
+    /* Filter by name — collapsed to a magnifier until it is used, matching the
+     * Roon build. It narrows on album title OR artist, works under every sort,
+     * and tapping away closes AND clears it: a filter left silently armed is
+     * how the Library ends up looking half empty for no visible reason. */
+    const wrap = document.createElement("div");
+    wrap.className = "lib-filter-wrap";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "lib-ctl lib-filter-btn" + (libView.prefix ? " is-active" : "");
+    btn.setAttribute("aria-label", "Filter by name");
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/></svg>';
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "lib-filter-input";
+    input.placeholder = "Starts with…";
+    input.setAttribute("aria-label", "Filter albums and artists by first letters");
+    input.value = libView.prefix || "";
+
+    const openFilter = () => {
+      wrap.classList.add("is-open");
+      libControls.classList.add("is-filtering");
+      input.focus();
+    };
+    const closeFilter = (clear) => {
+      if (clear) {
+        input.value = "";
+        if (libView.prefix) { libView.prefix = ""; applyLibView(); }
+      }
+      if (!input.value) { wrap.classList.remove("is-open"); libControls.classList.remove("is-filtering"); }
+      btn.classList.toggle("is-active", !!libView.prefix);
+    };
+    btn.addEventListener("click", () => (wrap.classList.contains("is-open") ? closeFilter(true) : openFilter()));
+    // Debounced: every keystroke is a full re-query of the wall, and firing one
+    // per character re-fetched a screenful of covers for states nobody asked
+    // to see.
+    let filterTimer = null;
+    input.addEventListener("input", () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(() => {
+        const v = input.value.trim();
+        if (v === (libView.prefix || "")) return;
+        libView.prefix = v;
+        btn.classList.toggle("is-active", !!v);
+        applyLibView();
+      }, 250);
+    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closeFilter(true); btn.focus(); } });
+    input.addEventListener("blur", () => { if (!input.value) closeFilter(false); });
+    wrap.appendChild(btn); wrap.appendChild(input);
+    libControls.appendChild(wrap);
+    if (libView.prefix) wrap.classList.add("is-open");
   }
 
   // Shared bottom-sheet builder — every Library picker is built with this so
@@ -7295,6 +7365,64 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
   const loadSmartPicksPane = () => window.__loadSmartPicksPane && window.__loadSmartPicksPane();
 
+  /* ---- Random album radio, for the selected zone ------------------------
+   *
+   * PER ZONE, and the zone is the one chosen in the picker directly above it,
+   * so the switch is re-read whenever that changes — showing another zone's
+   * state here would be worse than not showing it at all.
+   */
+  const radioToggle = document.getElementById("radio-toggle");
+  const radioNote = document.getElementById("radio-toggle-note");
+  const currentZone = () => {
+    const z = document.getElementById("zone-select");
+    return z && z.value ? z.value : "";
+  };
+  async function loadRadioToggle() {
+    if (!radioToggle) return;
+    const zone = currentZone();
+    radioToggle.disabled = !zone;
+    if (!zone) {
+      radioToggle.checked = false;
+      if (radioNote) radioNote.textContent = "Choose a zone above first.";
+      return;
+    }
+    try {
+      const r = await fetch("/api/radio?zone=" + encodeURIComponent(zone), { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      radioToggle.checked = !!j.enabled;
+      if (radioNote) {
+        const sel = document.getElementById("zone-select");
+        const name = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "this zone";
+        radioNote.textContent = j.enabled
+          ? "On for " + name + " — whole albums keep coming when the queue runs out."
+          : "Applies to " + name + ".";
+      }
+    } catch (e) { /* leave the switch at its last state */ }
+  }
+  if (radioToggle) radioToggle.addEventListener("change", async () => {
+    const on = radioToggle.checked;
+    const zone = currentZone();
+    if (!zone) { radioToggle.checked = false; return; }
+    try {
+      const r = await fetch("/api/radio", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zone, enabled: on }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
+      if (window.__showToast) window.__showToast(on ? "Random album radio on" : "Random album radio off");
+      loadRadioToggle();
+    } catch (e) {
+      radioToggle.checked = !on;   // the server refused — don't lie about it
+      if (window.__showToast) window.__showToast(e.message, "error");
+    }
+  });
+  {
+    const zs = document.getElementById("zone-select");
+    if (zs) zs.addEventListener("change", loadRadioToggle);
+  }
+
   /* ---- Labels on/off ---------------------------------------------------- */
   const labelsEnabledEl = document.getElementById("labels-enabled");
   const labelsEnabledNote = document.getElementById("labels-enabled-note");
@@ -7462,7 +7590,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // mid-decision, showing a tick against a theme that isn't applied.
   const open = () => { showView("home"); pendingThemeId = null; renderThemeList();
     loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth();
-    loadLabelsEnabled(); loadHomeRowsSettings(); overlay.classList.remove("hidden"); };
+    loadLabelsEnabled(); loadHomeRowsSettings(); loadRadioToggle(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
   };

@@ -3359,8 +3359,13 @@ function libraryView(q) {
   const defs = libFacetDefs();
   const picked = defs.map(d => ({ def: d, sel: asList(q[d.id]) })).filter(x => x.sel.length);
   const played = String(q.played || "any");
+  // Name filter: "starts with", on the album title OR the artist. Matched on
+  // sortTitle/sortArtist so "The Beatles" is found under B, the same rule A-Z
+  // ordering uses — a filter that disagreed with the order it filters would be
+  // its own bug. Trimmed and folded here so the cache signature is canonical.
+  const prefix = search.sortKey(String(q.prefix || "").trim());
 
-  const sig = [index.builtAt, sort, desc, seed, played,
+  const sig = [index.builtAt, sort, desc, seed, played, "p:" + prefix,
                ...defs.map(d => d.id + ":" + asList(q[d.id]).join(","))].join("|");
   const hit = libraryViewCache.get(sig);
   if (hit) return hit;
@@ -3368,6 +3373,10 @@ function libraryView(q) {
   let list = index.records;
   // Sequential filters = AND across facets; facetMatch is OR within one.
   for (const { def, sel } of picked) list = list.filter(r => facetMatch(sel, def.values(r)));
+  if (prefix) {
+    list = list.filter(r => String(r.sortTitle || "").startsWith(prefix) ||
+                            String(r.sortArtist || "").startsWith(prefix));
+  }
   if (played !== "any") {
     // Titles played within the window (or ever, for "never"). Matching is by
     // title — see lib/plays.js for why, and the caveat that carries.

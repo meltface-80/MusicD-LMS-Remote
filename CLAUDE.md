@@ -421,6 +421,27 @@ Layout section of README.md.
   "no", because writing that down would switch someone off permanently and
   repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
   REQUESTS, not by checking a row is hidden.
+- Random album radio IS in Settings → Playback again (v1.0.73), reversing the
+  v1.0.7 removal. That removal's stated reason was "the backend route was never
+  ported" — `lib/radio.js` and `/api/radio` exist now and the feature is live,
+  so the reason is spent, and the pill on the now-playing screen was its only
+  entry point. It does NOT duplicate DSTM: the two coexist by design, radio
+  standing down while LMS's own Don't Stop The Music is on for that player.
+  The switch is PER ZONE and follows the zone picker directly above it —
+  showing another zone's state there would be worse than not showing it.
+- `libView.prefix` must be held OUT of `saveLibView` (v1.0.73). Stringifying
+  the whole object persisted it while the loader's sanitiser dropped it again,
+  so the stored view churned between two shapes for the same view and the
+  Live-Playlist "abandoned edit restores your own view" test caught it.
+- The Library NAME FILTER matches on `sortTitle`/`sortArtist` (v1.0.73), i.e.
+  `search.sortKey` — the SAME fold A-Z ordering uses, so "The Bends" is found
+  under "be". A filter that disagreed with the order it filters would be its
+  own bug. It matches title OR artist, is folded server-side into the cache
+  signature (an empty prefix must not be set, or the same view gets two cache
+  entries), and `libView.prefix` is deliberately NOT persisted: a filter set to
+  find one album must not still be narrowing the Library next session with
+  nothing on screen to say why. The input is DEBOUNCED — a query per keystroke
+  re-fetched a screenful of covers for states nobody asked to see.
 - "Recently played" reads the play log's NEWEST rows (v1.0.72,
   `playsLog.recentAlbums`). Two things it must not do: (a) key on title alone
   — "Greatest Hits" is not one album, so it folds on title+artist; (b) confuse
