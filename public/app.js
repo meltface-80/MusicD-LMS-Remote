@@ -1142,7 +1142,17 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       }
     } catch (e) {} // corrupt/absent — defaults are fine
   })();
-  const saveLibView = () => { try { localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(libView)); } catch (e) {} };
+  // `prefix` is held OUT of what is persisted, deliberately. A name filter set
+  // to find one album must not still be narrowing the Library next session
+  // with nothing on screen to say why it looks half empty — and stringifying
+  // the whole object was writing it, while the loader's sanitiser dropped it
+  // again, so the stored view churned between two shapes for the same view.
+  const saveLibView = () => {
+    try {
+      const { prefix, ...persisted } = libView;   // eslint-disable-line no-unused-vars
+      localStorage.setItem(LIB_VIEW_KEY, JSON.stringify(persisted));
+    } catch (e) {}
+  };
   const libFocusCount = () =>
     LIB_FACET_IDS.reduce((n, id) => n + (libView[id] || []).length, 0) +
     (libView.played !== "any" ? 1 : 0);
