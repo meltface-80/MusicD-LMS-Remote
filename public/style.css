@@ -4041,3 +4041,35 @@ body.show-quality .album-quality.hidden { display: none; }
    floating in the middle of a tablet screen. Scoped to the queue tab so the
    Now playing screen keeps its centred column. */
 .modal.np-mode.tab-queue .modal-info { max-width: none; }
+
+/* ------------------------------------------------------------------ */
+/*  Home Screen settings — which rows show, and in what order          */
+/* ------------------------------------------------------------------ */
+/* Grip on the left, name, switch on the right. ONLY the grip starts a drag,
+   so a tap anywhere else still reaches the switch. */
+.home-rows-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.home-row-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 2px; min-height: 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.home-row-item:last-child { border-bottom: 0; }
+.home-row-item.is-dragging {
+  background: var(--bg-elev-2);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+}
+.home-row-grip {
+  flex: 0 0 auto; width: 32px; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-faint); font-size: 18px; line-height: 1;
+  cursor: grab;
+  touch-action: none;   /* the drag owns the gesture, not the scroller */
+}
+.home-row-item.is-dragging .home-row-grip { cursor: grabbing; }
+.home-row-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 15px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

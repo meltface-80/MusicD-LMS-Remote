@@ -38,6 +38,7 @@ const smartAlgo = require("./lib/smartpickalgo");
 const discovery = require("./lib/discovery");
 const { mbWait, MB_UA } = require("./lib/musicbrainz");
 const makeFavourites = require("./lib/favourites");
+const { makeFeatures } = require("./lib/features");
 const makeAlbumMerges = require("./lib/albummerges");
 const makeRadio       = require("./lib/radio");
 
@@ -80,6 +81,17 @@ function saveSettings(patch) {
   } catch (e) { if (DEBUG) console.error("[settings] save failed:", e.message); }
   return next;
 }
+
+// ---------------------------------------------------------------------------
+// Opt-in features (Labels, Smart Picks) and the Home row layout.
+//
+// Both features reach the network on their own schedule — Smart Picks queries
+// ListenBrainz and MusicBrainz and writes into a Qobuz account; the label
+// pipeline scrapes Qobuz and walks MusicBrainz — so neither runs for somebody
+// who never asked for it. `applyDefaults` is called AFTER the stores exist, so
+// an existing install keeps what it was already using.
+// ---------------------------------------------------------------------------
+const features = makeFeatures({ load: loadSettings, save: saveSettings, log: log.child("features") });
 
 // ---------------------------------------------------------------------------
 // Plays log — feeds /api/home/unplayed ("albums not played in N months").
@@ -723,8 +735,14 @@ async function buildIndex() {
   // offsets (fast, no network), then kick the background scan to fill in any
   // albums we haven't looked up yet. Both are best-effort — a labels failure
   // must never break the core library index.
-  try { labels.onAlbumIndexRebuilt(); } catch (e) { if (DEBUG) console.error("[labels] reseed:", e.message); }
-  labels.runScan().catch(e => { if (DEBUG) console.error("[labels] scan:", e.message); });
+  // Labels ONLY when the owner has asked for them. Off means no reseed, no
+  // scan, no scan log line — not "the harmless half". The gate is here rather
+  // than inside lib/labels.js so the library stays a pure adapter, but it must
+  // cover every entry point; see the other `features.enabled("labels")` sites.
+  if (features.enabled("labels")) {
+    try { labels.onAlbumIndexRebuilt(); } catch (e) { if (DEBUG) console.error("[labels] reseed:", e.message); }
+    labels.runScan().catch(e => { if (DEBUG) console.error("[labels] scan:", e.message); });
+  }
   return index;
 }
 
@@ -1086,7 +1104,10 @@ app.get("/api/search", (req, res) => {
     indexed: index.records.length,
     results,
     albums:  results,
-    labels:  labels.searchLabels(search.normalize(q)),
+    // Explicitly gated, NOT left to "the map is empty anyway": the sibling Roon
+    // build relies on emptiness and has a live defect where another path
+    // populates the map regardless, which silently un-omits labels from search.
+    labels:  features.enabled("labels") ? labels.searchLabels(search.normalize(q)) : [],
     // The frontend renders artist chips from `{ name }` objects (ar.name).
     artists: search.searchArtists(index, q, 8).map(name => ({ name }))
   });
@@ -2928,6 +2949,37 @@ app.get("/api/album/extras", async (req, res) => {
 // /api/random-albums so the tiles open via the existing modal/play path.
 // Matching is by album title (lowercased/trimmed) — the plays log only
 // records the title, same imprecision as the sibling Roon build's version.
+/* Recently played — the newest albums in the play log, resolved to library
+ * records so the row can paint real tiles.
+ *
+ * The window here is a DISPLAY choice (30 days). It is deliberately NOT the
+ * log's retention: lib/plays.js keeps ~13 months because "not played in 6
+ * months", the play-count sort and Focus→Never-played all read further back.
+ * Narrowing retention to match this row would destroy those silently — the
+ * sibling Roon build shipped exactly that bug and lost a year of history on
+ * one Home visit.
+ */
+app.get("/api/home/history", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  let count = parseInt(req.query.count, 10);
+  if (!Number.isFinite(count) || count <= 0 || count > 60) count = 24;
+  try {
+    await ensureIndex();
+    const rows = playsLog.recentAlbums(count * 2, 30 * 24 * 60 * 60 * 1000);
+    const albums = [];
+    for (const r of rows) {
+      if (albums.length >= count) break;
+      // A play can name an album that is no longer in the library (a rescan,
+      // or a catalogue album streamed but never imported). Skip it rather
+      // than painting a tile that opens nothing.
+      const rec = findRecordByName(r.title, r.artist);
+      if (!rec) continue;
+      albums.push(albumOut(rec));
+    }
+    res.json({ albums, total: albums.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/api/home/unplayed", async (req, res) => {
   if (!state.connected) return notConnected(res);
   let months = parseInt(req.query.months, 10);
@@ -3000,6 +3052,9 @@ app.get("/api/home/album-of-the-day", async (req, res) => {
 // would otherwise shift the pick mid-week).
 let lotwCache = { weekKey: "", at: 0, count: -1, data: null };
 app.get("/api/home/label-of-the-week", (req, res) => {
+  // Empty rather than an error: this is a Home row, and a row that is simply
+  // switched off must not paint as a failure.
+  if (!features.enabled("labels")) return res.json({ label: null, albums: [] });
   try {
     const wk = isoWeekKey();
     const { keys, count, get } = labels.weekCandidates(6);
@@ -3046,7 +3101,7 @@ app.get("/api/filters/labels", (req, res) => {
   // Kick a scan if one has never run (or the last is stale). seedFromCache has
   // already run on the index build, so a fresh restart still returns whatever
   // was cached to disk immediately.
-  labels.maybeAutoRescan();
+  if (features.enabled("labels")) labels.maybeAutoRescan();
   const st = labels.status();
   const list = labels.listLabels();
   // Report scanning until we actually have labels, so the UI shows progress
@@ -3067,10 +3122,12 @@ app.get("/api/labels-scan-status", (req, res) => res.json(labels.status()));
 
 // Trigger a rescan (only new albums) / a full rescan (re-query everything).
 app.post("/api/labels/rescan", (req, res) => {
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   if (!state.connected) return notConnected(res);
   res.json(labels.requestRescan());
 });
 app.post("/api/labels/rescan-force", (req, res) => {
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   if (!state.connected) return notConnected(res);
   res.json(labels.forceRescan());
 });
@@ -3086,6 +3143,7 @@ app.get("/api/labels/logo-image/:filename", (req, res) => {
 app.get("/api/labels/logo-candidates", async (req, res) => {
   const name = (req.query.label || "").trim();
   if (!name) return res.status(400).json({ error: "label required" });
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   try { res.json({ candidates: await labels.logoCandidates(name) }); }
   catch (e) { res.status(/token/i.test(e.message) ? 400 : 500).json({ error: e.message }); }
 });
@@ -3093,17 +3151,20 @@ app.get("/api/labels/logo-candidates", async (req, res) => {
 // Manually set (or override) the logo URL for a label tile. Body: { label, url }
 app.post("/api/labels/logo", async (req, res) => {
   const { label, url } = req.body || {};
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   try { res.json({ ok: true, storedUrl: await labels.setLogo(label, url) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Merge two or more label tiles into one. Body: { items: [target, ...sources] }
 app.post("/api/labels/merge", (req, res) => {
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   const r = labels.mergeLabels((req.body || {}).items);
   res.status(r.ok ? 200 : 400).json(r);
 });
 // Remove a single source label from a merge group.
 app.delete("/api/labels/merge/:sourceKey", (req, res) => {
+  if (!features.enabled("labels")) return res.status(409).json({ error: "Labels is off in Settings" });
   res.json(labels.unmerge(req.params.sourceKey));
 });
 
@@ -4057,6 +4118,7 @@ async function smartResolveAlbum(name, playerId) {
 }
 
 let smartBuilding = false;
+let smartPicksTimer = null;
 
 // Build (or rebuild) one day's picks. Never throws — a failure marks the day
 // attempted so the next request doesn't start it all over again.
@@ -4219,7 +4281,41 @@ async function buildSmartPicks(day) {
 
 // Kick a build in the background. Never awaited by a request — the first build
 // takes a minute or two and no page load should wait for it.
+/* Evidence that a feature has ALREADY been in use on this data volume.
+ *
+ * Read once, by features.applyDefaults, to decide a flag nobody has set. Each
+ * returns true / false / NULL, and null means "cannot tell" — an unreadable
+ * store must never be recorded as "not used", because that would switch an
+ * existing install's features off permanently and repairing the store would
+ * not undo it (the setting is explicit by then).
+ */
+function labelsHaveHistory() {
+  try {
+    const st = labels.status();
+    if (st && Number.isFinite(st.count)) return st.count > 0;
+    return null;
+  } catch (e) { return null; }
+}
+function smartPicksHaveHistory() {
+  try {
+    const f = path.join(DATA_DIR, "smart-picks.json");
+    if (!fs.existsSync(f)) return false;          // no store at all = never used
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    if (!j || typeof j !== "object") return null; // present but unreadable
+    return Object.keys(j.days || {}).length > 0 || Object.keys(j.attempts || {}).length > 0;
+  } catch (e) { return null; }
+}
+
 function kickSmartPicks(day, force) {
+  // THE SINGLE GATE. Every caller — the timer, the request path and the
+  // manual rebuild button — comes through here, so one check covers all of
+  // them and none can drift. Off means no ListenBrainz, no MusicBrainz, no
+  // Qobuz favourite written: nothing at all.
+  //
+  // Deliberately ABOVE the `force` handling: the rebuild button is reachable
+  // from any client still showing a stale settings pane, and `force` skipping
+  // the schedule checks must not also skip the feature check.
+  if (!features.enabled("smartPicks")) return false;
   const d = day || smartDayKey();
   if (smartBuilding) return false;
   if (!force && smartPicks.attempted(d)) return false;
@@ -4425,6 +4521,9 @@ const smartPicksAutoAdd = () => loadSettings().smartPicksAutoAdd === true;
 // EQUALS — a server switched off at 04:00 still gets its picks when it comes
 // back, and `attempted` stops it running twice.
 function startSmartPicksMaintenance() {
+  // Not even a timer while the feature is off. Restarted by the settings route
+  // the moment it is switched on, so enabling does not need a restart.
+  if (!features.enabled("smartPicks")) return null;
   const t = setInterval(() => {
     if (!state.connected || !index.records.length) return;
     // No connected player means no Qobuz call can resolve anything. Skip
@@ -4439,6 +4538,7 @@ function startSmartPicksMaintenance() {
 
 app.get("/api/settings/smart-picks", async (req, res) => {
   res.json({
+    enabled: features.enabled("smartPicks"),
     hour: smartPicksHour(),
     auto_add: smartPicksAutoAdd(),
     service_ready: state.connected ? await serviceUsable("qobuz").catch(() => false) : false,
@@ -4454,8 +4554,66 @@ app.post("/api/settings/smart-picks", (req, res) => {
     patch.smartPicksHour = h;
   }
   if (body.auto_add !== undefined) patch.smartPicksAutoAdd = !!body.auto_add;
-  saveSettings(patch);
-  res.json({ ok: true, hour: smartPicksHour(), auto_add: smartPicksAutoAdd() });
+  if (Object.keys(patch).length) saveSettings(patch);
+  if (body.enabled !== undefined) {
+    features.setEnabled("smartPicks", !!body.enabled);
+    // Start or stop the clock HERE, so switching the feature on takes effect
+    // now rather than after a restart — and switching it off really does stop
+    // the timer rather than leaving it ticking against a gate.
+    if (features.enabled("smartPicks")) {
+      if (!smartPicksTimer) smartPicksTimer = startSmartPicksMaintenance();
+    } else if (smartPicksTimer) {
+      clearInterval(smartPicksTimer);
+      smartPicksTimer = null;
+    }
+  }
+  res.json({ ok: true, enabled: features.enabled("smartPicks"),
+             hour: smartPicksHour(), auto_add: smartPicksAutoAdd() });
+});
+
+// ---- Labels on/off -------------------------------------------------------
+app.get("/api/settings/labels", (req, res) => {
+  let st = {};
+  try { st = labels.status() || {}; } catch (e) { st = {}; }
+  res.json({ enabled: features.enabled("labels"),
+             count: Number.isFinite(st.count) ? st.count : 0,
+             scanning: !!st.scanning });
+});
+
+app.post("/api/settings/labels", (req, res) => {
+  const body = req.body || {};
+  if (body.enabled === undefined) return res.status(400).json({ error: "enabled required" });
+  const was = features.enabled("labels");
+  features.setEnabled("labels", !!body.enabled);
+  // Switched on: the cache may be empty or stale, so build it now rather than
+  // leaving an empty Labels screen until the hourly tick comes round.
+  if (features.enabled("labels") && !was && state.connected) {
+    try { labels.onAlbumIndexRebuilt(); } catch (e) { /* best effort */ }
+    labels.runScan().catch(e => log.debug("[labels] scan after enable failed:", e.message));
+  }
+  res.json({ ok: true, enabled: features.enabled("labels") });
+});
+
+// ---- Which Home rows show, and in what order -----------------------------
+app.get("/api/settings/home-rows", (req, res) => {
+  res.json({ rows: features.homeRows() });
+});
+
+app.post("/api/settings/home-rows", (req, res) => {
+  const rows = (req.body || {}).rows;
+  if (!Array.isArray(rows)) return res.status(400).json({ error: "rows array required" });
+  const saved = features.setHomeRows(rows);
+  if (!saved) return res.status(400).json({ error: "no recognisable rows" });
+  // Answered from the same repair path the GET uses, so the client is told
+  // what was actually stored rather than what it sent.
+  res.json({ ok: true, rows: saved });
+});
+
+// Every opt-in feature at once — one call for the side menu, so an older
+// server or a transient failure on one endpoint cannot decide another
+// entry's visibility.
+app.get("/api/settings/features", (req, res) => {
+  res.json({ features: features.all() });
 });
 
 // Throw today's set away and choose again. The build is kicked, not awaited —
@@ -4861,9 +5019,23 @@ app.listen(PORT, () => {
   // 12-hour label auto-rescan. maybeAutoRescan is a cheap no-op until its own
   // interval elapses (and while a scan is running), so a frequent tick is fine
   // and means a long-lived instance refreshes labels without a UI visit.
-  const labelTimer = setInterval(() => { if (state.connected) labels.maybeAutoRescan(); }, 60 * 60 * 1000);
+  const labelTimer = setInterval(() => {
+    if (!state.connected) return;
+    if (!features.enabled("labels")) return;   // nothing further, and nothing logged
+    labels.maybeAutoRescan();
+  }, 60 * 60 * 1000);
   if (labelTimer.unref) labelTimer.unref();
-  startSmartPicksMaintenance();
+
+  // Decide the opt-in defaults ONCE, now that the stores they read exist. An
+  // install that already has a label cache or built picks reads as consent —
+  // an upgrade must not switch somebody's features off underneath them. A
+  // store that cannot be read defers rather than answering "no": see
+  // lib/features.js.
+  features.applyDefaults({
+    labels:     () => labelsHaveHistory(),
+    smartPicks: () => smartPicksHaveHistory(),
+  });
+  smartPicksTimer = startSmartPicksMaintenance();
 });
 
 module.exports = app;
