@@ -1493,7 +1493,7 @@ main {
   min-height: 0;
 }
 .modal.np-mode.tab-album .modal-art {
-  flex: 1 1 0;
+  flex: 0 1 auto;
   min-height: 0;
   /* READ THIS BEFORE CHANGING ANY ROW ON THIS SCREEN.
      The wrapper is the flexible element, so it takes all the leftover height —
@@ -1510,12 +1510,22 @@ main {
      uncapped flexible element and wrong for this one.
      THE SURPLUS CANNOT BE DELETED, only placed: on a 440x956 display the
      non-art content is ~410px and a square cover can be at most ~404px, so
-     ~142px has to go somewhere. Leaving the wrapper flexible keeps it split
-     evenly above and below the cover, which reads as a centred composition
-     rather than a hole. Capping the wrapper and pushing .modal-info down with
-     `margin-top: auto` instead collects it into one gap between cover and
-     controls — tried, and it looks worse. Don't "fix" this by cropping the
-     cover (object-fit: cover): album art is the point of the screen. */
+     ~142px has to go somewhere. It now goes into the CONTROLS: the wrapper is
+     capped at the same value as the cover so it can never hold a halo, and
+     .modal-info takes the remainder and spreads its rows through it (see
+     .np-screen below). Rejected: pooling it above and below the cover (the
+     original — reads as a hole around the art), collecting it into one gap
+     between cover and controls (built and rendered, worse), and cropping the
+     cover with object-fit: cover (removes the gap by cutting album art, which
+     is the subject of the screen).
+     `height` (not max-height) + `flex: 0 1 auto`: the cap is the box's
+     PREFERRED height, so it is taken before .modal-info's grow gets a look in,
+     and the cover inside can still size itself off `height: 100%`. Making both
+     boxes `flex: 1 1 auto` instead lets them split the free space 1:1 and the
+     cover comes out at 273px on a 956px display — smaller than it was before
+     any of this. `flex-shrink: 1` keeps a short screen working: there the box
+     gives height back rather than pushing the controls off the bottom. */
+  height: min(92vw, calc(100vw - 36px));
   width: 100%; max-width: none; margin: 0;
   display: flex; align-items: center; justify-content: center;
   /* the frame styling moves onto the img — the wrapper is now just a
@@ -1538,6 +1548,38 @@ main {
   border-radius: 8px;
   box-shadow: var(--shadow-card);
 }
+/* The controls take the leftover height and spread through it, so the screen
+   reaches the bottom instead of stranding a band of nothing.
+   This is the other half of the .modal-art cap above: the cover stops growing
+   at the width limit, and everything left over lands here rather than pooling
+   around the art. `space-evenly` puts equal air above the title, between the
+   rows and below the zone/volume row, so a tall phone reads as a screen that
+   breathes rather than one with a hole in it. On a short screen there is no
+   surplus, the rows sit at their natural spacing, and nothing moves. */
+.modal.np-mode.tab-album .modal-info {
+  /* GROW but never SHRINK. The controls are the one thing on this screen that
+     must keep their natural height: with `flex: 1 1 auto` they shrink along
+     with the cover on a short viewport, and at 390x664 that pushed the
+     transport 31px off the bottom of a panel that clips. All shrinking belongs
+     to the cover, which has plenty to give. */
+  flex: 1 0 auto;
+  min-height: 0;
+  display: flex; flex-direction: column;
+}
+/* #np-screen sits inside the tab pane, not directly in .modal-info, so the
+   pane has to carry the fill through or the rows stay bunched at the top with
+   the surplus stranded underneath them. */
+.modal.np-mode.tab-album #tab-album {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex; flex-direction: column;
+}
+.modal.np-mode.tab-album .np-screen {
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: space-evenly;
+}
+
 /* Very short viewports (small desktop windows — phone landscape is already
    blocked by the rotate overlay): let the body scroll again rather than
    clip the transport controls unreachably. */

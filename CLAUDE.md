@@ -493,6 +493,32 @@ Layout section of README.md.
   the bottom of the display. (That hypothesis is the one v1.0.75 acted on; see
   below.) Copy uses `execCommand` first (plain http, so the clipboard API
   usually does not exist).
+- THE NOW-PLAYING COVER IS SIZED BY THE SCREEN'S WIDTH, AND THE CONTROLS TAKE
+  WHAT'S LEFT (v1.0.77). A square cover cannot be taller than it is wide, so
+  `.modal-art` carries `height: min(92vw, calc(100vw - 36px))` as its PREFERRED
+  height with `flex: 0 1 auto` (shrink on a short screen, never grow), and
+  `.modal-info` is `flex: 1 0 auto` — grow into the surplus, NEVER shrink.
+  `#tab-album` and `.np-screen` pass the fill through, and `.np-screen` uses
+  `justify-content: space-evenly` so the rows spread instead of bunching.
+  WHAT WAS WRONG: `.modal-art` was `flex: 1 1 0`, i.e. it took ALL the leftover
+  height while the cover inside stayed capped — so on a tall phone the wrapper
+  and the cover diverged and the difference was dead space, a halo of nothing
+  around the art. Measured on 440x956: wrapper 546, cover 400, 146px of
+  nothing. A bisect across 19 releases put the step at v1.0.71, which moved the
+  radio control out of its own row "to give the row's height back to the
+  artwork" — the artwork was already at its cap, so the 44px it freed became
+  more dead space (wrapper 398 -> 442 at 393x852). THAT REASONING IS THE TRAP:
+  on this screen a freed row only becomes artwork while the cover is below its
+  width limit. THREE THINGS THAT MUST NOT CHANGE: (a) `.modal-info` must never
+  shrink — letting it push the transport 31px off a clipping panel at 390x664
+  was the first attempt's regression; (b) `height`, not `max-height`, on the
+  wrapper, or the two boxes split the free space 1:1 and the cover comes out
+  SMALLER (273px at 956) than before the fix; (c) don't reach for
+  `object-fit: cover` — it removes the gap by cropping album art, which is the
+  subject of the screen. The old fixed `400px` cap is gone with it: a
+  smaller-phone number that held the cover 4px below the width it could use.
+  Guarded by `e2e-v77-npfill.js`, which injects the pre-fix declarations to
+  REPRODUCE the 146px halo before asserting it is gone.
 - THE STATUS-BAR STYLE IS `black`, NEVER `black-translucent` (v1.0.76).
   `public/index.html` (and `public/diag.html`, which must MIRROR it or its
   readings do not describe the app). This was THE difference from the Roon
