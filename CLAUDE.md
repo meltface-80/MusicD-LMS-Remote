@@ -493,6 +493,35 @@ Layout section of README.md.
   the bottom of the display. (That hypothesis is the one v1.0.75 acted on; see
   below.) Copy uses `execCommand` first (plain http, so the clipboard API
   usually does not exist).
+- THE INSTALLED APP'S VISIBLE VIEWPORT IS MEASURED, NEVER TRUSTED (v1.0.76).
+  In an installed iOS PWA the LAYOUT viewport can be taller than the area you
+  can SEE, so everything anchored `position: fixed; bottom: 0` is positioned
+  past the bottom edge of the display — mini transport, the bottom of the
+  now-playing panel, the side menu's last row — and a strip along the bottom
+  shows nothing. THIS IS WHY v1.0.69/70 (padding) AND v1.0.75 (panel height)
+  ALL MEASURED GREEN AND ALL FAILED: the boxes were never the wrong size, they
+  were correctly placed relative to a viewport bigger than the screen, and
+  nothing measured inside the page can see that. `visualViewport` is the only
+  API that reports the visible area; `public/app.js` publishes
+  `innerHeight - visualViewport.height` as `--app-gap` and the full-screen
+  fixed containers (`.app`, `.modal`, `.menu-overlay`, `.settings-overlay`,
+  `.confirm-overlay`, `.lmsset-overlay`, `.share-overlay`,
+  `.lib-sheet-backdrop`, `.dropdown-backdrop`, `.landscape-block`) end THERE
+  rather than at 0; the root-level bars/toasts add it to their own reserve.
+  Anything sized against those containers follows for free. THREE THINGS THE
+  SHIM MUST KEEP DOING: (a) stand down unless installed — in a tab the same
+  two numbers diverge for an ordinary reason (retracting toolbars), `dvh`
+  handles it, and shifting the UI would undo the v1.0.56 side-menu fix;
+  (b) force the gap to 0 while a field is focused, or the KEYBOARD reads as
+  this bug and the app lurches upward as you type; (c) ignore a gap over a
+  third of the display (a rotation mid-flight) rather than shrink to a sliver
+  on one bad reading. HARNESS: Chromium's `--app=<url>` window really does
+  match `(display-mode: standalone)` (probe-standalone.js), so
+  `e2e-v76-realstandalone.js` measures the installed layout for real — but
+  Chromium cannot make the two viewports disagree, so
+  `e2e-v76-viewportgap.js` establishes a visible region 146px above the layout
+  bottom, proves the bars fall OUTSIDE it, then applies the gap and proves they
+  come back. The repro half is not optional.
 - FULL-SCREEN SURFACES SIZE OFF THEIR FIXED PARENT WHEN INSTALLED, off `dvh` in
   a browser tab (v1.0.75) — `@media (display-mode: standalone), (display-mode:
   fullscreen)` at the END of style.css, covering `.modal-panel`, `.menu-drawer`

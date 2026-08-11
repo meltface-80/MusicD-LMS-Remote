@@ -4130,43 +4130,71 @@ body.show-quality .album-quality.hidden { display: none; }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Installed app (standalone / fullscreen) — full-screen surfaces      */
+/*  Installed app (standalone / fullscreen) — the visible viewport      */
 /* ------------------------------------------------------------------ */
-/* `dvh` and `position: fixed; inset: 0` disagree, and WHICH of them is right
-   depends on whether there is browser chrome:
+/* In an installed iOS PWA the LAYOUT viewport can be taller than the area you
+   can actually SEE. Everything anchored with `position: fixed; bottom: 0` then
+   sits BELOW the fold — the mini transport, the bottom of the now-playing
+   panel, the side menu's last row — and a strip along the bottom of the
+   display shows nothing at all. The owner's report was exactly that, with a
+   finger on the bottom of the screen: "this used to be covered/overlayed".
 
-     browser tab   toolbars retract, so the visible viewport shrinks and grows.
-                   dvh tracks it; a fixed inset-0 box is laid out against the
-                   LARGE viewport and ends up taller than what you can see.
-                   That was the v1.0.56 side-menu bug (last row parked under
-                   the retracted toolbar however far you scrolled).
-     installed     there are no toolbars, so nothing retracts — and here dvh
-                   came back SHORT. The Now playing screen ended ~15% above
-                   the physical bottom of the display with the backdrop
-                   showing through beneath it, and no amount of padding INSIDE
-                   the panel could reach down there. Three releases of
-                   safe-area arithmetic moved nothing, because the gap was
-                   never inside the panel: leftover flex space cannot pile up
-                   at the bottom of the body (.modal-art is `flex: 1 1 0` and
-                   absorbs it), so the panel itself had to be short.
+   THIS IS WHY EVERY EARLIER ATTEMPT MISSED. The boxes were never the wrong
+   size; they were positioned past the edge of what the screen shows. So
+   padding arithmetic inside the panels could not move it (v1.0.69, v1.0.70),
+   and neither could re-sizing the panel (v1.0.75) — a correctly sized panel
+   pinned to a bottom you cannot see is still off the bottom you cannot see.
+   Every harness measured it correct for the same reason: the geometry IS
+   correct, relative to a viewport that is bigger than the display.
 
-   So each surface keeps its dvh height for the browser and takes a percentage
-   of its fixed inset-0 parent when installed. Those parents (.modal,
-   .menu-overlay, .settings-overlay) are all `position: fixed` with all four
-   insets at 0 — the layout viewport itself, with no unit for the engine to
-   resolve.
+   `visualViewport` is the only API that reports the visible area. app.js
+   publishes the difference as `--app-gap` and the full-screen containers end
+   THERE instead of at 0. Where the two numbers agree — every desktop browser,
+   every correct engine, and a real standalone Chromium window (proven by
+   e2e-v76-realstandalone.js) — the gap is 0px and none of this does anything.
 
-   Why the Roon build never needed this: it ships no manifest and no
-   `apple-mobile-web-app-capable`, so on iOS it can only run in Safari. Its
-   now-playing CSS is byte-identical to ours — the difference was never a rule,
-   it was the mode. Diffing the two is what found this; don't "fix" the two
-   builds into agreement here without checking whether the Roon one is
-   installable yet.
+   Deliberately NOT applied in a browser tab: there the same two numbers
+   diverge for an ordinary reason (retracting toolbars), `dvh` already handles
+   it, and shifting the UI would undo the v1.0.56 side-menu fix. The scoping
+   lives in app.js, which forces the gap to 0 unless the app is installed.
 
-   HARNESS LIMIT: headless Chromium reports `display-mode: browser` and
-   resolves dvh correctly, so this block is inert under Playwright and cannot
-   be measured there. public/diag.html prints `innerHeight` against
-   100dvh/100vh/100svh/100lvh from the real device, which is how to confirm it. */
+   Why the Roon build never needed any of this: it ships no manifest and no
+   `apple-mobile-web-app-capable`, so on iOS it can only run in Safari, where
+   the browser's own chrome fills these regions and every safe-area inset
+   resolves to ~0. Its layout CSS is byte-identical to ours — audited rule by
+   rule against its `main` branch — so the difference was never a rule, it was
+   the mode. Don't converge the two builds here without first checking whether
+   the Roon one has become installable. */
+:root { --app-gap: 0px; }
+
+/* Full-screen fixed containers: end at the visible bottom, not the layout one.
+   Everything sized against them (.modal-panel, .menu-drawer, the sheets)
+   follows for free, which is why those need no rule of their own. */
+.app,
+.modal,
+.menu-overlay,
+.settings-overlay,
+.confirm-overlay,
+.lmsset-overlay,
+.share-overlay,
+.lib-sheet-backdrop,
+.dropdown-backdrop,
+.landscape-block { bottom: var(--app-gap, 0px); }
+
+/* Root-level bars and toasts, which anchor to the bottom themselves rather
+   than to one of the containers above. Each keeps its own safe-area reserve
+   and adds the gap on top. */
+.mini-transport,
+.label-merge-bar,
+.label-unmerge-sheet,
+.album-edit-sheet { bottom: var(--app-gap, 0px); }
+.toast { bottom: calc(28px + env(safe-area-inset-bottom) + var(--app-gap, 0px)); }
+.settings-info-toast,
+.mt-vol-popover { bottom: calc(78px + env(safe-area-inset-bottom) + var(--app-gap, 0px)); }
+
+/* The full-screen surfaces still size off their fixed parent when installed
+   rather than off `dvh` (v1.0.75). Kept: with the containers corrected above
+   this is belt-and-braces, and it costs nothing where dvh is right. */
 @media (display-mode: standalone), (display-mode: fullscreen) {
   .modal-panel { height: 100%; max-height: 100%; }
   .menu-drawer { height: 100%; }
