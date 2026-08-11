@@ -768,9 +768,6 @@ main {
 }
 .modal-panel {
   position: relative;
-  /* dvh is the VISIBLE viewport, which is what a browser tab with retracting
-     toolbars needs. Installed as a PWA it is the wrong way round — see the
-     `display-mode: standalone` block near the end of this file. */
   width: 100%; height: 100vh; max-height: 100vh;
   height: 100dvh; max-height: 100dvh;
   background: var(--bg-elev); color: var(--text);
@@ -792,7 +789,19 @@ main {
   }
 }
 
-.modal-close { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; z-index: 2; }
+/* NO safe-area-inset-top on the modal family — matched to Roon v1.6.50, the
+   last build that displays correctly on the owner's phone (v1.0.78).
+   The original report was that the now-playing screen and the screens with the
+   mini transport were "not OVERLAYING the iOS safe zone". v1.0.69/v1.0.70 read
+   that backwards and added `env(safe-area-inset-top)` to this whole family,
+   which pads content OUT of the safe area — the opposite of what was asked,
+   and it pushed the screen down by the status-bar height. Diffing Roon v1.6.50
+   (good) against v1.7.43 (which has the same fault) isolates it precisely:
+   every top inset below is present only in the broken version.
+   The insets that remain elsewhere — .topbar, .filter-bar, .filter-panel, the
+   qobuz pin, .menu-drawer — are in v1.6.50 too and are correct. It is only the
+   MODAL family that must not carry them. */
+.modal-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
 .modal-body {
   /* Positioned (NO z-index) so it paints above the #modal-ambient glow layer
@@ -803,12 +812,6 @@ main {
   display: flex; flex-direction: column;
   gap: 22px;
   padding: 64px 18px 40px;
-  /* The 64px top reserve is for the pinned corner buttons, which sit at
-     `12px + env(safe-area-inset-top)`. Installed as a PWA that inset is
-     ~47-59px, so the buttons dropped to ~59-71px while the body still started
-     at 64px and the first row of content ran straight under them. The reserve
-     has to track the same inset they do. */
-  padding-top: calc(64px + env(safe-area-inset-top));
   /* Leave room at the bottom so the mini transport (≈78px tall + safe area)
      stays visible / not overlapping the last bit of content. */
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
@@ -1044,10 +1047,10 @@ main {
 /*  Modal share button (top-right, beside the close)                   */
 /* ------------------------------------------------------------------ */
 .modal-share {
-  position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 60px; z-index: 2;
+  position: absolute; top: 12px; right: 60px; z-index: 2;
 }
 .modal-edit {
-  position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 108px; z-index: 2;
+  position: absolute; top: 12px; right: 108px; z-index: 2;
 }
 /* The editor targets a library album — hide it on the now-playing screen
    (where Share moves into the close button's spot anyway). */
@@ -1439,19 +1442,10 @@ main {
   align-items: center;
   gap: 14px;
   /* The tabs row sits up beside the corner buttons (Roon-style) instead of
-     below a tall reserved header band — which is exactly why THIS rule has to
-     carry the status-bar inset itself. It overrides the base .modal-body
-     padding-top, so the inset that rule applies never reaches the Now playing
-     screen.
-     With viewport-fit=cover and a bare 14px, that screen started at the
-     PHYSICAL top of the display: the whole stack rode up under the dynamic
-     island, and because the artwork is the flexible piece and is capped, the
-     slack came out at the BOTTOM as dead space under the zone/volume row.
-     Only visible in the installed PWA — in a browser tab the address bar
-     occupies that space anyway, which is why every headless check passed.
-     The Roon build hit this exact defect ("stretched too high above the top
-     of the screen") and fixed it the same way; keep the two in step. */
-  padding-top: calc(14px + env(safe-area-inset-top));
+     below a tall reserved header band. NO safe-area inset here — see the note
+     above .modal-close. v1.0.70 added one and that is what pushed this screen
+     down the display. */
+  padding-top: 14px;
 }
 .modal.np-mode .modal-info {
   width: 100%;
@@ -1466,16 +1460,7 @@ main {
 .modal.np-mode .modal-share { right: 12px; }
 .modal.np-mode .modal-home {
   display: inline-flex;
-  /* Keep the inset even though it now resolves to 0 in the installed app
-     (v1.0.76 moved the status-bar style from `black-translucent` to `black`,
-     so the web view no longer runs under the status bar). It is still live in
-     landscape and on any future full-bleed mode, and this button was the ONLY
-     one of the modal's five corner buttons without it — which is how it ended
-     up sitting on the clock. Its four siblings
-     (.modal-close, .modal-share, .modal-edit, .modal-fav) all carry
-     `12px + inset` — this one was the odd one out, so on the now-playing
-     screen Home and Share sat on visibly different rows. */
-  position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; z-index: 2;
+  position: absolute; top: 12px; left: 12px; z-index: 2;
 }
 
 /* The Now playing tab must NEVER scroll (Roon parity): the body clips, the
@@ -1493,39 +1478,8 @@ main {
   min-height: 0;
 }
 .modal.np-mode.tab-album .modal-art {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   min-height: 0;
-  /* READ THIS BEFORE CHANGING ANY ROW ON THIS SCREEN.
-     The wrapper is the flexible element, so it takes all the leftover height —
-     but the cover inside is capped by the screen's WIDTH (a square cover
-     cannot be taller than it is wide). On a tall phone the two diverge and the
-     difference is dead space, a halo of nothing around the cover. Measured on
-     a 440x956 display: wrapper 546, cover 400, 146px of nothing, which is
-     exactly what was reported.
-     A bisect across every release put the step at v1.0.71, which moved the
-     radio control out of its own row into .np-secondary. That change was
-     justified as giving the row's height back to the artwork — but the artwork
-     was already at its cap, so the 44px it freed became more dead space
-     instead (wrapper 398 -> 442 at 393x852). The reasoning was sound for an
-     uncapped flexible element and wrong for this one.
-     THE SURPLUS CANNOT BE DELETED, only placed: on a 440x956 display the
-     non-art content is ~410px and a square cover can be at most ~404px, so
-     ~142px has to go somewhere. It now goes into the CONTROLS: the wrapper is
-     capped at the same value as the cover so it can never hold a halo, and
-     .modal-info takes the remainder and spreads its rows through it (see
-     .np-screen below). Rejected: pooling it above and below the cover (the
-     original — reads as a hole around the art), collecting it into one gap
-     between cover and controls (built and rendered, worse), and cropping the
-     cover with object-fit: cover (removes the gap by cutting album art, which
-     is the subject of the screen).
-     `height` (not max-height) + `flex: 0 1 auto`: the cap is the box's
-     PREFERRED height, so it is taken before .modal-info's grow gets a look in,
-     and the cover inside can still size itself off `height: 100%`. Making both
-     boxes `flex: 1 1 auto` instead lets them split the free space 1:1 and the
-     cover comes out at 273px on a 956px display — smaller than it was before
-     any of this. `flex-shrink: 1` keeps a short screen working: there the box
-     gives height back rather than pushing the controls off the bottom. */
-  height: min(92vw, calc(100vw - 36px));
   width: 100%; max-width: none; margin: 0;
   display: flex; align-items: center; justify-content: center;
   /* the frame styling moves onto the img — the wrapper is now just a
@@ -1542,44 +1496,12 @@ main {
      actually use while the wrapper grew regardless. The width terms are the
      real constraint and they scale on their own. */
   height: 100%;
-  max-height: min(92vw, calc(100vw - 36px));  /* never taller than the padded width — keeps shadow/radius on the art */
+  max-height: min(400px, 92vw, calc(100vw - 36px));  /* never taller than the padded width — keeps shadow/radius on the art */
   width: auto; max-width: 100%;
   object-fit: contain;
   border-radius: 8px;
   box-shadow: var(--shadow-card);
 }
-/* The controls take the leftover height and spread through it, so the screen
-   reaches the bottom instead of stranding a band of nothing.
-   This is the other half of the .modal-art cap above: the cover stops growing
-   at the width limit, and everything left over lands here rather than pooling
-   around the art. `space-evenly` puts equal air above the title, between the
-   rows and below the zone/volume row, so a tall phone reads as a screen that
-   breathes rather than one with a hole in it. On a short screen there is no
-   surplus, the rows sit at their natural spacing, and nothing moves. */
-.modal.np-mode.tab-album .modal-info {
-  /* GROW but never SHRINK. The controls are the one thing on this screen that
-     must keep their natural height: with `flex: 1 1 auto` they shrink along
-     with the cover on a short viewport, and at 390x664 that pushed the
-     transport 31px off the bottom of a panel that clips. All shrinking belongs
-     to the cover, which has plenty to give. */
-  flex: 1 0 auto;
-  min-height: 0;
-  display: flex; flex-direction: column;
-}
-/* #np-screen sits inside the tab pane, not directly in .modal-info, so the
-   pane has to carry the fill through or the rows stay bunched at the top with
-   the surplus stranded underneath them. */
-.modal.np-mode.tab-album #tab-album {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex; flex-direction: column;
-}
-.modal.np-mode.tab-album .np-screen {
-  flex: 1 1 auto;
-  min-height: 0;
-  justify-content: space-evenly;
-}
-
 /* Very short viewports (small desktop windows — phone landscape is already
    blocked by the rotate overlay): let the body scroll again rather than
    clip the transport controls unreachably. */
@@ -1597,8 +1519,6 @@ main {
   .modal.np-mode { padding: 0; }
   .modal.np-mode .modal-panel {
     width: 100%;
-    /* dvh here too — the installed app overrides it in the
-       `display-mode: standalone` block near the end of this file. */
     height: 100vh; height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
@@ -3177,9 +3097,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   width: min(82vw, 320px);
   /* 100% resolves against iOS Safari's LARGE viewport, so the drawer was taller
      than the visible area and its last row sat under the retracted toolbar even
-     at full scroll. dvh is the visible height. (Installed as a PWA there is no
-     retracting toolbar and dvh is the wrong way round — see the
-     `display-mode: standalone` block near the end of this file.) */
+     at full scroll. dvh is the visible height. */
   height: 100%;
   height: 100dvh;
   background: var(--bg-elev);
@@ -3789,7 +3707,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* This app's own Favourite, in the album modal chrome. Sits left of Edit.
    Painted with --accent rather than the Qobuz heart's pink, so the two
    favourite systems are distinguishable at a glance as well as by position. */
-.modal-fav { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 156px; z-index: 2; }
+.modal-fav { position: absolute; top: 12px; right: 156px; z-index: 2; }
 .modal-fav.is-fav { color: var(--heart); border-color: var(--heart); }
 .modal-fav.is-fav svg { fill: currentColor; }
 /* Now-playing mode has its own layout (no ×, Home at the left) and hides the
@@ -4196,82 +4114,4 @@ body.show-quality .album-quality.hidden { display: none; }
   flex: 0 0 auto; width: 44px; height: 44px;
   border-radius: 4px; object-fit: cover;
   background: var(--bg-elev-2);
-}
-
-/* ------------------------------------------------------------------ */
-/*  Installed app (standalone / fullscreen) — the visible viewport      */
-/* ------------------------------------------------------------------ */
-/* In an installed iOS PWA the LAYOUT viewport can be taller than the area you
-   can actually SEE. Everything anchored with `position: fixed; bottom: 0` then
-   sits BELOW the fold — the mini transport, the bottom of the now-playing
-   panel, the side menu's last row — and a strip along the bottom of the
-   display shows nothing at all. The owner's report was exactly that, with a
-   finger on the bottom of the screen: "this used to be covered/overlayed".
-
-   THIS IS WHY EVERY EARLIER ATTEMPT MISSED. The boxes were never the wrong
-   size; they were positioned past the edge of what the screen shows. So
-   padding arithmetic inside the panels could not move it (v1.0.69, v1.0.70),
-   and neither could re-sizing the panel (v1.0.75) — a correctly sized panel
-   pinned to a bottom you cannot see is still off the bottom you cannot see.
-   Every harness measured it correct for the same reason: the geometry IS
-   correct, relative to a viewport that is bigger than the display.
-
-   `visualViewport` is the only API that reports the visible area. app.js
-   publishes the difference as `--app-gap` and the full-screen containers end
-   THERE instead of at 0. Where the two numbers agree — every desktop browser,
-   every correct engine, and a real standalone Chromium window (proven by
-   e2e-v76-realstandalone.js) — the gap is 0px and none of this does anything.
-
-   Deliberately NOT applied in a browser tab: there the same two numbers
-   diverge for an ordinary reason (retracting toolbars), `dvh` already handles
-   it, and shifting the UI would undo the v1.0.56 side-menu fix. The scoping
-   lives in app.js, which forces the gap to 0 unless the app is installed.
-
-   Why the Roon build never needed any of this: it ships no manifest and no
-   `apple-mobile-web-app-capable`, so on iOS it can only run in Safari, where
-   the browser's own chrome fills these regions and every safe-area inset
-   resolves to ~0. Its layout CSS is byte-identical to ours — audited rule by
-   rule against its `main` branch — so the difference was never a rule, it was
-   the mode. Don't converge the two builds here without first checking whether
-   the Roon one has become installable. */
-:root { --app-gap: 0px; }
-
-/* Full-screen fixed containers: end at the visible bottom, not the layout one.
-   Everything sized against them (.modal-panel, .menu-drawer, the sheets)
-   follows for free, which is why those need no rule of their own. */
-.app,
-.modal,
-.menu-overlay,
-.settings-overlay,
-.confirm-overlay,
-.lmsset-overlay,
-.share-overlay,
-.lib-sheet-backdrop,
-.dropdown-backdrop,
-.landscape-block { bottom: var(--app-gap, 0px); }
-
-/* Root-level bars and toasts, which anchor to the bottom themselves rather
-   than to one of the containers above. Each keeps its own safe-area reserve
-   and adds the gap on top. */
-.mini-transport,
-.label-merge-bar,
-.label-unmerge-sheet,
-.album-edit-sheet { bottom: var(--app-gap, 0px); }
-.toast { bottom: calc(28px + env(safe-area-inset-bottom) + var(--app-gap, 0px)); }
-.settings-info-toast,
-.mt-vol-popover { bottom: calc(78px + env(safe-area-inset-bottom) + var(--app-gap, 0px)); }
-
-/* The full-screen surfaces still size off their fixed parent when installed
-   rather than off `dvh` (v1.0.75). Kept: with the containers corrected above
-   this is belt-and-braces, and it costs nothing where dvh is right. */
-@media (display-mode: standalone), (display-mode: fullscreen) {
-  .modal-panel { height: 100%; max-height: 100%; }
-  .menu-drawer { height: 100%; }
-  #qobuz-overlay .qobuz-sheet,
-  #tidal-overlay .qobuz-sheet,
-  #pitchfork-overlay .qobuz-sheet,
-  #qobuz-browse-overlay .qobuz-sheet { height: 100%; }
-}
-@media (display-mode: standalone) and (min-width: 720px) {
-  .modal.np-mode .modal-panel { height: 100%; max-height: 100%; }
 }
