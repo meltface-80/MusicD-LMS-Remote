@@ -768,6 +768,9 @@ main {
 }
 .modal-panel {
   position: relative;
+  /* dvh is the VISIBLE viewport, which is what a browser tab with retracting
+     toolbars needs. Installed as a PWA it is the wrong way round — see the
+     `display-mode: standalone` block near the end of this file. */
   width: 100%; height: 100vh; max-height: 100vh;
   height: 100dvh; max-height: 100dvh;
   background: var(--bg-elev); color: var(--text);
@@ -1525,6 +1528,8 @@ main {
   .modal.np-mode { padding: 0; }
   .modal.np-mode .modal-panel {
     width: 100%;
+    /* dvh here too — the installed app overrides it in the
+       `display-mode: standalone` block near the end of this file. */
     height: 100vh; height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
@@ -3103,7 +3108,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   width: min(82vw, 320px);
   /* 100% resolves against iOS Safari's LARGE viewport, so the drawer was taller
      than the visible area and its last row sat under the retracted toolbar even
-     at full scroll. dvh is the visible height. */
+     at full scroll. dvh is the visible height. (Installed as a PWA there is no
+     retracting toolbar and dvh is the wrong way round — see the
+     `display-mode: standalone` block near the end of this file.) */
   height: 100%;
   height: 100dvh;
   background: var(--bg-elev);
@@ -4100,3 +4107,74 @@ body.show-quality .album-quality.hidden { display: none; }
    to go rather than pushing the magnifier off the right edge. */
 .lib-ctl.is-filtering { flex-wrap: nowrap; }
 .lib-ctl.is-filtering .lib-ctl-sort { margin-right: 0; }
+
+/* ------------------------------------------------------------------ */
+/*  Playlist track rows — artwork + tap to play from here              */
+/* ------------------------------------------------------------------ */
+/* A playlist is the one list where consecutive rows are usually DIFFERENT
+   albums, so the cover is what makes it scannable. */
+.track-list .track-row-art {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 2px; min-height: 44px;
+  cursor: pointer; border-radius: 8px;
+  transition: background .12s ease;
+}
+.track-list .track-row-art:hover { background: var(--bg-elev-2); }
+.track-list .track-row-art:active { transform: scale(.995); }
+.track-list .track-row-art:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.track-list .track-row-art.is-busy { opacity: .55; pointer-events: none; }
+.track-art {
+  flex: 0 0 auto; width: 44px; height: 44px;
+  border-radius: 4px; object-fit: cover;
+  background: var(--bg-elev-2);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Installed app (standalone / fullscreen) — full-screen surfaces      */
+/* ------------------------------------------------------------------ */
+/* `dvh` and `position: fixed; inset: 0` disagree, and WHICH of them is right
+   depends on whether there is browser chrome:
+
+     browser tab   toolbars retract, so the visible viewport shrinks and grows.
+                   dvh tracks it; a fixed inset-0 box is laid out against the
+                   LARGE viewport and ends up taller than what you can see.
+                   That was the v1.0.56 side-menu bug (last row parked under
+                   the retracted toolbar however far you scrolled).
+     installed     there are no toolbars, so nothing retracts — and here dvh
+                   came back SHORT. The Now playing screen ended ~15% above
+                   the physical bottom of the display with the backdrop
+                   showing through beneath it, and no amount of padding INSIDE
+                   the panel could reach down there. Three releases of
+                   safe-area arithmetic moved nothing, because the gap was
+                   never inside the panel: leftover flex space cannot pile up
+                   at the bottom of the body (.modal-art is `flex: 1 1 0` and
+                   absorbs it), so the panel itself had to be short.
+
+   So each surface keeps its dvh height for the browser and takes a percentage
+   of its fixed inset-0 parent when installed. Those parents (.modal,
+   .menu-overlay, .settings-overlay) are all `position: fixed` with all four
+   insets at 0 — the layout viewport itself, with no unit for the engine to
+   resolve.
+
+   Why the Roon build never needed this: it ships no manifest and no
+   `apple-mobile-web-app-capable`, so on iOS it can only run in Safari. Its
+   now-playing CSS is byte-identical to ours — the difference was never a rule,
+   it was the mode. Diffing the two is what found this; don't "fix" the two
+   builds into agreement here without checking whether the Roon one is
+   installable yet.
+
+   HARNESS LIMIT: headless Chromium reports `display-mode: browser` and
+   resolves dvh correctly, so this block is inert under Playwright and cannot
+   be measured there. public/diag.html prints `innerHeight` against
+   100dvh/100vh/100svh/100lvh from the real device, which is how to confirm it. */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .modal-panel { height: 100%; max-height: 100%; }
+  .menu-drawer { height: 100%; }
+  #qobuz-overlay .qobuz-sheet,
+  #tidal-overlay .qobuz-sheet,
+  #pitchfork-overlay .qobuz-sheet,
+  #qobuz-browse-overlay .qobuz-sheet { height: 100%; }
+}
+@media (display-mode: standalone) and (min-width: 720px) {
+  .modal.np-mode .modal-panel { height: 100%; max-height: 100%; }
+}

@@ -421,6 +421,18 @@ Layout section of README.md.
   "no", because writing that down would switch someone off permanently and
   repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
   REQUESTS, not by checking a row is hidden.
+- Playlist track rows carry ARTWORK and play FROM THAT TRACK (v1.0.74). The art
+  was already on the wire — `/api/playlist/tracks` has returned `image_key` per
+  track since it was written — and was simply never drawn. A playlist is the one
+  list where consecutive rows are usually DIFFERENT albums, which is why the
+  cover and the `artist · album` sub-line matter there and not on an album
+  screen. `/api/playlist/play-track` is TWO STEPS because LMS has no "load this
+  playlist starting at track N": `playlistcontrol load` then `playlist index N`,
+  the same shape as /api/play-from-here. The index is BOUNDS-CHECKED against the
+  loaded queue rather than trusted — a playlist can be edited from LMS's own web
+  UI between the list being drawn and a row being tapped — and an out-of-range
+  index plays from the top rather than erroring, because a tap that clearly
+  meant "play this" should not become a dialog.
 - Random album radio IS in Settings → Playback again (v1.0.73), reversing the
   v1.0.7 removal. That removal's stated reason was "the backend route was never
   ported" — `lib/radio.js` and `/api/radio` exist now and the feature is live,
@@ -478,8 +490,35 @@ Layout section of README.md.
   is READ-ONLY and self-contained. LEADING HYPOTHESIS it exists to test: that
   `100dvh` under-reports in a standalone PWA — `.modal-panel` is sized with it,
   so if it comes back short, no padding arithmetic INSIDE the panel can reach
-  the bottom of the display. Copy uses `execCommand` first (plain http, so the
-  clipboard API usually does not exist).
+  the bottom of the display. (That hypothesis is the one v1.0.75 acted on; see
+  below.) Copy uses `execCommand` first (plain http, so the clipboard API
+  usually does not exist).
+- FULL-SCREEN SURFACES SIZE OFF THEIR FIXED PARENT WHEN INSTALLED, off `dvh` in
+  a browser tab (v1.0.75) — `@media (display-mode: standalone), (display-mode:
+  fullscreen)` at the END of style.css, covering `.modal-panel`, `.menu-drawer`
+  and the full-screen `.qobuz-sheet` variant. The two disagree and WHICH is
+  right depends on browser chrome: in a tab the toolbars retract, so `dvh`
+  tracks the visible height while a `position: fixed; inset: 0` box is laid out
+  against the LARGE viewport and hides its last row (the v1.0.56 side-menu bug);
+  installed there are no toolbars and `dvh` came back SHORT, so the now-playing
+  screen ended ~15% above the bottom of the display with the backdrop showing
+  through. WHAT FINALLY LOCATED IT was ruling the panel's INSIDE out: leftover
+  flex space cannot pile up at the bottom of `.modal-body`, because `.modal-art`
+  is `flex: 1 1 0` and absorbs it — so the panel itself had to be short, and no
+  inset arithmetic was ever going to reach. Three releases had gone the other
+  way. Then diffing the Roon build settled the rest: its now-playing CSS is
+  BYTE-IDENTICAL to ours, and it ships no manifest and no
+  `apple-mobile-web-app-capable`, so on iOS it can only run in Safari — the
+  difference was never a rule, it was the mode, which is why "align with Roon"
+  could not have produced a fix. Don't converge the two builds here without
+  first checking whether the Roon one has become installable.
+  HARNESS: headless Chromium reports `display-mode: browser` AND resolves dvh
+  correctly, so both the bug and the fix are invisible under Playwright as-is.
+  `e2e-v75-standalone.js` substitutes iPhone insets, replaces every
+  viewport-height unit with a pixel value 146px short (the owner's measured
+  shortfall) to REPRODUCE the gap, then lifts the standalone block out of the
+  shipped stylesheet by brace-matching and re-applies it unconditionally. The
+  repro step is not optional — without it the fix assertion passes vacuously.
 - The np RADIO control is an ICON IN `.np-secondary`, never a row of its own
   (v1.0.71, Roon parity): device left, radio centre, volume right. It was a
   labelled pill on its own centred row, which cost a whole row on a screen
