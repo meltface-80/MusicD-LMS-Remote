@@ -1495,6 +1495,27 @@ main {
 .modal.np-mode.tab-album .modal-art {
   flex: 1 1 0;
   min-height: 0;
+  /* READ THIS BEFORE CHANGING ANY ROW ON THIS SCREEN.
+     The wrapper is the flexible element, so it takes all the leftover height —
+     but the cover inside is capped by the screen's WIDTH (a square cover
+     cannot be taller than it is wide). On a tall phone the two diverge and the
+     difference is dead space, a halo of nothing around the cover. Measured on
+     a 440x956 display: wrapper 546, cover 400, 146px of nothing, which is
+     exactly what was reported.
+     A bisect across every release put the step at v1.0.71, which moved the
+     radio control out of its own row into .np-secondary. That change was
+     justified as giving the row's height back to the artwork — but the artwork
+     was already at its cap, so the 44px it freed became more dead space
+     instead (wrapper 398 -> 442 at 393x852). The reasoning was sound for an
+     uncapped flexible element and wrong for this one.
+     THE SURPLUS CANNOT BE DELETED, only placed: on a 440x956 display the
+     non-art content is ~410px and a square cover can be at most ~404px, so
+     ~142px has to go somewhere. Leaving the wrapper flexible keeps it split
+     evenly above and below the cover, which reads as a centred composition
+     rather than a hole. Capping the wrapper and pushing .modal-info down with
+     `margin-top: auto` instead collects it into one gap between cover and
+     controls — tried, and it looks worse. Don't "fix" this by cropping the
+     cover (object-fit: cover): album art is the point of the screen. */
   width: 100%; max-width: none; margin: 0;
   display: flex; align-items: center; justify-content: center;
   /* the frame styling moves onto the img — the wrapper is now just a
@@ -1505,9 +1526,13 @@ main {
 .modal.np-mode.tab-album .modal-art img {
   /* Height-driven: fills the leftover vertical space, capped at the usual
      size; width follows the (square) cover's intrinsic ratio, so this needs
-     no aspect-ratio support. object-fit contain guards odd-shaped art. */
+     no aspect-ratio support. object-fit contain guards odd-shaped art.
+     The old fixed `400px` term is gone: it was a phone-of-2020 number, and on
+     a 440px-wide display it held the cover 4px below the width it could
+     actually use while the wrapper grew regardless. The width terms are the
+     real constraint and they scale on their own. */
   height: 100%;
-  max-height: min(400px, 92vw, calc(100vw - 36px));  /* never taller than the padded width — keeps shadow/radius on the art */
+  max-height: min(92vw, calc(100vw - 36px));  /* never taller than the padded width — keeps shadow/radius on the art */
   width: auto; max-width: 100%;
   object-fit: contain;
   border-radius: 8px;
