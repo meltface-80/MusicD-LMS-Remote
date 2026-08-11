@@ -4073,3 +4073,30 @@ body.show-quality .album-quality.hidden { display: none; }
   font-size: 15px; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Library: filter by name                                            */
+/* ------------------------------------------------------------------ */
+/* Collapsed to a magnifier until used — the row already carries Focus and
+   Sort, and a permanently open text field would crowd both off a phone. */
+.lib-filter-wrap { display: flex; align-items: center; margin-left: auto; min-width: 0; }
+.lib-filter-btn { flex: 0 0 auto; display: inline-flex; align-items: center; }
+.lib-filter-btn svg { width: 18px; height: 18px; }
+.lib-filter-btn.is-active { color: var(--accent-text); }
+.lib-filter-input {
+  width: 0; padding: 0; border: 0; margin: 0;
+  opacity: 0; pointer-events: none;
+  background: transparent; color: var(--text);
+  font: inherit; font-size: 14px; outline: none;
+  transition: width .18s ease, opacity .18s ease, padding .18s ease;
+}
+.lib-filter-wrap.is-open .lib-filter-input {
+  width: min(190px, 42vw); padding: 6px 8px;
+  opacity: 1; pointer-events: auto;
+  border-bottom: 1px solid var(--border);
+}
+.lib-filter-wrap.is-open .lib-filter-btn { color: var(--accent-text); }
+/* While filtering, Sort gives up its auto-margin so the input has somewhere
+   to go rather than pushing the magnifier off the right edge. */
+.lib-ctl.is-filtering { flex-wrap: nowrap; }
+.lib-ctl.is-filtering .lib-ctl-sort { margin-right: 0; }

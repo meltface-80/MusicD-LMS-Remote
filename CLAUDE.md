@@ -421,6 +421,15 @@ Layout section of README.md.
   "no", because writing that down would switch someone off permanently and
   repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
   REQUESTS, not by checking a row is hidden.
+- The Library NAME FILTER matches on `sortTitle`/`sortArtist` (v1.0.73), i.e.
+  `search.sortKey` — the SAME fold A-Z ordering uses, so "The Bends" is found
+  under "be". A filter that disagreed with the order it filters would be its
+  own bug. It matches title OR artist, is folded server-side into the cache
+  signature (an empty prefix must not be set, or the same view gets two cache
+  entries), and `libView.prefix` is deliberately NOT persisted: a filter set to
+  find one album must not still be narrowing the Library next session with
+  nothing on screen to say why. The input is DEBOUNCED — a query per keystroke
+  re-fetched a screenful of covers for states nobody asked to see.
 - "Recently played" reads the play log's NEWEST rows (v1.0.72,
   `playsLog.recentAlbums`). Two things it must not do: (a) key on title alone
   — "Greatest Hits" is not one album, so it folds on title+artist; (b) confuse
