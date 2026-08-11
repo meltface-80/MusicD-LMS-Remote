@@ -20,7 +20,27 @@
   <!-- iOS reads none of the manifest's icons; it wants this tag. -->
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <!-- `black`, NEVER `black-translucent`.
+       This is the ONE tag in this head that changes the VIEWPORT's geometry,
+       and it is the only difference from the Roon build that could: everything
+       else we add here (manifest, icons, app title) is install metadata that
+       does not touch layout, and a rule-by-rule audit of the two stylesheets
+       found the layout CSS byte-identical.
+       `black-translucent` makes iOS run the web view FULL-BLEED under the
+       status bar. Installed, that shifted the whole app down the display and
+       took the bottom of it off the screen — the mini transport and the bottom
+       of the Now playing screen sat below the visible area, which is the
+       "not overlaying the safe zone / this used to be covered" report. Three
+       releases of safe-area padding and panel-height arithmetic could not
+       reach it, because nothing inside the page can move content back onto a
+       display it has been pushed off.
+       `black` keeps the app installed and chrome-free but has iOS lay the web
+       view out BELOW the status bar, as an ordinary viewport — the same
+       geometry the Roon build gets in Safari, which is why that build never
+       had this. safe-area-inset-top then resolves to 0 and every top reserve
+       in style.css collapses to its base value, matching Roon exactly; the
+       insets stay live for the home indicator and for landscape. -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="MusicD">
   <meta name="mobile-web-app-capable" content="yes">
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">

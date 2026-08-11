@@ -6,7 +6,7 @@
      different page from the one being diagnosed. -->
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0e1012">
 <title>MusicD — layout diagnostic</title>
 <style>
@@ -115,7 +115,19 @@
     ["100vh",  h.vh + "px",  h.vh  >= h.inner],
     ["100svh", h.svh + "px"],
     ["100lvh", h.lvh + "px"],
-    ["dvh − innerHeight", (h.dvh - h.inner) + "px", h.dvh - h.inner === 0]
+    ["dvh − innerHeight", (h.dvh - h.inner) + "px", h.dvh - h.inner === 0],
+    // THE DECIDING NUMBER. If the layout viewport is taller than the visible
+    // one, everything anchored `position: fixed; bottom: 0` — the mini
+    // transport, the bottom of the now-playing panel — is positioned past the
+    // edge of the display, and that strip shows nothing. A non-zero value here
+    // names the bug outright; --app-gap is what the app corrects it by.
+    ["innerHeight − visualViewport", h.visual === null ? "n/a" : (h.inner - h.visual) + "px",
+      h.visual !== null && h.inner - h.visual === 0],
+    ["--app-gap applied", (function () {
+      var g = getComputedStyle(document.documentElement).getPropertyValue("--app-gap");
+      return (g || "").trim() || "not set";
+    })()],
+    ["screen.height − innerHeight", h.screen === null ? "n/a" : (h.screen - h.inner) + "px"]
   ]);
 
   section("Safe-area insets", [
