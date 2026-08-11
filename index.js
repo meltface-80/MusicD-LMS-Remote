@@ -2201,6 +2201,38 @@ app.post("/api/playlist/play", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* Play a stored playlist FROM a given track.
+ *
+ * Two steps, deliberately, and not one `playlistcontrol` with an index: LMS has
+ * no "load this playlist starting at track N" verb. So the playlist is loaded
+ * onto the player and then the player is jumped to that index — which is
+ * exactly what /api/play-from-here does for the live queue.
+ *
+ * The index is the row's position in what /api/playlist/tracks returned, so
+ * the two must stay in step; it is bounds-checked against the loaded queue
+ * rather than trusted, because a playlist can be edited from LMS's own web UI
+ * between the list being drawn and a row being tapped.
+ */
+app.post("/api/playlist/play-track", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const { playlist_id, zone_or_output_id, index } = req.body || {};
+  if (!playlist_id) return res.status(400).json({ error: "playlist_id required" });
+  if (!zone_or_output_id) return res.status(400).json({ error: "zone_or_output_id required" });
+  const i = parseInt(index, 10);
+  if (!Number.isFinite(i) || i < 0) return res.status(400).json({ error: "index required" });
+  try {
+    await state.lms.playPlaylist(zone_or_output_id, playlist_id, "now");
+    // Re-read rather than trusting the index: the playlist may have changed
+    // since the list was drawn. Out of range plays from the top, which is a
+    // better answer than an error for a tap that was clearly "play this".
+    const q = await state.lms.queue(zone_or_output_id).catch(() => null);
+    const total = q && Array.isArray(q.tracks) ? q.tracks.length : 0;
+    const target = total && i < total ? i : 0;
+    if (target > 0) await state.lms.playIndex(zone_or_output_id, target);
+    res.json({ ok: true, index: target, total });
+  } catch (e) { res.status(500).json({ error: playlistWriteError(e) }); }
+});
+
 app.post("/api/play-from-here", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const { zone_or_output_id, queue_item_id } = req.body || {};

@@ -421,6 +421,18 @@ Layout section of README.md.
   "no", because writing that down would switch someone off permanently and
   repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
   REQUESTS, not by checking a row is hidden.
+- Playlist track rows carry ARTWORK and play FROM THAT TRACK (v1.0.74). The art
+  was already on the wire — `/api/playlist/tracks` has returned `image_key` per
+  track since it was written — and was simply never drawn. A playlist is the one
+  list where consecutive rows are usually DIFFERENT albums, which is why the
+  cover and the `artist · album` sub-line matter there and not on an album
+  screen. `/api/playlist/play-track` is TWO STEPS because LMS has no "load this
+  playlist starting at track N": `playlistcontrol load` then `playlist index N`,
+  the same shape as /api/play-from-here. The index is BOUNDS-CHECKED against the
+  loaded queue rather than trusted — a playlist can be edited from LMS's own web
+  UI between the list being drawn and a row being tapped — and an out-of-range
+  index plays from the top rather than erroring, because a tap that clearly
+  meant "play this" should not become a dialog.
 - Random album radio IS in Settings → Playback again (v1.0.73), reversing the
   v1.0.7 removal. That removal's stated reason was "the backend route was never
   ported" — `lib/radio.js` and `/api/radio` exist now and the feature is live,

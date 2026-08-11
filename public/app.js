@@ -8899,19 +8899,67 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       body.appendChild(e);
       return;
     }
+    /* Rows carry the track's own artwork and play from that point.
+     *
+     * The art was already on the wire — /api/playlist/tracks has returned
+     * image_key per track since it was written — it was simply never rendered.
+     * A playlist is the one list in the app where consecutive rows are usually
+     * DIFFERENT albums, so a bare text list is the hardest place to recognise
+     * anything. Falls back to the playlist's own first cover, then to nothing:
+     * a broken-image glyph is worse than a blank square.
+     */
     const ol = document.createElement("ol"); ol.className = "track-list";
-    for (const t of tracks) {
+    const fallbackArt = (f.art && f.art[0] && f.art[0].image_key) || null;
+    tracks.forEach((t, i) => {
       const li = document.createElement("li");
+      li.className = "t-row track-row-art";
+
+      const key = t.image_key || fallbackArt;
+      if (key) {
+        const img = document.createElement("img");
+        img.className = "track-art";
+        img.loading = "lazy";
+        img.alt = "";
+        img.src = `/api/image/${encodeURIComponent(key)}?size=96`;
+        img.addEventListener("error", () => img.remove());
+        li.appendChild(img);
+      }
+
       const tx = document.createElement("div"); tx.className = "t-text";
       const ti = document.createElement("span"); ti.className = "t-title"; ti.textContent = t.title || "";
       tx.appendChild(ti);
-      if (t.subtitle) {
-        const su = document.createElement("span"); su.className = "t-sub"; su.textContent = t.subtitle;
+      // The album belongs on a playlist row in a way it does not on an album
+      // screen — that is the whole question a playlist row has to answer.
+      const sub = [t.subtitle, t.album].filter(Boolean).join(" · ");
+      if (sub) {
+        const su = document.createElement("span"); su.className = "t-sub"; su.textContent = sub;
         tx.appendChild(su);
       }
       li.appendChild(tx);
+
+      li.tabIndex = 0;
+      li.setAttribute("role", "button");
+      li.setAttribute("aria-label", "Play " + (t.title || "this track") + " and the rest of the playlist");
+      const play = async () => {
+        const zone = window.__selectedZoneId && window.__selectedZoneId();
+        if (!zone) { if (window.__showToast) window.__showToast("Choose a zone first", "error"); return; }
+        li.classList.add("is-busy");
+        try {
+          const r = await fetch("/api/playlist/play-track", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ playlist_id: f.id, zone_or_output_id: zone, index: i }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+          if (window.__showToast) window.__showToast("Playing " + (t.title || "track"));
+        } catch (e) {
+          if (window.__showToast) window.__showToast(e.message, "error");
+        } finally { li.classList.remove("is-busy"); }
+      };
+      li.addEventListener("click", play);
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play(); } });
       ol.appendChild(li);
-    }
+    });
     body.appendChild(ol);
   }
 
