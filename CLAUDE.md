@@ -493,6 +493,27 @@ Layout section of README.md.
   the bottom of the display. (That hypothesis is the one v1.0.75 acted on; see
   below.) Copy uses `execCommand` first (plain http, so the clipboard API
   usually does not exist).
+- THE STATUS-BAR STYLE IS `black`, NEVER `black-translucent` (v1.0.76).
+  `public/index.html` (and `public/diag.html`, which must MIRROR it or its
+  readings do not describe the app). This was THE difference from the Roon
+  build: a rule-by-rule audit found the two stylesheets' layout CSS
+  byte-identical, the DOM chains identical, and no ancestor in either build
+  capturing fixed positioning — the only thing we add that touches VIEWPORT
+  GEOMETRY is this meta, and Roon has no equivalent because it ships no PWA
+  metas at all and can only run in Safari on iOS. `black-translucent` makes
+  iOS run the web view FULL-BLEED under the status bar; installed, that shifted
+  the app down the display and took its bottom off the screen, so the mini
+  transport and the bottom of the Now playing screen sat below the visible
+  area. NOTHING INSIDE THE PAGE CAN FIX THAT — three releases of safe-area
+  padding (v1.0.69/70) and panel-height arithmetic (v1.0.75) all measured green
+  in every harness and all failed on the device, because the geometry really
+  was correct relative to a viewport that had been pushed off the display.
+  `black` keeps the app installed and chrome-free but has iOS lay the web view
+  out below the status bar as an ordinary viewport — the same geometry Roon
+  gets in Safari. `env(safe-area-inset-top)` then resolves to 0 and every top
+  reserve collapses to its base value; the bottom inset stays live for the home
+  indicator, so don't strip the insets from the rules — they are correct, they
+  simply measure 0 in this mode.
 - THE INSTALLED APP'S VISIBLE VIEWPORT IS MEASURED, NEVER TRUSTED (v1.0.76).
   In an installed iOS PWA the LAYOUT viewport can be taller than the area you
   can SEE, so everything anchored `position: fixed; bottom: 0` is positioned

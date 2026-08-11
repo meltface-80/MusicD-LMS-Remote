@@ -1466,10 +1466,12 @@ main {
 .modal.np-mode .modal-share { right: 12px; }
 .modal.np-mode .modal-home {
   display: inline-flex;
-  /* The inset is NOT optional here. Installed as a PWA the app is
-     `apple-mobile-web-app-status-bar-style: black-translucent`, so the web
-     view runs under the status bar and this button landed on top of the
-     clock, half of it outside the touch area. Its four siblings
+  /* Keep the inset even though it now resolves to 0 in the installed app
+     (v1.0.76 moved the status-bar style from `black-translucent` to `black`,
+     so the web view no longer runs under the status bar). It is still live in
+     landscape and on any future full-bleed mode, and this button was the ONLY
+     one of the modal's five corner buttons without it — which is how it ended
+     up sitting on the clock. Its four siblings
      (.modal-close, .modal-share, .modal-edit, .modal-fav) all carry
      `12px + inset` — this one was the odd one out, so on the now-playing
      screen Home and Share sat on visibly different rows. */
