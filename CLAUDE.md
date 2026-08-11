@@ -386,23 +386,40 @@ Layout section of README.md.
   running the new test against the pre-fix commit. The e2e guards the other
   half (a menu that outgrows the screen); the iOS half is guarded by the CSS.
   Keep the menu under ~800px of content on a 375x667 phone.
-- `.modal.np-mode .modal-body` MUST carry `env(safe-area-inset-top)` ITSELF
-  (v1.0.70). It overrides the base `.modal-body` padding-top — because the
-  np tabs row sits up beside the corner buttons rather than under a tall
-  header band — so the inset the base rule applies never reaches the Now
-  playing screen. With a bare 14px that screen started at the PHYSICAL top of
-  the display: the stack rode up under the dynamic island and the slack came
-  out at the bottom as dead space under the zone/volume row. The Roon build
-  hit the identical defect ("stretched too high above the top of the screen")
-  and its fix is the same line — when a safe-area report comes in about a
-  screen that exists in both builds, DIFF THE RULE AGAINST IT FIRST
-  (`raw.githubusercontent.com/meltface-80/MusicD-Remote/main/public/style.css`);
-  a comment-stripped selector-by-selector diff of the np-mode / np-screen /
-  np-secondary / mini-transport blocks found this in one pass after two
-  releases of guessing. HARNESS LIMIT: at 390x844 the artwork (`flex: 1 1 0`)
-  absorbs the missing 59px, so the e2e can prove the content starts too high
-  but CANNOT reproduce the bottom dead space — that needs the artwork at its
-  `max-height` cap, i.e. a real phone.
+- THE MODAL FAMILY MUST **NOT** CARRY `env(safe-area-inset-top)` (v1.0.78).
+  `.modal-close`, `.modal-share`, `.modal-edit`, `.modal-fav`,
+  `.modal.np-mode .modal-home` and `.modal.np-mode .modal-body` use plain
+  12px/14px, and `.modal-body` uses the plain `padding: 64px 18px 40px`
+  shorthand. THIS REVERSES v1.0.69 AND v1.0.70, which were wrong: the owner's
+  report was that the now-playing screen and the screens with the mini
+  transport were "not OVERLAYING the iOS safe zone", and those releases read it
+  backwards — a top inset pads content OUT of the safe area, which is the
+  opposite of what was asked, and it pushed the whole screen down the display
+  by the status-bar height. HOW IT WAS FINALLY FOUND: the Roon build's
+  **v1.6.50** is the last version that displays correctly on the owner's phone;
+  diffing it against Roon v1.7.43 (which carries the same fault as ours) shows
+  every one of these top insets present ONLY in the broken version, and nothing
+  else in the vertical box chain differing. Our six rules are now byte-equal to
+  v1.6.50's. The insets that REMAIN are in v1.6.50 too and are correct —
+  `.topbar`, `.filter-bar`, `.filter-panel`, the browse-sheet pin,
+  `.menu-drawer`. BOTTOM insets are untouched everywhere: the home indicator is
+  a real obstruction. Pinned by `lib/safearea.test.js`, a STATIC test, because
+  headless Chromium has no notch — every inset resolves to 0 there, so a rule
+  that wrongly carries one measures identically to one that does not.
+- FOUR RELEASES OF WRONG FIXES SIT BEHIND THAT ONE LINE — don't repeat them.
+  v1.0.69/70 added padding inside the panels; v1.0.75 re-sized the panel off
+  its fixed parent instead of `dvh`; v1.0.76 added a `--app-gap` runtime shim
+  that moved every full-screen fixed container off a `visualViewport`
+  measurement, and switched the status-bar style. All four measured GREEN in
+  every harness and all four failed on the device, because each was reasoning
+  about a symptom from geometry that was already correct. v1.0.78 removed the
+  shim and the standalone height overrides entirely. THE LESSON: when a display
+  bug only shows on the owner's phone, do not theorise about iOS — find the
+  last build that worked and diff it. `git -C /workspace/musicd-remote show
+  v1.6.50:public/style.css` is two commands and would have ended this in one
+  pass. The status-bar style stays `black` (not `black-translucent`): that part
+  of v1.0.76 is independently right, since `black` lays the web view out below
+  the status bar as an ordinary viewport, which is the geometry v1.6.50 gets.
 - OPT-IN FEATURES are gated so the WORK stops, not just the paint (v1.0.72,
   `lib/features.js`). Labels and Smart Picks both reach the network on their
   own schedule, so both default OFF. The gates: ONE funnel for Smart Picks
@@ -514,61 +531,6 @@ Layout section of README.md.
   reserve collapses to its base value; the bottom inset stays live for the home
   indicator, so don't strip the insets from the rules — they are correct, they
   simply measure 0 in this mode.
-- THE INSTALLED APP'S VISIBLE VIEWPORT IS MEASURED, NEVER TRUSTED (v1.0.76).
-  In an installed iOS PWA the LAYOUT viewport can be taller than the area you
-  can SEE, so everything anchored `position: fixed; bottom: 0` is positioned
-  past the bottom edge of the display — mini transport, the bottom of the
-  now-playing panel, the side menu's last row — and a strip along the bottom
-  shows nothing. THIS IS WHY v1.0.69/70 (padding) AND v1.0.75 (panel height)
-  ALL MEASURED GREEN AND ALL FAILED: the boxes were never the wrong size, they
-  were correctly placed relative to a viewport bigger than the screen, and
-  nothing measured inside the page can see that. `visualViewport` is the only
-  API that reports the visible area; `public/app.js` publishes
-  `innerHeight - visualViewport.height` as `--app-gap` and the full-screen
-  fixed containers (`.app`, `.modal`, `.menu-overlay`, `.settings-overlay`,
-  `.confirm-overlay`, `.lmsset-overlay`, `.share-overlay`,
-  `.lib-sheet-backdrop`, `.dropdown-backdrop`, `.landscape-block`) end THERE
-  rather than at 0; the root-level bars/toasts add it to their own reserve.
-  Anything sized against those containers follows for free. THREE THINGS THE
-  SHIM MUST KEEP DOING: (a) stand down unless installed — in a tab the same
-  two numbers diverge for an ordinary reason (retracting toolbars), `dvh`
-  handles it, and shifting the UI would undo the v1.0.56 side-menu fix;
-  (b) force the gap to 0 while a field is focused, or the KEYBOARD reads as
-  this bug and the app lurches upward as you type; (c) ignore a gap over a
-  third of the display (a rotation mid-flight) rather than shrink to a sliver
-  on one bad reading. HARNESS: Chromium's `--app=<url>` window really does
-  match `(display-mode: standalone)` (probe-standalone.js), so
-  `e2e-v76-realstandalone.js` measures the installed layout for real — but
-  Chromium cannot make the two viewports disagree, so
-  `e2e-v76-viewportgap.js` establishes a visible region 146px above the layout
-  bottom, proves the bars fall OUTSIDE it, then applies the gap and proves they
-  come back. The repro half is not optional.
-- FULL-SCREEN SURFACES SIZE OFF THEIR FIXED PARENT WHEN INSTALLED, off `dvh` in
-  a browser tab (v1.0.75) — `@media (display-mode: standalone), (display-mode:
-  fullscreen)` at the END of style.css, covering `.modal-panel`, `.menu-drawer`
-  and the full-screen `.qobuz-sheet` variant. The two disagree and WHICH is
-  right depends on browser chrome: in a tab the toolbars retract, so `dvh`
-  tracks the visible height while a `position: fixed; inset: 0` box is laid out
-  against the LARGE viewport and hides its last row (the v1.0.56 side-menu bug);
-  installed there are no toolbars and `dvh` came back SHORT, so the now-playing
-  screen ended ~15% above the bottom of the display with the backdrop showing
-  through. WHAT FINALLY LOCATED IT was ruling the panel's INSIDE out: leftover
-  flex space cannot pile up at the bottom of `.modal-body`, because `.modal-art`
-  is `flex: 1 1 0` and absorbs it — so the panel itself had to be short, and no
-  inset arithmetic was ever going to reach. Three releases had gone the other
-  way. Then diffing the Roon build settled the rest: its now-playing CSS is
-  BYTE-IDENTICAL to ours, and it ships no manifest and no
-  `apple-mobile-web-app-capable`, so on iOS it can only run in Safari — the
-  difference was never a rule, it was the mode, which is why "align with Roon"
-  could not have produced a fix. Don't converge the two builds here without
-  first checking whether the Roon one has become installable.
-  HARNESS: headless Chromium reports `display-mode: browser` AND resolves dvh
-  correctly, so both the bug and the fix are invisible under Playwright as-is.
-  `e2e-v75-standalone.js` substitutes iPhone insets, replaces every
-  viewport-height unit with a pixel value 146px short (the owner's measured
-  shortfall) to REPRODUCE the gap, then lifts the standalone block out of the
-  shipped stylesheet by brace-matching and re-applies it unconditionally. The
-  repro step is not optional — without it the fix assertion passes vacuously.
 - The np RADIO control is an ICON IN `.np-secondary`, never a row of its own
   (v1.0.71, Roon parity): device left, radio centre, volume right. It was a
   labelled pill on its own centred row, which cost a whole row on a screen
