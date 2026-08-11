@@ -2949,6 +2949,37 @@ app.get("/api/album/extras", async (req, res) => {
 // /api/random-albums so the tiles open via the existing modal/play path.
 // Matching is by album title (lowercased/trimmed) — the plays log only
 // records the title, same imprecision as the sibling Roon build's version.
+/* Recently played — the newest albums in the play log, resolved to library
+ * records so the row can paint real tiles.
+ *
+ * The window here is a DISPLAY choice (30 days). It is deliberately NOT the
+ * log's retention: lib/plays.js keeps ~13 months because "not played in 6
+ * months", the play-count sort and Focus→Never-played all read further back.
+ * Narrowing retention to match this row would destroy those silently — the
+ * sibling Roon build shipped exactly that bug and lost a year of history on
+ * one Home visit.
+ */
+app.get("/api/home/history", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  let count = parseInt(req.query.count, 10);
+  if (!Number.isFinite(count) || count <= 0 || count > 60) count = 24;
+  try {
+    await ensureIndex();
+    const rows = playsLog.recentAlbums(count * 2, 30 * 24 * 60 * 60 * 1000);
+    const albums = [];
+    for (const r of rows) {
+      if (albums.length >= count) break;
+      // A play can name an album that is no longer in the library (a rescan,
+      // or a catalogue album streamed but never imported). Skip it rather
+      // than painting a tile that opens nothing.
+      const rec = findRecordByName(r.title, r.artist);
+      if (!rec) continue;
+      albums.push(albumOut(rec));
+    }
+    res.json({ albums, total: albums.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get("/api/home/unplayed", async (req, res) => {
   if (!state.connected) return notConnected(res);
   let months = parseInt(req.query.months, 10);

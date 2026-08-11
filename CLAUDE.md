@@ -421,6 +421,16 @@ Layout section of README.md.
   "no", because writing that down would switch someone off permanently and
   repairing the store would not undo it. Test the gate by COUNTING OUTBOUND
   REQUESTS, not by checking a row is hidden.
+- "Recently played" reads the play log's NEWEST rows (v1.0.72,
+  `playsLog.recentAlbums`). Two things it must not do: (a) key on title alone
+  — "Greatest Hits" is not one album, so it folds on title+artist; (b) confuse
+  its 30-day DISPLAY window with the log's ~13-month RETENTION. "Not played in
+  6 months", the play-count sort and Focus→Never-played all read further back,
+  and the sibling Roon build shipped exactly that conflation and destroyed a
+  year of history on one Home visit. It sorts by `ts` rather than walking the
+  array backwards: the log is append-ordered in practice, but "newest first"
+  is the contract. A play naming an album no longer in the library is SKIPPED,
+  never painted as a tile that opens nothing.
 - HOME ROWS are server-persisted as an ordered `[{id,on}]` array (v1.0.72) —
   one array, because order and membership are one fact and splitting them is
   how they end up contradicting each other. `HOME_ROW_TITLES` in app.js is the

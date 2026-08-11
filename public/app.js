@@ -295,7 +295,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const topbarRefresh = document.getElementById("topbar-refresh");
   const topbarSearch  = document.getElementById("topbar-search");
   let homeSectionsLoaded = false;
-  let homeLotwLoaded = false;   // set once the label-of-the-week row populates
+  let homeLotwLoaded = false;
+  let homeHistoryLoaded = false;   // set once the Recently played row populates
 
   // Topbar chrome per view: Back button (off Home), Refresh button (random /
   // genre grids), and the Search box (Home only, beside the hamburger).
@@ -349,6 +350,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
     // Label of the week depends on the background labels scan, which may not be
     // ready on the first visit — retry each visit until it populates, then stop.
+    if (homeRowOn("history") && !homeHistoryLoaded) loadHomeHistory();
     if (homeRowOn("lotw") && !homeLotwLoaded) loadHomeLabelOfWeek();
     // Compared by DAY KEY rather than a loaded-once flag: a phone left open
     // overnight has to pick up the next day's picks.
@@ -368,6 +370,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
    */
   const HOME_ROW_TITLES = {
     unplayed: "Not played in 6 months",
+    history:  "Recently played",
     picks:    "Smart Picks",
     random:   "Random albums",
     library:  "Library",
@@ -386,7 +389,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const homeRowEl = (id) => homeSections && homeSections.querySelector('[data-row="' + id + '"]');
   // Rows that hide themselves when they have nothing in them — re-showing a
   // row the layout enables must not un-hide one that is simply empty.
-  const rowHidesWhenEmpty = (id) => id === "picks" || id === "lotw";
+  const rowHidesWhenEmpty = (id) => id === "picks" || id === "lotw" || id === "history";
   const rowHasAnyContent = (el) => !!(el && el.querySelector(".album, .pick-card, .home-genre-card"));
 
   function applyHomeLayout() {
@@ -648,6 +651,32 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     for (const a of albums) frag.appendChild(homeTile(a));   // full-hierarchy offsets → filter:null
     homeLotw.appendChild(frag);
     return true;
+  }
+
+  /* Recently played — the newest albums in the play log.
+   *
+   * Hides itself when empty rather than showing an empty carousel: a fresh
+   * install has no history, and a permanently blank row reads as broken.
+   */
+  async function loadHomeHistory() {
+    const el = document.getElementById("home-history");
+    if (!el) return;
+    try {
+      const r = await fetch("/api/home/history?count=24");
+      if (!r.ok) return;
+      const j = await r.json();
+      const albums = (j && j.albums) || [];
+      const sec = el.closest(".home-section");
+      if (!albums.length) { if (sec && !rowHasContent(el)) sec.classList.add("hidden"); return; }
+      el.innerHTML = "";
+      for (const a of albums) el.appendChild(buildAlbumTile(a));
+      if (sec) sec.classList.remove("hidden");
+      homeHistoryLoaded = true;
+      if (window.__repaintFavMarks) window.__repaintFavMarks();
+    } catch (e) {
+      // Transient failure: leave whatever is already painted rather than
+      // blanking a row that was fine a moment ago.
+    }
   }
 
   async function loadHomeLabelOfWeek() {

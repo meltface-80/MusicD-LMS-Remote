@@ -361,6 +361,12 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
           <h2 class="home-section-title home-section-link" id="home-unplayed-title" role="button" tabindex="0">Not played in 6 months</h2>
           <div id="home-unplayed" class="home-carousel"></div>
         </div>
+        <!-- Recently played hides itself when empty: a fresh install has no
+             play history, and an empty row reads as broken. -->
+        <div class="home-section home-section-history hidden" data-row="history">
+          <h2 class="home-section-title">Recently played</h2>
+          <div id="home-history" class="home-carousel"></div>
+        </div>
         <div class="home-section home-section-picks hidden" data-row="picks">
           <h2 class="home-section-title home-section-link" id="home-picks-title" role="button" tabindex="0">Smart Picks</h2>
           <div id="home-picks" class="home-carousel home-carousel-1row"></div>
