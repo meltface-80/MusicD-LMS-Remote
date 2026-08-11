@@ -585,20 +585,6 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
               </button>
             </div>
 
-            <!-- Random Album Radio: keeps whole albums coming when the queue
-                 runs out. Hidden while LMS's own Don't Stop The Music is on for
-                 this player — two queue fillers would fight. -->
-            <div class="np-radio-row">
-              <button class="np-radio-btn" id="np-radio" type="button" aria-pressed="false">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
-                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>
-                  <path d="M7.5 7.5a6.4 6.4 0 0 0 0 9"/><path d="M16.5 7.5a6.4 6.4 0 0 1 0 9"/>
-                </svg>
-                <span>Random album radio</span>
-              </button>
-            </div>
-
             <div class="np-secondary">
               <!-- Device / zone picker -->
               <button class="np-mini-btn" id="np-device" aria-label="Choose device" aria-expanded="false">
@@ -634,6 +620,22 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
               </div>
 
               <!-- Volume: tap the speaker to reveal the slider (hidden when fixed) -->
+              <!-- Random Album Radio: keeps whole albums coming when the queue
+                   runs out. Hidden while LMS's own Don't Stop The Music is on
+                   for this player — two queue fillers would fight.
+                   An ICON IN THIS ROW, not a labelled pill on a row of its own
+                   (v1.0.71, Roon parity): the np screen is a fixed-height,
+                   non-scrolling layout where the artwork absorbs whatever is
+                   left, so every extra row comes straight off the artwork. -->
+              <button class="np-mini-btn np-radio-btn" id="np-radio" type="button"
+                      aria-pressed="false" aria-label="Random album radio" title="Random album radio">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/>
+                  <path d="M7.5 7.5a6.4 6.4 0 0 0 0 9"/><path d="M16.5 7.5a6.4 6.4 0 0 1 0 9"/>
+                </svg>
+              </button>
+
               <div class="np-vol">
                 <button class="np-mini-btn" id="np-volbtn" aria-label="Volume" aria-expanded="false">
                   <svg id="np-icon-vol" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

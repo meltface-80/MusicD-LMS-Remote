@@ -5206,7 +5206,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const npRepeat    = document.getElementById("np-repeat");
   const npRepeatBadge = document.getElementById("np-repeat-badge");
   const npRadio     = document.getElementById("np-radio");
-  const npRadioRow  = document.querySelector(".np-radio-row");
 
   // ---- Now Playing transport modes -------------------------------------
   // Painted FROM the poll, never from a local guess: another client (or LMS's

@@ -403,6 +403,27 @@ Layout section of README.md.
   absorbs the missing 59px, so the e2e can prove the content starts too high
   but CANNOT reproduce the bottom dead space — that needs the artwork at its
   `max-height` cap, i.e. a real phone.
+- `/diag.html` REPORTS THE DEVICE'S OWN GEOMETRY (v1.0.71). Three releases of
+  safe-area guesswork failed because headless Chromium cannot reproduce an
+  iPhone: at 393x852 with real insets substituted the now-playing screen
+  measures CORRECT (`tab-album` applied, padding-bottom 48px, panel height ==
+  innerHeight, artwork 305px against a 357px cap) while the owner's phone
+  shows ~146px of dead space. The page prints, from the real device:
+  standalone vs browser, `innerHeight` against `100dvh`/`100vh`/`100svh`/
+  `100lvh`, the resolved insets, and then loads the app in a hidden same-origin
+  iframe, drives it to the now-playing screen and measures the live rects. It
+  is READ-ONLY and self-contained. LEADING HYPOTHESIS it exists to test: that
+  `100dvh` under-reports in a standalone PWA — `.modal-panel` is sized with it,
+  so if it comes back short, no padding arithmetic INSIDE the panel can reach
+  the bottom of the display. Copy uses `execCommand` first (plain http, so the
+  clipboard API usually does not exist).
+- The np RADIO control is an ICON IN `.np-secondary`, never a row of its own
+  (v1.0.71, Roon parity): device left, radio centre, volume right. It was a
+  labelled pill on its own centred row, which cost a whole row on a screen
+  that NEVER SCROLLS and where the artwork is the flexible piece — so every
+  extra row comes straight off the artwork. `.np-vol` is `flex: 0 0 auto` for
+  the same reason: with `flex: 1` it claimed the slack and pushed the radio
+  off centre.
 - iOS SAFE AREAS are per-rule, and a rule that forgets the inset CANNOT be
   caught by the e2e harness (v1.0.69). `viewport-fit=cover` is set on both app
   pages and ~30 rules carry `env(safe-area-inset-*)`, so the machinery works —
