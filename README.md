@@ -89,6 +89,7 @@ Features include:
 * Queue album
 * Queue individual tracks
 * One Play Now button on the album row, with Play next and Add to queue behind its dropdown, and the favourite heart to its right
+* Favouriting an album also adds it to LMS's own Favorites, so it appears on every other client on the server
 * Multi-select albums (long-press to start; a top-bar Options menu carries every action)
 * Queue multiple albums
 * Continue playback automatically when the queue finishes

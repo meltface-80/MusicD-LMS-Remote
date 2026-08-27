@@ -297,6 +297,48 @@ Layout section of README.md.
   really did come from Qobuz, and hiding it would make an online album look
   local; the heart goes because it is an action against an account that isn't
   there.
+- The app's favourites are MIRRORED INTO LMS's OWN Favorites (v1.0.83, owner
+  decision). Still two stores, and ours is authoritative: it can hold an album
+  that is not in the library at all, keys on title+artist so it survives a
+  rescan, and is what the heart paints from. The LMS write RIDES ALONG and is
+  best-effort — it must never fail the local favourite — but it is never
+  silent either: `syncFavouriteToLms()` returns a `reason` CODE
+  (ok/no-address/not-connected/failed) and the client words each differently.
+  "no-address" is the EXPECTED answer for a catalogue album the library has not
+  scanned — LMS has nothing to point a favourite at — so it reads as
+  information, not an error; matching on message text to tell those apart would
+  break the first time a string changed.
+  Verified against the LMS source (`Slim/Plugin/Favorites/Plugin.pm`):
+  every `favorites` verb is needs-client 0, so the player id is `""`, NEVER a
+  real one. `add` takes url + title and nothing else worth sending (icon is
+  re-derived on load for `db:`/`file:` urls; hotkey is dead). `add` does NOT
+  de-duplicate on the CLI path — the Perl API does, `cliAdd` bypasses it — so
+  `favouritesAdd()` reads the list back first or a second tap makes a second
+  entry. `delete` accepts `url:` as well as the documented `item_id:`, and the
+  url form is the only stable handle: `item_id` is a POSITIONAL index that
+  shifts when anything before it is removed. `favorites items` returns urls
+  ONLY with `want_url:1`, and must NOT be sent `menu:1` — with it XMLBrowser
+  replaces a `db:` item's url with a coderef and then omits it, so every album
+  favourite comes back with no url. A bad param is a status error, which
+  `JSONRPC.pm` answers by CLOSING THE SOCKET — it arrives as a bare "socket
+  hang up", the same shape as the missing-playlist-dir case. The Favorites
+  plugin is `enforce`d in its install.xml and cannot be disabled, so there is
+  no "is it installed" probe to write.
+- The URL an album favourite is filed under is `extid || db:album.title=…&
+  contributor.name=…` (`Slim::Schema::Album::url`), matched by EXACT STRING —
+  so the escaping has to be LMS's. LMS bundles its own `CPAN/URI/Escape.pm` and
+  puts it first on `@INC`; its unsafe set is `[^A-Za-z0-9\-_.!~*'()]`, exactly
+  `encodeURIComponent`'s — so that is the escaper, and `!*'()` must stay
+  literal. `favouriteUrl()` therefore PREFERS the server's own answer: LMS 9.0
+  puts `favorites_url` on every `albums` row ungated by any tag, carried
+  through `albumRecord` → `indexRecord` as `favUrl`. Reconstruction is the 8.x
+  fallback only. The artist half is the ALBUM's contributor (tag `a`), not
+  `row.artist || row.albumartist`, and `origTitle`/`origArtist` are used rather
+  than the display strings — an owner edit renames the row in OUR index while
+  LMS still knows the album by its scanned name. The record is resolved by
+  OFFSET when the client sends one: `findRecordByName()` goes through
+  `search.normalize()`, which folds a symbol-only title to nothing and would
+  answer null for exactly the albums v1.0.82 rescued.
 - THE HEART MEANS EXACTLY ONE THING (v1.0.82, owner decision): "favourite, in
   my collection", i.e. `lib/favourites.js`. The Qobuz control that used to be a
   second heart — save this catalogue album to the QOBUZ ACCOUNT — is now a

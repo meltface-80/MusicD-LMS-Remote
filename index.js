@@ -25,7 +25,7 @@ const crypto = require("crypto");
 const express = require("express");
 const compression = require("compression");
 
-const { createLms, discover } = require("./lib/lms");
+const { createLms, discover, favouriteUrl } = require("./lib/lms");
 const { assertPublicUrl } = require("./lib/urlguard");
 const search = require("./lib/search");
 const share  = require("./lib/share");
@@ -1762,6 +1762,77 @@ app.delete("/api/albums/merge/:id", async (req, res) => {
 // offset by title+artist so tapping one opens the right album even after a
 // rescan moved it; an album that has since left the library (or was only ever a
 // catalogue album) still lists, just without an offset.
+/* Mirror this app's favourites into LMS's OWN Favorites list (v1.0.83).
+ *
+ * Two separate stores, deliberately: ours can hold an album that is not in the
+ * library at all (a Qobuz catalogue album), keys on title+artist so it survives
+ * a rescan, and is what the heart paints from. LMS's is what every other client
+ * on the server sees. The owner asked for the heart to do both, so the local
+ * write is authoritative and the LMS write rides along.
+ *
+ * BEST-EFFORT, and honest about it. A failed LMS write must not fail the local
+ * favourite — but it must not be silent either, so the result is reported back
+ * and the toast says so. LMS answers a bad request by CLOSING THE SOCKET
+ * (Slim/Web/JSONRPC.pm), which reaches us as "socket hang up" rather than an
+ * error payload; that is a normal outcome here, not a crash.
+ */
+
+// The URL LMS files this album under. Prefer, in order: the live index record
+// (which may carry the server's own `favorites_url`), then the album's online
+// extid, then a reconstruction from title+artist. The record is looked up by
+// OFFSET when the client supplied one — findRecordByName() goes through
+// search.normalize(), which folds a symbol-only title to nothing and would
+// answer null for exactly the albums v1.0.82 just rescued.
+function lmsFavUrlFor(album) {
+  let rec = null;
+  const off = Number(album && album.offset);
+  if (Number.isFinite(off)) rec = index.byOffset.get(off) || null;
+  if (!rec && album && album.title) rec = findRecordByName(album.title, album.artist);
+  if (rec) {
+    // origTitle/origArtist, never the display strings: an owner edit renames
+    // the row in OUR index only, while LMS still knows the album by its scanned
+    // name and matches the favourite on it.
+    return favouriteUrl({
+      favUrl: rec.favUrl,
+      extid:  rec.extid,
+      title:  rec.origTitle  || rec.title,
+      artist: rec.origArtist || rec.subtitle,
+    });
+  }
+  // Not in the library: a Qobuz catalogue album. Slim::Schema::Album::url
+  // returns the extid for an online album, so that is the form to use.
+  const extid = (album && album.extid) ||
+    (album && album.qobuz_id ? "qobuz:album:" + album.qobuz_id : null);
+  return extid || null;
+}
+
+/* Returns { ok, url, reason, error } — never throws, so a caller can always
+ * answer the local result regardless.
+ *
+ * `reason` is a CODE, not prose, because the client has to word these
+ * differently: "no-address" is the expected, unalarming answer for a streaming
+ * album that isn't in the library (LMS has nothing to point a favourite at
+ * until a scan imports it), while "failed" means the server rejected a write it
+ * should have accepted. Matching on message text to tell those apart would
+ * break the first time an error string changed.
+ */
+async function syncFavouriteToLms(album, on) {
+  if (!state.connected || !state.lms) {
+    return { ok: false, url: null, reason: "not-connected", error: "not connected to LMS" };
+  }
+  const url = lmsFavUrlFor(album);
+  if (!url) return { ok: false, url: null, reason: "no-address", error: "not in the library yet" };
+  try {
+    if (on) await state.lms.favouritesAdd(url, String(album.title || "").trim() || url);
+    else    await state.lms.favouritesRemove(url);
+    log.debug("lms favourite", on ? "add" : "remove", url);
+    return { ok: true, url, reason: "ok", error: null };
+  } catch (e) {
+    log.debug("lms favourite failed:", e.message, url);
+    return { ok: false, url, reason: "failed", error: e.message };
+  }
+}
+
 app.get("/api/favourites", async (req, res) => {
   try {
     const rows = favourites.list();
@@ -1806,20 +1877,29 @@ app.get("/api/favourites/keys", (req, res) => {
 
 // Toggle one album. Body carries the album as the client knows it — title and
 // artist are the identity, everything else is stored as context.
-app.post("/api/favourites/toggle", (req, res) => {
+app.post("/api/favourites/toggle", async (req, res) => {
   const b = req.body || {};
   const title = String(b.title || "").trim();
   if (!title) return res.status(400).json({ error: "title required" });
+  const album = {
+    title,
+    artist: b.subtitle || b.artist || "",
+    source: b.source || null,
+    image_key: b.image_key || null,
+    qobuz_id: b.qobuz_id || null,
+    extid: b.extid || null,
+    offset: b.offset,
+  };
   try {
-    const on = favourites.toggle({
-      title,
-      artist: b.subtitle || b.artist || "",
-      source: b.source || null,
-      image_key: b.image_key || null,
-      qobuz_id: b.qobuz_id || null,
-      extid: b.extid || null,
-    }, b.favourite);
-    res.json({ ok: true, favourite: on, total: favourites.count() });
+    // Local first, and it decides the answer: the heart paints from this store,
+    // so it must reflect what actually happened here even if LMS refuses.
+    const on = favourites.toggle(album, b.favourite);
+    const lms = await syncFavouriteToLms(album, on);
+    // Record the exact url LMS accepted, so a later removal deletes that string
+    // rather than one rebuilt from a title that may have been edited since.
+    if (on && lms.ok && lms.url) favourites.add({ ...album, lms_url: lms.url });
+    res.json({ ok: true, favourite: on, total: favourites.count(),
+               lms: lms.ok, lms_reason: lms.reason, lms_error: lms.error });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1830,16 +1910,25 @@ app.post("/api/favourites/add-multi", async (req, res) => {
   const items = (req.body || {}).items;
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "items required" });
   try {
-    let added = 0, skipped = 0;
+    let added = 0, skipped = 0, lmsOk = 0, lmsFailed = 0;
     for (const it of items) {
-      const rec = favourites.add({
+      const album = {
         title: it.title, artist: it.subtitle || it.artist || "",
         source: it.source || null, image_key: it.image_key || null,
         qobuz_id: it.qobuz_id || null, extid: it.extid || null,
-      });
-      if (rec) added++; else skipped++;
+        offset: it.offset,
+      };
+      const rec = favourites.add(album);
+      if (!rec) { skipped++; continue; }
+      added++;
+      // Sequential, like the playlist adds: each `favorites add` reads the
+      // whole list back first to avoid duplicating, and LMS rewrites the file
+      // on every write.
+      const lms = await syncFavouriteToLms(album, true);
+      if (lms.ok) { lmsOk++; if (lms.url) favourites.add({ ...album, lms_url: lms.url }); }
+      else lmsFailed++;
     }
-    res.json({ ok: true, added, skipped, total: favourites.count() });
+    res.json({ ok: true, added, skipped, total: favourites.count(), lms_ok: lmsOk, lms_failed: lmsFailed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1850,12 +1939,15 @@ app.post("/api/favourites/remove-multi", async (req, res) => {
   const items = (req.body || {}).items;
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "items required" });
   try {
-    let removed = 0, skipped = 0;
+    let removed = 0, skipped = 0, lmsOk = 0, lmsFailed = 0;
     for (const it of items) {
-      if (favourites.remove(it.title, it.subtitle || it.artist || "")) removed++;
-      else skipped++;
+      const artist = it.subtitle || it.artist || "";
+      if (!favourites.remove(it.title, artist)) { skipped++; continue; }
+      removed++;
+      const lms = await syncFavouriteToLms({ ...it, artist, offset: it.offset }, false);
+      if (lms.ok) lmsOk++; else lmsFailed++;
     }
-    res.json({ ok: true, removed, skipped, total: favourites.count() });
+    res.json({ ok: true, removed, skipped, total: favourites.count(), lms_ok: lmsOk, lms_failed: lmsFailed });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
