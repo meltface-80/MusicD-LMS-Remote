@@ -2856,6 +2856,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
     modalTitle.textContent = album.title || "Untitled";
     setModalArtist(album.subtitle);
+    // Rebuilding the row destroys the play caret, so any menu it opened would
+    // be left anchored to a detached button.
+    closeAlbumOptionsMenu();
     modalActs.innerHTML    = isNP ? "" : `<div class="modal-loading">Loading…</div>`;
     modalTracks.innerHTML  = "";
 
@@ -2911,14 +2914,16 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   async function fetchQobuzAlbumDetail(album) {
     modalActs.innerHTML = "";
-    const play = document.createElement("button"); play.className = "action-btn primary"; play.type = "button"; play.textContent = "Play Now";
-    play.addEventListener("click", () => qobuzModalPlay(album.token, "play_now", play));
-    modalActs.appendChild(play);
-    if (album.can_queue !== false) {
-      const q = document.createElement("button"); q.className = "action-btn"; q.type = "button"; q.textContent = "Queue";
-      q.addEventListener("click", () => qobuzModalPlay(album.token, "queue", q));
-      modalActs.appendChild(q);
-    }
+    // Same split primary as a library album so the two look like one screen.
+    // NOTE there is no "Play next" row here: /api/qobuz/play replays a stored
+    // plugin menu action and the plugin only exposes play and add — it has no
+    // insert-after-current, so offering one would be a button that lies.
+    modalActs.appendChild(buildSplitPlayButton(
+      { label: "Play Now", onClick: (b) => qobuzModalPlay(album.token, "play_now", b) },
+      album.can_queue !== false
+        ? [{ label: "Add to queue", onClick: (b) => qobuzModalPlay(album.token, "queue", b) }]
+        : [],
+      "More playback options"));
     let favBtn = null;
     if (album.can_favorite) {
       favBtn = document.createElement("button"); favBtn.className = "action-btn qobuz-fav"; favBtn.type = "button";
@@ -3190,45 +3195,70 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
 
 
-  // The three-dots-in-a-circle affordance, used wherever a screen has more
-  // secondary actions than belong on a row. The dropdown itself is the app's
-  // ONE dropdown (openOptionsMenu → .dropdown-menu rendered into <body>), not a
-  // second look: an absolutely-positioned menu nested in the row could not sit
-  // above the full-screen dismiss backdrop, which is the whole reason that
-  // machinery exists.
-  const OVERFLOW_SVG =
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
-    'aria-hidden="true">' +
-    '<circle cx="12" cy="12" r="9"/>' +
-    '<circle cx="7.6" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
-    '<circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
-    '<circle cx="16.4" cy="12" r="1.15" fill="currentColor" stroke="none"/>' +
+  // The album screen's playback control (v1.0.79): ONE primary pill whose body
+  // plays and whose caret drops the rest of the playback options. It replaced
+  // a Play Now pill + a Queue pill + a three-dots overflow button — three
+  // controls for what is one decision ("play this, but how?"), in a row that is
+  // `flex-wrap: nowrap` and so could never have grown another.
+  //
+  // The dropdown is the app's ONE dropdown (openOptionsMenu → .dropdown-menu
+  // rendered into <body>), not a second look: an absolutely-positioned menu
+  // nested in the row could not sit above the full-screen dismiss backdrop,
+  // which is the whole reason that machinery exists.
+  const CARET_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<polyline points="6 9 12 15 18 9"/>' +
     '</svg>';
 
-  // items: [{ label, note, onClick }]. Returns the button to append.
-  function buildOverflowButton(items, label) {
+  // main:  { label, onClick }        — the pill body; the primary action.
+  // items: [{ label, note, onClick }] — the caret's menu; omit/empty for no caret.
+  // Each onClick receives the button that triggered it, so an action can
+  // disable it / show progress exactly as the separate pills used to.
+  function buildSplitPlayButton(main, items, menuLabel) {
+    const wrap = document.createElement("div");
+    wrap.className = "action-split";
+
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "overflow-btn";
-    btn.setAttribute("aria-label", label || "More actions");
-    btn.setAttribute("aria-haspopup", "menu");
-    btn.setAttribute("aria-expanded", "false");
-    btn.innerHTML = OVERFLOW_SVG;
-    btn.addEventListener("click", () => {
-      openOptionsMenu(btn, (menu) => {
+    btn.className = "action-btn primary action-split-main";
+    btn.textContent = main.label;
+    btn.addEventListener("click", () => main.onClick(btn));
+    wrap.appendChild(btn);
+
+    const rows = (items || []).filter(Boolean);
+    // No caret when there is nothing behind it — a dead affordance on the one
+    // control the screen is built around reads as a broken button.
+    if (!rows.length) {
+      btn.classList.remove("action-split-main");
+      return btn;
+    }
+
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "action-btn primary action-split-more";
+    more.setAttribute("aria-label", menuLabel || "More playback options");
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", "false");
+    more.innerHTML = CARET_SVG;
+    more.addEventListener("click", () => {
+      openOptionsMenu(more, (menu) => {
         const row = optionsRowFactory(menu);
-        // The trigger is passed on so an action can disable it / show progress,
-        // exactly as the pill buttons it replaced did.
-        for (const it of items) row(it.label, it.note || null, false, () => it.onClick(btn));
-      }, label || "More actions");
+        for (const it of rows) row(it.label, it.note || null, false, () => it.onClick(more));
+      }, menuLabel || "More playback options");
     });
-    return btn;
+    wrap.appendChild(more);
+    return wrap;
   }
 
   function closeModal() {
     modal.classList.add("hidden");
     modal.classList.remove("np-mode", "tab-album", "tab-queue");
     document.body.style.overflow = "";
+    // The play caret's menu is rendered into <body>, so it outlives the modal
+    // that owns it — and its trigger is destroyed by the next row rebuild,
+    // leaving the menu anchored to nothing.
+    closeAlbumOptionsMenu();
     // Track selection only means anything for the album that's open — never
     // let its bar (or a set of indices) survive the modal it belongs to.
     exitTrackSelectMode();
@@ -3280,12 +3310,21 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     // carries no quality at all.
     setModalQuality(j.album);
 
-    // Build action buttons in preferred order
-    const order  = ["play_now", "queue", "play_next", "shuffle", "radio"];
+    // Build action buttons in preferred order. The FIRST available kind is the
+    // pill body; everything after it hangs off the caret. The server only ever
+    // advertises play_now / queue / play_next today (see /api/album), but
+    // shuffle and radio stay in the table so a server that grows them lands in
+    // the menu rather than nowhere.
+    // Play next before Add to queue: the menu escalates away from "now" in
+    // order, so the row nearest the pill is the one nearest to what the pill
+    // does.
+    const order  = ["play_now", "play_next", "queue", "shuffle", "radio"];
     const labels = {
       play_now:  "Play Now",
-      queue:     "Queue",
-      play_next: "Next",
+      // Menu wording, so each row reads as a whole instruction rather than a
+      // one-word pill label ("Next" on its own says nothing about what it does).
+      queue:     "Add to queue",
+      play_next: "Play next",
       shuffle:   "Shuffle",
       radio:     "Radio"
     };
@@ -3294,30 +3333,15 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (!map.has(a.kind)) map.set(a.kind, a);
     }
 
-    // Play Now and Queue stay on the row; Next / Shuffle / Radio go behind the
-    // overflow menu. Five pills hit a wall on a phone — .action-btn is
-    // `flex: 1 1 0`, so they shrink together instead of wrapping and the
-    // labels start clipping.
-    const ROW_ACTIONS = 2;
     modalActs.innerHTML = "";
     const available = order.filter(k => map.has(k));
-    let first = true;
-    for (const k of available.slice(0, ROW_ACTIONS)) {
-      const btn = document.createElement("button");
-      btn.className = "action-btn" + (first ? " primary" : "");
-      btn.type = "button";
-      btn.textContent = labels[k];
-      btn.addEventListener("click", () => invoke(k, btn));
-      modalActs.appendChild(btn);
-      first = false;
-    }
-    const overflow = available.slice(ROW_ACTIONS);
-    if (overflow.length) {
-      modalActs.appendChild(buildOverflowButton(
-        overflow.map(k => ({ label: labels[k], onClick: (b) => invoke(k, b) })),
-        "More playback actions"));
-    }
-    if (!available.length) {
+    if (available.length) {
+      const primary = available[0];
+      modalActs.appendChild(buildSplitPlayButton(
+        { label: labels[primary], onClick: (b) => invoke(primary, b) },
+        available.slice(1).map(k => ({ label: labels[k], onClick: (b) => invoke(k, b) })),
+        "More playback options"));
+    } else {
       modalActs.innerHTML =
         `<div class="modal-error">No playback actions available for this album.</div>`;
     }

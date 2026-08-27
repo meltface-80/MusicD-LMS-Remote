@@ -505,14 +505,10 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
            top of the panel so each album tints its own detail view (decorative
            only — hidden from AT, never intercepts taps). -->
       <img id="modal-ambient" class="modal-ambient hidden" alt="" aria-hidden="true">
-      <button class="modal-close icon-btn" data-close aria-label="Close">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M18 6 6 18M6 6l12 12"/>
-        </svg>
-      </button>
-      <!-- Now-playing mode only (CSS-gated): top-left Home button — the ×
-           is hidden there and Share takes its top-right spot. -->
+      <!-- Now-playing mode only (CSS-gated): top-left Home button. It is
+           deliberately NOT inside .modal-chrome — that cluster is an absolutely
+           positioned containing block pinned to the RIGHT, so a `left: 12px`
+           child of it would measure from the wrong edge. -->
       <button class="modal-home icon-btn" id="modal-home-btn" aria-label="Go to Home screen" title="Home">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -520,31 +516,38 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
           <path d="M5 9.5V21h5v-6h4v6h5V9.5"/>
         </svg>
       </button>
-      <button class="modal-share icon-btn" id="modal-share-btn" aria-label="Share card">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="16 6 12 2 8 6"/>
-          <line x1="12" y1="2" x2="12" y2="15"/>
-          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-        </svg>
-      </button>
-      <!-- THIS APP'S favourites, not the Qobuz account's. Deliberately in the
-           chrome beside Edit rather than a pill in #modal-actions: that row is
-           for playback, and for a Qobuz album a heart pill there would sit
-           right next to the Qobuz heart meaning something else entirely. -->
-      <button class="modal-fav icon-btn" id="modal-fav-btn" aria-label="Add to Favourites" title="Add to Favourites">
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-        </svg>
-      </button>
-      <!-- Album mode only (CSS-gated away in np-mode): metadata/artwork editor -->
-      <button class="modal-edit icon-btn" id="modal-edit-btn" aria-label="Edit album" title="Edit album">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-        </svg>
-      </button>
+      <!-- Top-right chrome cluster. A right-aligned FLEX row (row-reverse, so
+           DOM order runs right-to-left) rather than four buttons at hardcoded
+           `right:` offsets: whichever buttons a mode hides, the rest close up
+           against the corner instead of leaving a hole. qobuz-mode hiding Edit
+           used to leave exactly such a hole. Back is first, i.e. hard into the
+           corner. -->
+      <div class="modal-chrome">
+        <!-- Back, not close: this modal is a screen you came from somewhere, so
+             a chevron reads truer than an ×. Still `data-close` — the behaviour
+             (dismiss the modal, return to where you were) is unchanged. -->
+        <button class="modal-close icon-btn" data-close aria-label="Back" title="Back">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <button class="modal-share icon-btn" id="modal-share-btn" aria-label="Share card">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="16 6 12 2 8 6"/>
+            <line x1="12" y1="2" x2="12" y2="15"/>
+            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+          </svg>
+        </button>
+        <!-- Album mode only (CSS-gated away in np-mode): metadata/artwork editor -->
+        <button class="modal-edit icon-btn" id="modal-edit-btn" aria-label="Edit album" title="Edit album">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+          </svg>
+        </button>
+      </div>
 
       <div class="modal-body">
         <div class="modal-tabs hidden" id="modal-tabs">
@@ -704,8 +707,26 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             </div>
           </div>
 
-          <div class="modal-actions" id="modal-actions">
-            <!-- buttons injected -->
+          <!-- Playback row. The pills are injected into #modal-actions (so the
+               builders can keep wiping it), and THIS APP'S Favourite sits
+               beside them as a sibling that survives the wipe.
+               The heart moved here from the modal chrome (owner decision,
+               v1.0.79), reversing the note that kept it up top. On a Qobuz
+               album it therefore lands next to the Qobuz heart, which is the
+               hazard that note was guarding against: the two stay tellable
+               apart because the Qobuz one is a LABELLED pill that paints pink
+               and this one is a bare accent heart that spells itself out in
+               its title/aria-label. -->
+          <div class="modal-action-row">
+            <div class="modal-actions" id="modal-actions">
+              <!-- buttons injected -->
+            </div>
+            <button class="modal-fav icon-btn" id="modal-fav-btn" aria-label="Add to Favourites" title="Add to Favourites">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+              </svg>
+            </button>
           </div>
 
           <div class="track-list-wrap">
