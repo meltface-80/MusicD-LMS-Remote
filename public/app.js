@@ -2103,19 +2103,28 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // floor keeps DPR-1 desktops sharp on wide walls where tiles exceed 200px.
   const TILE_IMG_SIZE = Math.min(500, Math.max(300, Math.ceil((190 * (window.devicePixelRatio || 1)) / 100) * 100));
 
-  // ----- Qobuz favourite hearts -----
+  // ----- Qobuz "save to my account" control -----
   // A library album imported from Qobuz carries a `qobuz_id`; a search result
-  // carries a token. Both can be favourited/un-favourited through the LMS Qobuz
-  // plugin (favourite-only — no library rescan is triggered).
+  // carries a token. Both can be saved to / removed from the QOBUZ ACCOUNT
+  // through the LMS Qobuz plugin (favourite-only — no library rescan).
+  //
+  // IT IS A PLUS, NOT A HEART (v1.0.82, owner decision). The heart means ONE
+  // thing in this app — "favourite, in my collection" — and this is a different
+  // verb: add this catalogue album to the streaming account it came from. Two
+  // hearts on one screen meaning two things is precisely the confusion the album
+  // modal now puts side by side, and Smart Picks had already settled the
+  // convention with its "＋ Add" button.
   // Tick shown inside a selected track's checkbox. The hollow ring is CSS.
   const TICK_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
-  const HEART_PATH = "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z";
-  const heartSvg = (filled) =>
-    '<svg viewBox="0 0 24 24" width="18" height="18" fill="' + (filled ? "currentColor" : "none") +
-    '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-    '<path d="' + HEART_PATH + '"/></svg>';
-  const HEART_FILLED  = heartSvg(true);
-  const HEART_OUTLINE = heartSvg(false);
+  // Plus when it can be added, tick when it is already in the account — the
+  // same pair Smart Picks uses, so "＋ / ✓" reads the same wherever it appears.
+  const qobuzAddSvg = (added) =>
+    '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    (added ? '<polyline points="20 6 9 17 4 12"/>' : '<path d="M12 5v14M5 12h14"/>') +
+    '</svg>';
+  const QOBUZ_ADDED   = qobuzAddSvg(true);
+  const QOBUZ_UNADDED = qobuzAddSvg(false);
   let _qobuzFavIds = null, _qobuzFavPromise = null;
   function ensureQobuzFavs() {
     if (_qobuzFavIds) return Promise.resolve(_qobuzFavIds);
@@ -2125,9 +2134,12 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
     return _qobuzFavPromise;
   }
+  // Kept named setHeart so the six call sites don't all have to change; what it
+  // paints is the +/✓ pair. `.is-fav` likewise stays — it is what the Qobuz CSS
+  // keys on, and it is scoped to the Qobuz classes.
   function setHeart(btn, filled) {
     btn.classList.toggle("is-fav", !!filled);
-    btn.innerHTML = filled ? HEART_FILLED : HEART_OUTLINE;
+    btn.innerHTML = filled ? QOBUZ_ADDED : QOBUZ_UNADDED;
     btn.title = filled ? "Remove from Qobuz favourites" : "Add to Qobuz favourites";
     btn.setAttribute("aria-label", btn.title);
   }
@@ -2927,7 +2939,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     let favBtn = null;
     if (album.can_favorite) {
       favBtn = document.createElement("button"); favBtn.className = "action-btn qobuz-fav"; favBtn.type = "button";
-      const paint = (on) => { favBtn.classList.toggle("is-fav", !!on); favBtn.textContent = on ? "♥ Favourited" : "♡ Favourite"; };
+      // "+ Add to Qobuz" / "✓ In Qobuz" — never a heart: the app's own
+      // favourite heart sits in this very row (see the note in index.html).
+      const paint = (on) => { favBtn.classList.toggle("is-fav", !!on); favBtn.textContent = on ? "✓ In Qobuz" : "＋ Add to Qobuz"; };
       paint(false);
       favBtn.addEventListener("click", async () => {
         const want = !favBtn.classList.contains("is-fav");
@@ -2951,7 +2965,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const j = await r.json();
     if (album !== currentAlbum) return;                 // navigated away while loading
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-    if (favBtn && j.favorite != null) { favBtn.classList.toggle("is-fav", !!j.favorite); favBtn.textContent = j.favorite ? "♥ Favourited" : "♡ Favourite"; }
+    if (favBtn && j.favorite != null) { favBtn.classList.toggle("is-fav", !!j.favorite); favBtn.textContent = j.favorite ? "✓ In Qobuz" : "＋ Add to Qobuz"; }
     const tracks = j.tracks || [];
     if (j.notice) {   // re-auth / error prompt from the plugin — clean message, not a "track"
       trackWrap.classList.add("hidden");
@@ -9346,10 +9360,20 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // Keys of everything favourited, so tiles can be marked without asking per
   // tile. Refreshed whenever we change something or open the screen.
   let favKeys = new Set();
+  // MUST stay byte-for-byte equivalent to keyFor() in lib/favourites.js — the
+  // server owns the store and this side decides which hearts paint filled, so a
+  // disagreement shows up as a favourite that exists but never looks like one.
+  // lib/favourites.test.js extracts this very function and runs both over the
+  // same table, so a change here that isn't made there fails the build.
   const keyFor = (title, artist) => {
     const norm = (x) => String(x || "").toLowerCase().normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
-    const t = norm(title);
+    // Titles that are ALL symbols ("<|°_°|>", "+", "!!!") fold to nothing under
+    // norm(); keep them rather than declaring the album unidentifiable. Title
+    // only — see the note in lib/favourites.js for why the artist is left alone.
+    const symFold = (x) => String(x || "").toLowerCase().normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+    const t = norm(title) || symFold(title);
     return t ? t + "|" + norm(artist) : null;
   };
   async function refreshKeys() {

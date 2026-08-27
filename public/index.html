@@ -711,27 +711,28 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
             </div>
           </div>
 
-          <!-- Playback row: THIS APP'S Favourite, then the pills. The pills are
+          <!-- Playback row: the pills, then THIS APP'S Favourite. The pills are
                injected into #modal-actions (so the builders can keep wiping it)
                and the heart is a SIBLING, which is what lets it survive the
                wipe — so its position in the row is this DOM order, nothing else.
-               It leads the row (v1.0.81); it moved down here from the modal
+               It trails the row and the pill is width-capped rather than
+               stretching (v1.0.82); the heart moved down here from the modal
                chrome in v1.0.79, reversing the note that kept it up top. On a
-               Qobuz album it therefore shares a row with the Qobuz heart, which
-               is the hazard that note was guarding against: the two stay
-               tellable apart because the Qobuz one is a LABELLED pill that
-               paints pink and this one is a bare accent heart that spells
-               itself out in its title/aria-label. -->
+               Qobuz album it therefore shares a row with the "add to Qobuz"
+               control, which is the hazard that note was guarding against —
+               settled in v1.0.82 by that control ceasing to be a heart at all:
+               it is a labelled "＋ Add to Qobuz" pill in accent, this is a bare
+               pink heart. Different glyph, different colour, different verb. -->
           <div class="modal-action-row">
+            <div class="modal-actions" id="modal-actions">
+              <!-- buttons injected -->
+            </div>
             <button class="modal-fav icon-btn" id="modal-fav-btn" aria-label="Add to Favourites" title="Add to Favourites">
               <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
               </svg>
             </button>
-            <div class="modal-actions" id="modal-actions">
-              <!-- buttons injected -->
-            </div>
           </div>
 
           <div class="track-list-wrap">

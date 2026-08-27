@@ -153,8 +153,9 @@ Layout section of README.md.
   returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
   say "added to the existing one" instead of implying a new playlist.
 - The album screen's PLAYBACK ROW is the app-Favourite heart plus one split
-  pill (v1.0.79, owner decision; heart moved to the LEFT in v1.0.81):
-  `[heart] [ Play Now | v ]`. The pill body plays now; the caret opens the
+  pill (v1.0.79, owner decision; heart moved to the LEFT in v1.0.81 and back to
+  the RIGHT in v1.0.82, where the pill also stopped stretching the full row):
+  `[ Play Now | v ] [heart]`. The pill body plays now; the caret opens the
   app's ONE dropdown with Play next / Add to queue. The heart is a SIBLING of
   `#modal-actions`, not a child — the builders wipe that node's innerHTML — so
   its place in the row is decided by DOM order in index.html and nothing else. This REVERSES two earlier notes. (a) The heart used to be an icon in
@@ -296,6 +297,36 @@ Layout section of README.md.
   really did come from Qobuz, and hiding it would make an online album look
   local; the heart goes because it is an action against an account that isn't
   there.
+- THE HEART MEANS EXACTLY ONE THING (v1.0.82, owner decision): "favourite, in
+  my collection", i.e. `lib/favourites.js`. The Qobuz control that used to be a
+  second heart — save this catalogue album to the QOBUZ ACCOUNT — is now a
+  PLUS, with a tick for "already in the account": `setHeart()` in app.js still
+  has its old name (six call sites) but paints `＋ / ✓`, and the album modal's
+  pill reads "＋ Add to Qobuz" / "✓ In Qobuz" instead of "♡ Favourite". Smart
+  Picks had already settled this convention with its `＋ Add` button; the
+  Qobuz surfaces now match it. `--heart` (pink) is likewise RESERVED for the
+  app's own favourite — `.modal-fav.is-fav` and `.album-fav-mark`, and nothing
+  else. The Qobuz plus paints `--accent`. Before this both systems painted
+  pink and were distinguished only by position, which is why the album modal
+  putting them in one row was a problem worth solving rather than styling
+  around.
+- A favourite key must survive a title with NO ALPHANUMERICS (v1.0.82).
+  `norm()` strips everything outside `[a-z0-9]`, so "<|°_°|>", "+", "!!!" and
+  "÷" all fold to the empty string and `keyFor()` answered null — which meant
+  the album could not be favourited AT ALL: `has()` was false so the heart
+  painted hollow forever, and `toggle()` bailed with `return false`, which the
+  client reads as the NEW state and reported as "Removed from Favourites".
+  A failure wearing the wording of the opposite success, on real albums
+  (Caravan Palace, Ed Sheeran, !!!). `keyFor()` now falls back to `symFold()`,
+  which keeps the symbols. The fallback is on the TITLE ONLY, deliberately:
+  the title is what gated null, so it can only rescue albums that had no key
+  and therefore no stored row — doing the same on the artist would MOVE the key
+  of an already-stored favourite by a symbol-named artist and strand it.
+  `public/app.js` carries a SECOND COPY of `keyFor` (no build step, and the
+  client decides which hearts paint filled), so `lib/favourites.test.js`
+  extracts that copy and runs both over one table — a change to either alone
+  fails the build. Album edits, rescued artwork and merges key the same way and
+  have the SAME defect; only favourites is fixed.
 - Favourites (`lib/favourites.js`, `data/favourites.json`) are THIS APP'S own
   collection, nothing to do with the Qobuz heart (which writes to the Qobuz
   account). Keyed on normalised title+artist like album edits, because ids and

@@ -901,7 +901,7 @@ main {
 .modal-actions .action-btn.primary:hover { background: var(--accent); filter: brightness(1.08); }
 
 /* ------------------------------------------------------------------ */
-/*  Album playback row: [ heart ]  [ Play Now | v ]                    */
+/*  Album playback row: [ Play Now | v ]  [ heart ]                    */
 /* ------------------------------------------------------------------ */
 /* The wrapper exists so THIS APP'S Favourite can sit in the row without
    living inside #modal-actions, whose innerHTML every builder wipes. The
@@ -912,7 +912,14 @@ main {
    the pill beside it is taller than that, so a centred heart reads as a
    different, smaller row. Stretching makes the two one band. */
 .modal-action-row { display: flex; align-items: stretch; gap: 8px; margin-bottom: 22px; }
-.modal-action-row .modal-actions { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+/* The pill no longer stretches to the full row (v1.0.82) — it is capped, and
+   the heart sits immediately to its right, so the pair reads as a group with
+   the row's slack falling away to the right rather than a full-width bar. The
+   percentage keeps the proportion on a phone; the absolute cap stops it
+   sprawling on the ≥720px layout, where .modal-body is much wider. */
+.modal-action-row .modal-actions {
+  flex: 1 1 auto; min-width: 0; max-width: min(68%, 300px); margin-bottom: 0;
+}
 .modal-action-row .modal-fav { width: 44px; height: auto; }
 
 /* Split primary: tapping the body plays now, tapping the caret opens the rest
@@ -2806,7 +2813,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .qb-act-btn svg { width: 18px; height: 18px; }
 .qb-act-btn.qb-album-heart { background: var(--bg-elev); color: var(--text); padding: 9px 12px; }
-.qb-act-btn.qb-album-heart.is-fav { color: var(--heart); }
+.qb-act-btn.qb-album-heart.is-fav { color: var(--accent); }
 .qb-act-btn:disabled { opacity: .5; cursor: default; }
 .qb-tracks { display: flex; flex-direction: column; }
 .qb-track { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-top: 1px solid var(--line, rgba(128,128,128,.15)); }
@@ -2822,12 +2829,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   color: var(--text-dim); font-size: 14px; line-height: 1.55;
 }
 /* Qobuz albums reuse the shared album modal — hide the library-only Edit button
-   and bio, and give the favourite pill its heart state. */
+   and bio, and give the "add to Qobuz" pill its in-account state. */
 .modal.qobuz-mode .modal-edit,
 .modal.qobuz-mode #album-bio-section,
 .modal.qobuz-mode #album-bio-toggle,
 .modal.qobuz-mode #album-bio-source { display: none !important; }
-.action-btn.qobuz-fav.is-fav { color: var(--heart); border-color: var(--heart); }
+/* In the account already: accent, not the favourite pink. Pink is reserved for
+   the app's own heart, which sits in this same row on a Qobuz album. */
+.action-btn.qobuz-fav.is-fav { color: var(--accent-text, var(--accent)); border-color: var(--accent); }
 /* Opened from the Qobuz browser overlay (z-index 90) — sit above it. */
 .modal.qobuz-mode { z-index: 95; }
 
@@ -3387,7 +3396,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .album-source-badge svg { width: 13px; height: 13px; display: block; }
 
-/* Favourite heart on a Qobuz album tile (bottom-right of the art). */
+/* "Save to my Qobuz account" on a Qobuz album tile (bottom-right of the art).
+   A PLUS, not a heart (v1.0.82) — the heart belongs to this app's own
+   favourites, which mark the bottom-LEFT corner. Class names kept: they are
+   what six JS call sites and this file agree on, and they are Qobuz-scoped. */
 .album-fav-heart {
   position: absolute; bottom: 6px; right: 6px; z-index: 3;
   display: flex; align-items: center; justify-content: center;
@@ -3397,10 +3409,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
 }
 .album-fav-heart svg { width: 16px; height: 16px; display: block; }
-.album-fav-heart.is-fav { color: var(--heart); }
+.album-fav-heart.is-fav { color: var(--accent); }
 .album-fav-heart:disabled { opacity: .5; cursor: default; }
 /* Heart in the Qobuz search-result row reuses the round action button. */
-.ext-qobuz-heart.is-fav { color: var(--heart); }
+.ext-qobuz-heart.is-fav { color: var(--accent); }
 
 /* ------------------------------------------------------------------ */
 /*  Album detail refresh — Home-language styling (v1.6.6 onward)       */
@@ -3750,12 +3762,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .album.is-playlist .album-artist { color: var(--text-faint); }
 
 /* This app's own Favourite. It lives in the PLAYBACK ROW now (v1.0.79, owner
-   decision), rather than up in the modal chrome, and LEADS that row from
-   v1.0.81. It keeps the accent fill rather than the Qobuz heart's pink, which
-   is most of what tells the two systems apart on a Qobuz album where both are
-   on screen at once. No positioning of its own — the .modal-action-row flexbox
-   places it, in DOM order — but the rule stays standalone and inset-free
-   because the safe-area invariant is pinned to this selector. */
+   decision), rather than up in the modal chrome, and TRAILS that row from
+   v1.0.82 (it led it briefly in v1.0.81). A HEART, and from v1.0.82 the only
+   heart in the app: the Qobuz control that used to be one beside it is now a
+   plus. --heart (pink) is likewise reserved for these two rules and the tile
+   mark below — nothing else may claim it, or the distinction goes back to being
+   a matter of position. No positioning of its own — the .modal-action-row
+   flexbox places it, in DOM order — but the rule stays standalone and
+   inset-free because the safe-area invariant is pinned to this selector. */
 .modal-fav { flex: 0 0 auto; z-index: 2; }
 .modal-fav.is-fav { color: var(--heart); border-color: var(--heart); }
 .modal-fav.is-fav svg { fill: currentColor; }
@@ -3765,8 +3779,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 
 /* "In this app's Favourites" marker on an album tile. Bottom-LEFT, because the
    other three corners are taken: album-of-the-day badge (top-left), online
-   source badge (top-right) and the Qobuz heart (bottom-right). Accent-coloured
-   to match the modal control and stay distinct from the pink Qobuz heart. */
+   source badge (top-right) and the "add to Qobuz" plus (bottom-right). Pink,
+   matching the modal heart — the plus opposite it is accent, so the two corners
+   read as two different systems at a glance. */
 .album-fav-mark {
   position: absolute; bottom: 6px; left: 6px; z-index: 3;
   display: none; align-items: center; justify-content: center;
