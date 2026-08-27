@@ -152,10 +152,12 @@ Layout section of README.md.
   counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
   returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
   say "added to the existing one" instead of implying a new playlist.
-- The album screen's PLAYBACK ROW is one split pill plus the app-Favourite
-  heart (v1.0.79, owner decision): `[ Play Now | v ] [heart]`. The pill body
-  plays now; the caret opens the app's ONE dropdown with Play next / Add to
-  queue. This REVERSES two earlier notes. (a) The heart used to be an icon in
+- The album screen's PLAYBACK ROW is the app-Favourite heart plus one split
+  pill (v1.0.79, owner decision; heart moved to the LEFT in v1.0.81):
+  `[heart] [ Play Now | v ]`. The pill body plays now; the caret opens the
+  app's ONE dropdown with Play next / Add to queue. The heart is a SIBLING of
+  `#modal-actions`, not a child — the builders wipe that node's innerHTML — so
+  its place in the row is decided by DOM order in index.html and nothing else. This REVERSES two earlier notes. (a) The heart used to be an icon in
   the modal chrome, "never a pill in `#modal-actions`", because on a Qobuz
   album it would sit beside the Qobuz heart meaning something else entirely —
   that hazard is real and is now carried instead by the two looking different:
