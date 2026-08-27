@@ -901,7 +901,7 @@ main {
 .modal-actions .action-btn.primary:hover { background: var(--accent); filter: brightness(1.08); }
 
 /* ------------------------------------------------------------------ */
-/*  Album playback row: [ Play Now | v ]  [ heart ]                    */
+/*  Album playback row: [ heart ]  [ Play Now | v ]                    */
 /* ------------------------------------------------------------------ */
 /* The wrapper exists so THIS APP'S Favourite can sit in the row without
    living inside #modal-actions, whose innerHTML every builder wipes. The
@@ -3750,12 +3750,12 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .album.is-playlist .album-artist { color: var(--text-faint); }
 
 /* This app's own Favourite. It lives in the PLAYBACK ROW now (v1.0.79, owner
-   decision), immediately right of the play button's options caret, rather than
-   up in the modal chrome. It keeps the accent fill rather than the Qobuz
-   heart's pink, which is most of what tells the two systems apart on a Qobuz
-   album where both are on screen at once. No positioning of its own — the
-   .modal-action-row flexbox places it — but the rule stays standalone and
-   inset-free because the safe-area invariant is pinned to this selector. */
+   decision), rather than up in the modal chrome, and LEADS that row from
+   v1.0.81. It keeps the accent fill rather than the Qobuz heart's pink, which
+   is most of what tells the two systems apart on a Qobuz album where both are
+   on screen at once. No positioning of its own — the .modal-action-row flexbox
+   places it, in DOM order — but the rule stays standalone and inset-free
+   because the safe-area invariant is pinned to this selector. */
 .modal-fav { flex: 0 0 auto; z-index: 2; }
 .modal-fav.is-fav { color: var(--heart); border-color: var(--heart); }
 .modal-fav.is-fav svg { fill: currentColor; }
