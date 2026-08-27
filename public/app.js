@@ -2816,7 +2816,19 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       const on = await window.__toggleFavourite(currentAlbum);
       paintModalFav();
       if (window.__repaintFavMarks) window.__repaintFavMarks();
-      showToast(on ? "Added to Favourites" : "Removed from Favourites");
+      // The favourite is this app's and it landed; mirroring it into LMS's own
+      // Favorites is a second thing that can fail on its own, so name it rather
+      // than implying both happened. Three different messages, deliberately:
+      //  - ok / removing something LMS never had  → say nothing extra;
+      //  - no-address                             → expected for a streaming
+      //    album that isn't in the library, so it is information, not an error;
+      //  - anything else                          → a real failure, and loud.
+      const sync = window.__lastFavLmsSync && window.__lastFavLmsSync();
+      const base = on ? "Added to Favourites" : "Removed from Favourites";
+      if (!sync || sync.ok || !on) showToast(base);
+      else if (sync.reason === "no-address")
+        showToast(base + " · not in LMS until the library has it");
+      else showToast(base + " · not added to LMS: " + (sync.error || "failed"), "error");
     } catch (e) { showToast(e.message, "error"); }
     finally { modalFavBtn.disabled = false; }
   });
@@ -9397,17 +9409,30 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   window.__repaintFavMarks = repaintMarks;
   window.__refreshFavKeys = async () => { await refreshKeys(); repaintMarks(); };
 
+  // Result of the last toggle's LMS half, for the caller's toast. The favourite
+  // itself is this app's, and succeeds or fails on its own; mirroring it into
+  // LMS's own Favorites can fail separately (no connection, an album LMS has no
+  // address for) and saying nothing would leave the owner believing both
+  // halves landed.
+  let lastLmsSync = null;
+  window.__lastFavLmsSync = () => lastLmsSync;
+
   async function toggleFav(a, want) {
     const r = await fetch("/api/favourites/toggle", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: a.title, subtitle: a.subtitle || a.artist || "", source: a.source || null,
         image_key: a.image_key || null, qobuz_id: a.qobuz_id || null,
+        // The server resolves the LMS favourite URL from this when it can:
+        // looking the record up by offset avoids findRecordByName(), which
+        // folds a symbol-only title away and would answer null for it.
+        offset: (a.offset != null ? a.offset : undefined),
         favourite: want,
       }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    lastLmsSync = { ok: !!j.lms, reason: j.lms_reason || null, error: j.lms_error || null };
     const k = keyFor(a.title, a.subtitle || a.artist);
     if (k) { if (j.favourite) favKeys.add(k); else favKeys.delete(k); }
     repaintMarks();
