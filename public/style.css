@@ -178,21 +178,6 @@ button { font-family: inherit; }
 .album-options-btn:active { transform: scale(.97); }
 .album-options-btn:disabled { opacity: .45; cursor: default; }
 
-/* Overflow menu trigger — the three-dots-in-a-circle affordance, used wherever
-   a screen has more secondary actions than belong on a row. The dropdown it
-   opens is the shared .dropdown-menu below, so there is one dropdown look in
-   the app. */
-.overflow-btn {
-  flex: 0 0 auto;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; padding: 0;
-  border-radius: 999px; border: 0; background: transparent;
-  color: var(--text); cursor: pointer;
-}
-.overflow-btn svg { width: 26px; height: 26px; }
-.overflow-btn:hover { filter: brightness(1.2); }
-.overflow-btn:active { transform: scale(.94); }
-
 /* Anchored dropdown. Rendered into <body>, not into .topbar — the top bar is
    its own stacking context, so a nested menu could not sit above a
    full-screen dismiss backdrop. */
@@ -801,7 +786,20 @@ main {
    The insets that remain elsewhere — .topbar, .filter-bar, .filter-panel, the
    qobuz pin, .menu-drawer — are in v1.6.50 too and are correct. It is only the
    MODAL family that must not carry them. */
-.modal-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
+/* The cluster itself carries the pin; the buttons inside it are in normal
+   flow. row-reverse means DOM order runs right-to-left, so Back is written
+   first and sits hard in the corner, and any button a mode hides simply drops
+   out and lets the rest close up — no hardcoded `right:` offsets to leave a
+   hole behind (v1.0.79). Top stays 12px, buttons stay 38px, so .modal-body's
+   64px top padding still clears them: the vertical box chain is untouched. */
+.modal-chrome {
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  display: flex; flex-direction: row-reverse; align-items: center; gap: 10px;
+}
+/* Kept as its own rule (no inset — see above): the geometry now comes from
+   .modal-chrome, but this selector is the one the safe-area invariant is
+   pinned to, and it is what the × / back button is addressed by. */
+.modal-close { z-index: 2; }
 
 .modal-body {
   /* Positioned (NO z-index) so it paints above the #modal-ambient glow layer
@@ -897,6 +895,43 @@ main {
   font-weight: 700;
 }
 .modal-actions .action-btn.primary:hover { background: var(--accent); filter: brightness(1.08); }
+
+/* ------------------------------------------------------------------ */
+/*  Album playback row: [ Play Now | v ]  [ heart ]                    */
+/* ------------------------------------------------------------------ */
+/* The wrapper exists so THIS APP'S Favourite can sit in the row without
+   living inside #modal-actions, whose innerHTML every builder wipes. The
+   bottom margin moved up here from .modal-actions — .modal-actions keeps its
+   own 22px because the playlist and live-playlist overlays build standalone
+   rows with that class and are not wrapped. */
+/* `stretch`, not `center`: the heart is an .icon-btn (a fixed 38px square) and
+   the pill beside it is taller than that, so a centred heart reads as a
+   different, smaller row. Stretching makes the two one band. */
+.modal-action-row { display: flex; align-items: stretch; gap: 8px; margin-bottom: 22px; }
+.modal-action-row .modal-actions { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.modal-action-row .modal-fav { width: 44px; height: auto; }
+
+/* Split primary: tapping the body plays now, tapping the caret opens the rest
+   of the playback options (v1.0.79 — this replaced the standalone Queue pill
+   and the "…" overflow button). Two buttons drawn as ONE pill: the halves each
+   round only their outer end and a hairline marks the seam. The caret is its
+   own button rather than a hit region so it gets its own label and
+   aria-expanded. */
+.action-split { display: flex; flex: 1 1 0; min-width: 0; align-items: stretch; }
+.modal-actions .action-split .action-btn { border-radius: 0; }
+.modal-actions .action-split .action-split-main {
+  flex: 1 1 auto; min-width: 0;
+  border-top-left-radius: 999px; border-bottom-left-radius: 999px;
+  padding-left: 14px;
+}
+.modal-actions .action-split .action-split-more {
+  flex: 0 0 44px; padding: 11px 0;
+  border-top-right-radius: 999px; border-bottom-right-radius: 999px;
+  /* inset shadow rather than a border, so the seam cannot change the pill's
+     overall width when the two halves' borders differ. */
+  box-shadow: inset 1px 0 0 rgba(0, 0, 0, .22);
+}
+.action-split .action-split-more svg { width: 18px; height: 18px; }
 
 .section-label {
   margin: 0 0 10px;
@@ -1044,13 +1079,16 @@ main {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Modal share button (top-right, beside the close)                   */
+/*  Modal share / edit buttons (in the top-right .modal-chrome cluster) */
 /* ------------------------------------------------------------------ */
+/* No positioning of their own any more (v1.0.79) — .modal-chrome lays them
+   out. Both rules stay standalone and inset-free: they are the selectors the
+   safe-area invariant is pinned to. */
 .modal-share {
-  position: absolute; top: 12px; right: 60px; z-index: 2;
+  z-index: 2;
 }
 .modal-edit {
-  position: absolute; top: 12px; right: 108px; z-index: 2;
+  z-index: 2;
 }
 /* The editor targets a library album — hide it on the now-playing screen
    (where Share moves into the close button's spot anyway). */
@@ -1433,6 +1471,7 @@ main {
 .modal.np-mode #modal-title,
 .modal.np-mode .modal-subtitle,
 .modal.np-mode .modal-actions,
+.modal.np-mode .modal-action-row,
 .modal.np-mode .track-list-wrap,
 .modal.np-mode #album-bio-section { display: none; }
 
@@ -1453,11 +1492,12 @@ main {
 }
 .modal.np-mode .modal-tabs { margin-top: 0; }
 
-/* Corner buttons in np-mode: no × — the top-left Home button leaves the
-   screen (to Home), and Share moves into the ×'s top-right spot. */
+/* Corner buttons in np-mode: no back chevron — the top-left Home button is
+   how you leave this screen. Share is the only thing left in the cluster, so
+   it closes up into the corner on its own; no `right:` override needed since
+   .modal-chrome went flex (v1.0.79). */
 .modal-home { display: none; }
 .modal.np-mode .modal-close { display: none; }
-.modal.np-mode .modal-share { right: 12px; }
 .modal.np-mode .modal-home {
   display: inline-flex;
   position: absolute; top: 12px; left: 12px; z-index: 2;
@@ -3704,14 +3744,18 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    as metadata rather than a name. */
 .album.is-playlist .album-artist { color: var(--text-faint); }
 
-/* This app's own Favourite, in the album modal chrome. Sits left of Edit.
-   Painted with --accent rather than the Qobuz heart's pink, so the two
-   favourite systems are distinguishable at a glance as well as by position. */
-.modal-fav { position: absolute; top: 12px; right: 156px; z-index: 2; }
+/* This app's own Favourite. It lives in the PLAYBACK ROW now (v1.0.79, owner
+   decision), immediately right of the play button's options caret, rather than
+   up in the modal chrome. It keeps the accent fill rather than the Qobuz
+   heart's pink, which is most of what tells the two systems apart on a Qobuz
+   album where both are on screen at once. No positioning of its own — the
+   .modal-action-row flexbox places it — but the rule stays standalone and
+   inset-free because the safe-area invariant is pinned to this selector. */
+.modal-fav { flex: 0 0 auto; z-index: 2; }
 .modal-fav.is-fav { color: var(--heart); border-color: var(--heart); }
 .modal-fav.is-fav svg { fill: currentColor; }
-/* Now-playing mode has its own layout (no ×, Home at the left) and hides the
-   whole action row, so there's no coherent slot for it there. */
+/* Now-playing mode hides the whole playback row, so hide the heart with it —
+   the row it belongs to isn't there. */
 .modal.np-mode .modal-fav { display: none; }
 
 /* "In this app's Favourites" marker on an album tile. Bottom-LEFT, because the

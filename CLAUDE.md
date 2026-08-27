@@ -152,14 +152,48 @@ Layout section of README.md.
   counted, never fatal. `playlists new` on a NAME COLLISION creates nothing and
   returns `overwritten_playlist_id` — surfaced as `created:false` so the UI can
   say "added to the existing one" instead of implying a new playlist.
-- The app-Favourite control on the album screen is an ICON BUTTON IN THE MODAL
-  CHROME (`.modal-fav`, beside Edit), never a pill in `#modal-actions`: that row
-  is playback, and for a Qobuz album a heart pill there would sit beside the
-  Qobuz heart meaning something else entirely. App favourites paint with
-  `--accent`; the Qobuz heart stays pink — different colour, different system.
+- The album screen's PLAYBACK ROW is one split pill plus the app-Favourite
+  heart (v1.0.79, owner decision): `[ Play Now | v ] [heart]`. The pill body
+  plays now; the caret opens the app's ONE dropdown with Play next / Add to
+  queue. This REVERSES two earlier notes. (a) The heart used to be an icon in
+  the modal chrome, "never a pill in `#modal-actions`", because on a Qobuz
+  album it would sit beside the Qobuz heart meaning something else entirely —
+  that hazard is real and is now carried instead by the two looking different:
+  the Qobuz one is a LABELLED pill that paints pink, this one is a bare
+  `--accent` heart that spells itself out in its title/aria-label. (b) The row
+  used to be Play Now + Queue + a three-dots `.overflow-btn`; three controls
+  for one decision, in a `flex-wrap: nowrap` row that could never have grown a
+  fourth. `buildSplitPlayButton(main, items, label)` builds it, and draws NO
+  caret when the menu would be empty — a dead affordance on the control the
+  screen is built around reads as a broken button. The dropdown machinery is
+  unchanged (`openOptionsMenu` → `.dropdown-menu` into `<body>`); it is closed
+  from `closeModal()` and `openAlbum()` because rebuilding the row destroys its
+  trigger. The Qobuz album path gets the same pill but NO "Play next" row: the
+  plugin exposes only play and add, so offering one would be a button that
+  lies. App favourites paint with `--accent`; the Qobuz heart stays pink —
+  different colour, different system.
   Tiles mark app-favourites via `data-fav-key` + `.is-app-fav`, repainted by
   `window.__repaintFavMarks()` from `/api/favourites/keys` (that endpoint exists
   for exactly this — don't fetch the whole collection to mark a grid).
+- The album modal's top-right buttons are a FLEX CLUSTER, `.modal-chrome`
+  (v1.0.79), not four buttons at hardcoded `right:` offsets. `flex-direction:
+  row-reverse` means DOM order runs right-to-left, so the back chevron is
+  written first and sits hard in the corner. The point is that whichever button
+  a mode hides, the rest CLOSE UP: qobuz-mode hides `.modal-edit` and used to
+  leave a 48px hole at `right: 108px`, and np-mode needed an explicit
+  `.modal.np-mode .modal-share { right: 12px }` to move Share into the ×'s spot
+  — both are now automatic. `.modal-home` stays OUTSIDE the cluster: it pins
+  `left: 12px` in np-mode, and `.modal-chrome` is an absolutely positioned
+  containing block pinned to the RIGHT, so a `left` inside it measures from the
+  wrong edge. The × is a BACK CHEVRON now; it keeps `data-close`, which is what
+  actually wires it (it has no id, and `.modal-close` is only CSS + the
+  safe-area test). The individual rules `.modal-close` / `.modal-share` /
+  `.modal-edit` / `.modal-fav` must STAY STANDALONE AND INSET-FREE even though
+  they carry no geometry any more: `lib/safearea.test.js` looks each one up by
+  exact selector text and hard-fails with "rule not found" if it is renamed,
+  folded into a comma list, or given a `>` combinator. Vertical geometry is
+  untouched — 12px top, 38px buttons, so `.modal-body`'s 64px top padding still
+  clears them.
 - Tiles built OUTSIDE `buildAlbumTile()` — the Qobuz search rows and the native
   Qobuz browser's grid — don't inherit its long-press, so they wire
   `window.__addLongPress` explicitly with `allowSelect:false` (no library offset
@@ -422,7 +456,11 @@ Layout section of README.md.
   `.modal-close`, `.modal-share`, `.modal-edit`, `.modal-fav`,
   `.modal.np-mode .modal-home` and `.modal.np-mode .modal-body` use plain
   12px/14px, and `.modal-body` uses the plain `padding: 64px 18px 40px`
-  shorthand. THIS REVERSES v1.0.69 AND v1.0.70, which were wrong: the owner's
+  shorthand. (Since v1.0.79 the top-right three of those get their 12px from
+  the `.modal-chrome` cluster that holds them, and `.modal-fav` from the
+  playback row — same numbers, same inset-free geometry; the rules themselves
+  still exist standalone because the test looks them up by name.)
+  THIS REVERSES v1.0.69 AND v1.0.70, which were wrong: the owner's
   report was that the now-playing screen and the screens with the mini
   transport were "not OVERLAYING the iOS safe zone", and those releases read it
   backwards — a top inset pads content OUT of the safe area, which is the

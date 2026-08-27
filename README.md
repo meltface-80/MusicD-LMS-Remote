@@ -88,7 +88,7 @@ Features include:
 * Play album immediately
 * Queue album
 * Queue individual tracks
-* Play Now and Queue on the album row; Next behind an overflow menu
+* One Play Now button on the album row, with Play next and Add to queue behind its dropdown, and the favourite heart alongside
 * Multi-select albums (long-press to start; a top-bar Options menu carries every action)
 * Queue multiple albums
 * Continue playback automatically when the queue finishes
