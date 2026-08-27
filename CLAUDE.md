@@ -175,25 +175,31 @@ Layout section of README.md.
   Tiles mark app-favourites via `data-fav-key` + `.is-app-fav`, repainted by
   `window.__repaintFavMarks()` from `/api/favourites/keys` (that endpoint exists
   for exactly this — don't fetch the whole collection to mark a grid).
-- The album modal's top-right buttons are a FLEX CLUSTER, `.modal-chrome`
-  (v1.0.79), not four buttons at hardcoded `right:` offsets. `flex-direction:
-  row-reverse` means DOM order runs right-to-left, so the back chevron is
-  written first and sits hard in the corner. The point is that whichever button
-  a mode hides, the rest CLOSE UP: qobuz-mode hides `.modal-edit` and used to
-  leave a 48px hole at `right: 108px`, and np-mode needed an explicit
-  `.modal.np-mode .modal-share { right: 12px }` to move Share into the ×'s spot
-  — both are now automatic. `.modal-home` stays OUTSIDE the cluster: it pins
-  `left: 12px` in np-mode, and `.modal-chrome` is an absolutely positioned
+- The album modal's top corners: BACK at the top LEFT, a flex cluster at the top
+  RIGHT. The × became a back chevron and moved left (v1.0.80) — a back
+  affordance on the right reads as a dismiss. It keeps `data-close`, which is
+  what actually wires it (it has no id, and `.modal-close` is only CSS + the
+  safe-area test). It is pinned on its own, NOT a member of `.modal-chrome`, for
+  the same reason `.modal-home` isn't: that cluster is an absolutely positioned
   containing block pinned to the RIGHT, so a `left` inside it measures from the
-  wrong edge. The × is a BACK CHEVRON now; it keeps `data-close`, which is what
-  actually wires it (it has no id, and `.modal-close` is only CSS + the
-  safe-area test). The individual rules `.modal-close` / `.modal-share` /
-  `.modal-edit` / `.modal-fav` must STAY STANDALONE AND INSET-FREE even though
-  they carry no geometry any more: `lib/safearea.test.js` looks each one up by
-  exact selector text and hard-fails with "rule not found" if it is renamed,
-  folded into a comma list, or given a `>` combinator. Vertical geometry is
-  untouched — 12px top, 38px buttons, so `.modal-body`'s 64px top padding still
-  clears them.
+  wrong edge. Back and np-mode's Home share the left slot, which is safe only
+  because np-mode hides Back.
+  `.modal-chrome` (v1.0.79) holds Share and Edit as a FLEX row rather than
+  buttons at hardcoded `right:` offsets. `flex-direction: row-reverse` means DOM
+  order runs right-to-left, so Share is written first and sits hard in the
+  corner. The point is that whichever button a mode hides or loses, the rest
+  CLOSE UP: qobuz-mode hides `.modal-edit` and used to leave a 48px hole at
+  `right: 108px`; np-mode needed an explicit `.modal.np-mode .modal-share {
+  right: 12px }` to move Share into the ×'s spot; and Share taking that corner
+  when Back left for the other side cost no rule at all. All three are now
+  automatic — that is the whole reason the cluster exists, so don't reintroduce
+  a per-button `right:`.
+  The individual rules `.modal-close` / `.modal-share` / `.modal-edit` /
+  `.modal-fav` must STAY STANDALONE AND INSET-FREE, even the ones that carry no
+  geometry any more: `lib/safearea.test.js` looks each one up by exact selector
+  text and hard-fails with "rule not found" if it is renamed, folded into a
+  comma list, or given a `>` combinator. Vertical geometry is untouched — 12px
+  top, 38px buttons, so `.modal-body`'s 64px top padding still clears them.
 - Tiles built OUTSIDE `buildAlbumTile()` — the Qobuz search rows and the native
   Qobuz browser's grid — don't inherit its long-press, so they wire
   `window.__addLongPress` explicitly with `allowSelect:false` (no library offset

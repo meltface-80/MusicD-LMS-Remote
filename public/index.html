@@ -505,10 +505,22 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
            top of the panel so each album tints its own detail view (decorative
            only — hidden from AT, never intercepts taps). -->
       <img id="modal-ambient" class="modal-ambient hidden" alt="" aria-hidden="true">
-      <!-- Now-playing mode only (CSS-gated): top-left Home button. It is
-           deliberately NOT inside .modal-chrome — that cluster is an absolutely
-           positioned containing block pinned to the RIGHT, so a `left: 12px`
-           child of it would measure from the wrong edge. -->
+      <!-- Back, not close: this modal is a screen you came from somewhere, so a
+           chevron reads truer than an ×, and a back affordance belongs on the
+           LEFT. Still `data-close` — the behaviour (dismiss the modal, return to
+           where you were) is unchanged. It is deliberately NOT inside
+           .modal-chrome: that cluster is an absolutely positioned containing
+           block pinned to the RIGHT, so a `left: 12px` child of it would
+           measure from the wrong edge. -->
+      <button class="modal-close icon-btn" data-close aria-label="Back" title="Back">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <!-- Now-playing mode only (CSS-gated): top-left Home button, in the same
+           corner as Back and for the same reason — np-mode hides Back, so the
+           two never share the slot. Outside .modal-chrome, as above. -->
       <button class="modal-home icon-btn" id="modal-home-btn" aria-label="Go to Home screen" title="Home">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -517,21 +529,13 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
         </svg>
       </button>
       <!-- Top-right chrome cluster. A right-aligned FLEX row (row-reverse, so
-           DOM order runs right-to-left) rather than four buttons at hardcoded
+           DOM order runs right-to-left) rather than buttons at hardcoded
            `right:` offsets: whichever buttons a mode hides, the rest close up
-           against the corner instead of leaving a hole. qobuz-mode hiding Edit
-           used to leave exactly such a hole. Back is first, i.e. hard into the
-           corner. -->
+           against the corner instead of leaving a hole. Share is first, i.e.
+           hard into the corner — it took that slot when Back moved to the left,
+           without needing a rule to say so. qobuz-mode hiding Edit used to
+           leave exactly such a hole. -->
       <div class="modal-chrome">
-        <!-- Back, not close: this modal is a screen you came from somewhere, so
-             a chevron reads truer than an ×. Still `data-close` — the behaviour
-             (dismiss the modal, return to where you were) is unchanged. -->
-        <button class="modal-close icon-btn" data-close aria-label="Back" title="Back">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-        </button>
         <button class="modal-share icon-btn" id="modal-share-btn" aria-label="Share card">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
