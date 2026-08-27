@@ -787,19 +787,23 @@ main {
    qobuz pin, .menu-drawer — are in v1.6.50 too and are correct. It is only the
    MODAL family that must not carry them. */
 /* The cluster itself carries the pin; the buttons inside it are in normal
-   flow. row-reverse means DOM order runs right-to-left, so Back is written
+   flow. row-reverse means DOM order runs right-to-left, so Share is written
    first and sits hard in the corner, and any button a mode hides simply drops
    out and lets the rest close up — no hardcoded `right:` offsets to leave a
-   hole behind (v1.0.79). Top stays 12px, buttons stay 38px, so .modal-body's
-   64px top padding still clears them: the vertical box chain is untouched. */
+   hole behind (v1.0.79). Share taking the corner when Back moved to the left
+   (v1.0.80) cost no rule at all, which is the point of the cluster. Top stays
+   12px, buttons stay 38px, so .modal-body's 64px top padding still clears
+   them: the vertical box chain is untouched. */
 .modal-chrome {
   position: absolute; top: 12px; right: 12px; z-index: 2;
   display: flex; flex-direction: row-reverse; align-items: center; gap: 10px;
 }
-/* Kept as its own rule (no inset — see above): the geometry now comes from
-   .modal-chrome, but this selector is the one the safe-area invariant is
-   pinned to, and it is what the × / back button is addressed by. */
-.modal-close { z-index: 2; }
+/* Back sits in the TOP-LEFT corner, opposite the cluster — a back chevron on
+   the right reads as a dismiss, not a return. Its own pin rather than a member
+   of .modal-chrome, because that cluster is a containing block pinned right and
+   a `left` inside it would measure from the wrong edge. NO top inset (see
+   above); the plain 12px is the v1.6.50 value. */
+.modal-close { position: absolute; top: 12px; left: 12px; z-index: 2; }
 
 .modal-body {
   /* Positioned (NO z-index) so it paints above the #modal-ambient glow layer
@@ -1492,10 +1496,11 @@ main {
 }
 .modal.np-mode .modal-tabs { margin-top: 0; }
 
-/* Corner buttons in np-mode: no back chevron — the top-left Home button is
-   how you leave this screen. Share is the only thing left in the cluster, so
-   it closes up into the corner on its own; no `right:` override needed since
-   .modal-chrome went flex (v1.0.79). */
+/* Corner buttons in np-mode: no back chevron — the top-left Home button is how
+   you leave this screen, and it takes the same slot Back occupies elsewhere,
+   which is safe precisely because Back is hidden here. Share is the only thing
+   left in the cluster, so it stays in the right-hand corner on its own; no
+   `right:` override needed since .modal-chrome went flex (v1.0.79). */
 .modal-home { display: none; }
 .modal.np-mode .modal-close { display: none; }
 .modal.np-mode .modal-home {
