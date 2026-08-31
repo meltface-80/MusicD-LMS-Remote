@@ -826,6 +826,63 @@ Layout section of README.md.
   glass at both ends. The clip lives on `.mt-progress`, never on
   `.mini-transport` — that element's overflow must stay visible or the zone and
   volume popovers cannot open upwards out of it.
+- THE ALBUM SCREEN LEADS WITH THE ARTWORK TOO (v1.0.85), the same treatment as
+  Now playing and the same arithmetic — `width: calc(100% + 36px); margin: 0
+  -18px` are literally `.modal-body`'s 18px padding, a mask rather than an
+  overlaid gradient, and the title UNDER the art, never on it. Three things are
+  particular to this screen:
+  (a) it is SCOPED with `@media (max-width: 719px)`, not left to source order
+  the way the Roon build leaves it. At ≥720px `.modal-panel` is a 960px CENTRED
+  CARD with 28px padding and a two-column body, and "full-bleed" there bleeds
+  off the card's own padding — a misalignment, not a bleed.
+  (b) `.modal-body`'s `padding-top: 0` is what lets the cover reach the top of
+  the panel, and it is THE ONLY rule allowed to give that reserve up: the base
+  64px is what keeps the track list clear of the pinned corner buttons on every
+  other screen. `lib/safearea.test.js` pins exactly that — at most one
+  `.modal-body` block may zero it, and its selector must name `:not(.np-mode)`.
+  (c) Back, Share and Edit sit ON the cover, so they take a DARK scrim
+  (`rgba(0,0,0,.42)`, white icons) in every palette. Not the glass chip they
+  wear elsewhere: a 7% wash vanishes into half the covers in a library, and
+  white-on-dark is the only pair that survives an unknown sleeve. Written as
+  their own `:not(.np-mode)` selectors, never folded into the standalone
+  `.modal-close` / `.modal-share` / `.modal-edit` rules — see the test note
+  below. Now playing does NOT get this scrim: it keeps its top padding and its
+  tabs row, so its art starts below the buttons.
+  Two PRE-EXISTING defects fell out of building it. `.modal-art` was never a
+  positioning context (it only declares `position: relative` inside the
+  `@supports not (aspect-ratio)` fallback, which modern browsers skip), so
+  `#modal-quality` resolved against `.modal-body` and rendered on the
+  SCROLLPORT rather than on the cover — invisible only because the badge is off
+  by default. And the hero's mask is on the `img` while `.modal-art` still
+  painted `--bg-elev-2`, so the cover dissolved into an opaque rectangle one
+  step lighter than the page with a hard bottom edge; it needs `background:
+  transparent` (np-mode's own hero nulls it for the same reason). `.modal-
+  ambient` is deliberately LEFT ON: once the art is transparent the blurred
+  wash does show through the tail, but at `.26`/`.17` opacity it is
+  imperceptible — measured against real covers, not a flat placeholder.
+- `lib/safearea.test.js` resolves its six rules by EXACT STANDALONE SELECTOR,
+  walking braces (v1.0.85). It used to anchor on `(?:^|[},])` — and `[},]`
+  includes the COMMA, so a comma list earlier in the file (`.modal-share,
+  .modal-close { … }`) was matched instead and the test read that rule's body
+  and never looked at the pin. Every assertion here is "must NOT carry an
+  inset", so finding the wrong rule PASSES: the failure mode was a silently
+  VACUOUS test, not a red one. (The Roon build's equivalent asserts the
+  opposite way, which is why the same hole fails loudly there.) The walk also
+  reaches rules inside `@media`, which the flat regex could not — the album
+  hero is inside one. Corollary, and CLAUDE.md already required it: never fold
+  `.modal-close` / `.modal-share` / `.modal-edit` / `.modal-fav` /
+  `.modal-body` into a comma list; the test now hard-fails with "rule not
+  found" if you do.
+- ANY visual judgement made against the fake LMS needs REAL COVERS (v1.0.85).
+  The fixture used to serve a 1x1 placeholder, which renders as a flat colour —
+  and a flat colour cannot show what a gradient mask, a 12px blur or an
+  `object-fit` crop actually do. The whole "does the ambient wash show through
+  the hero's fade" question was unanswerable against it. The scratch harness
+  generates detailed PNGs instead (a small zlib-based encoder; no dependency).
+  Note also that the server holds an in-memory image LRU keyed on `key@size`,
+  so changing what the fixture serves means RESTARTING the app server, not just
+  the fake — otherwise some sizes come back from the old cache and others do
+  not, which looks like a rendering bug in the app.
 - NOW PLAYING LEADS WITH THE ARTWORK (v1.0.84). Full-bleed, `object-fit: cover`,
   no radius, no shadow, masked to transparent at the bottom so the title and
   transport sit in the tail of the image. THE BLEED ARITHMETIC HAS TO STAY
