@@ -734,6 +734,117 @@ Layout section of README.md.
   test must assert the transport is really up, and must wait for it: the first
   poll fires before `#zone-select` is populated and the loop then backs off to
   6s, so the bar cannot exist before then.
+- THE APP IS GLASS (v1.0.84), ported from the Roon build's v1.7.81–v1.7.89 arc.
+  FOUR TOKENS, in every palette, and `lib/glass.test.js` recomputes them rather
+  than trusting the file:
+  `--bg-veil` is THE palette's own `--bg` written as `rgba()` at `.84` — never a
+  lighter colour of its own. That identity is the whole design: over an
+  unscrolled page the backdrop IS `--bg`, so a veiled bar composites to exactly
+  the page and there is no seam at the top of any screen; once the page moves,
+  album art passes underneath and tints it. The Roon build shipped a lighter
+  translucent surface (`--glass-bg`) for one release and had to take it back
+  out — two materials meant to look alike never quite did. `--glass-edge` is the
+  lit 1px edge and is LOAD-BEARING, not decoration: where nothing is behind a
+  veil it settles to the page colour, and that border plus the drop shadow are
+  all that stop it reading as a hole. `--glass-fill` / `--glass-fill-strong` are
+  a white/ink wash for CONTROLS sitting on a veiled surface — a control painted
+  `--bg-veil` on the page ground composites to exactly the page and vanishes.
+  Those two are OURS, not the reference's: the Roon build never glassed Settings.
+  `--bg-translucent` is gone (it was the top bar's, and `--bg-veil` replaced it).
+  NEVER ADD A `backdrop-filter` TO ANYTHING THAT SITS OVER A SCROLLER — the top
+  bar, the transport pill, the volume/zone popovers, the sheets, any sticky
+  band. iOS Safari re-samples and re-blurs every pixel beneath one on EVERY
+  scroll frame, and `saturate()` does not only soften the backdrop, it BRIGHTENS
+  it, so a filter toggled on scroll is visibly two different bars over a wall of
+  covers. The Roon build shipped that twice and removed it twice. Dismiss
+  BACKDROPS keep theirs and are at 14px: nothing moves behind a scrim, so it is
+  composited once. The five 2px blurs left are the TILE CHIPS, welded to a cover.
+  TWO SURFACES ARE DELIBERATELY OPAQUE: `.dropdown-menu` and the toasts. They
+  float over LIVE CONTENT with no scrim and carry TWO TIERS OF TEXT (a row plus
+  the sentence under it), and at 84% over album art the second tier stops being
+  readable — measured, not guessed. They keep the lit edge so they still belong
+  to the set. Same rule for the wall display's `.playpanel` in `display.css`,
+  which stays hand-written (no tokens: the wall is always dark and has no
+  palettes) but is matched to the dark palette's numbers.
+- THE TOP BAR OVERLAYS THE SCROLLER (v1.0.84): `position: absolute` on `.app`,
+  not a flex sibling of `<main>`. That is what puts album art behind it — before
+  this it could never be see-through, because nothing was ever behind it. Three
+  parts, and all three are needed: (a) the bar is absolute; (b) `<main>` reserves
+  its height in a `padding-top` rule that comes AFTER all three responsive
+  `padding` shorthands, or one of them resets it; (c) anything else that was an
+  in-flow child of the shell moved INSIDE `<main>` (the Docker banner and the
+  update toast), or it would sit under the bar. `--topbar-h` is MEASURED by a
+  ResizeObserver at the end of app.js and written onto `.app` — the height is not
+  a constant (it grows with the status-bar inset, and changes when the search row
+  hides or `#album-select-row` replaces the normal one). The `:root` value is
+  only the one frame before that runs. `.filter-bar` and `.filter-panel` read the
+  same variable; they used to hard-code 56px/60px and drift.
+- DISMISS CONTROLS NEVER SCROLL AWAY (v1.0.84, owner decision). THREE
+  MECHANISMS, and which one a screen uses is decided by WHAT SCROLLS on it:
+  (1) the scroller is `<main>` → the control lives in `.topbar`, which is pinned
+  and glass, or in a band that sticks to the top of the scroller
+  (`.labels-bar`); (2) the screen is a full-screen PANEL → the control is
+  absolutely positioned on `.modal-panel`, outside `.modal-body`
+  (`.modal-close`, `.modal-home`, `.modal-chrome` — these were always right);
+  (3) the screen is a SHEET, i.e. the sheet itself is the scroller → the head is
+  `position: sticky; top: 0` and takes THE SHEET'S OWN VEIL (two 84% layers
+  composite to 97.4%, so rows passing under are invisible AND there is no step
+  between head and sheet; an opaque head on a translucent sheet is a seam).
+  A SINGLE-LAYER sticky band over live content — `.filter-bar`,
+  `.track-select-row`, `.labels-bar` — must stay OPAQUE: one veil there ghosts
+  the rows at 16%.
+  TRAP, and it cost a pass: a sticky child's offset is measured from the
+  SCROLLER'S CONTENT BOX, and `<main>`'s content box already starts below the
+  overlaid bar. `top: var(--topbar-h)` inside `<main>` therefore counts the bar
+  twice and parks the band a bar-height too low. Use `top: 0`.
+  That is why the ARTIST VIEW'S Back is now `#topbar-back` rather than a band of
+  its own: `window.__setTopbarBack(fn)` overrides where the shared chevron goes
+  (the artist view returns to the screen it was opened from, not Home), and
+  `setTopbarNav()` clears the override so a screen that leaves without its own
+  teardown cannot send the next Back somewhere unrelated. `.artist-view-back` is
+  gone and the test fails if it comes back.
+  The four overlays that were missing from the old id list — Favourites, Merged
+  albums, Playlists, Dynamic Playlists — carry exactly the `.qobuz-sheet` /
+  `.qobuz-pin` markup and were 86vh with an unpinned head. The rules are keyed
+  on the CLASS now, which cannot fall out of step with the markup the way that
+  list did. Settings home and the Filter sheet had NO dismiss control at all
+  (backdrop or Escape only); both have a close button now, and the
+  `data-settings-close` handler had to move from `hasAttribute` to `closest`
+  because a tap lands on the SVG inside the button.
+- THE TRANSPORT IS A FLOATING PILL (v1.0.84). LIFT OR PAD, NEVER BOTH: its
+  `bottom` carries `env(safe-area-inset-bottom)`, which moves the whole pill
+  clear of the home indicator; the old full-bleed bar padded instead, and doing
+  both puts 34px of dead glass INSIDE the pill on any device that has one.
+  `lib/safearea.test.js` counts the inset across EVERY `.mini-transport` block
+  and requires exactly one, because headless Chromium reports every inset as 0
+  and measures a perfectly proportioned pill either way. The COVER (`#mt-art`,
+  54px) is the pill's height driver and every control is sized under it, which
+  is how the bar got taller without the extra room becoming empty glass. The
+  progress line is the TOP BORDER of a full-height fill clipped to a pill-shaped
+  box, not a 2px strip: CSS scales a radius down until two corners fit their
+  side, so an 18px radius on a 2px strip becomes 2px and the line overhangs the
+  glass at both ends. The clip lives on `.mt-progress`, never on
+  `.mini-transport` — that element's overflow must stay visible or the zone and
+  volume popovers cannot open upwards out of it.
+- NOW PLAYING LEADS WITH THE ARTWORK (v1.0.84). Full-bleed, `object-fit: cover`,
+  no radius, no shadow, masked to transparent at the bottom so the title and
+  transport sit in the tail of the image. THE BLEED ARITHMETIC HAS TO STAY
+  EXACT: `width: calc(100% + 36px); margin: 0 -18px` are literally
+  `.modal-body`'s 18px horizontal padding, and `.modal-body` declares
+  `overflow-y: auto` — a box with one axis scrollable and the other `visible`
+  computes the visible one to `auto`, so a bleed ONE PIXEL wider than the
+  padding it cancels does not spill, it gives the whole screen a horizontal
+  scrollport. The fade is a MASK, not an overlaid gradient: masking to
+  transparent lets whatever `--bg` is for the current palette come through, so
+  one rule works in all four. TEXT NEVER OVERLAPS THE ARTWORK — two palettes
+  have a near-white ground and near-black text, so a title over an unknown
+  sleeve is invisible on the first cover tried. Landscape ≥720px puts the framed
+  card back (contain, radius, shadow, `mask-image: none`); keep
+  `.modal.np-mode.tab-album .modal-body { overflow: hidden; flex: 1 1 auto;
+  min-height: 0 }` and `.modal-art { flex: 1 1 0; min-height: 0 }` or the art
+  collapses to zero height. The ALBUM view was deliberately NOT given the same
+  hero: that would need `.modal-body`'s `padding-top: 0`, and `lib/safearea.js`
+  pins that rule's shorthand.
 - The UI is FLAT everywhere (Home v1.0.39, album modal + Queue v1.0.42). No
   section or panel carries a background fill, radius, padding or watermark
   motif — structure comes from hairline separators and whitespace only, so the

@@ -12,7 +12,38 @@
    only ever read the tokens below — never a palette-specific literal — so a new
    palette is a token block and nothing else. `--on-accent` is the readable ink
    ON an accent fill; `--accent-text` is accent used AS text on a normal
-   background (they differ on light palettes, where accent fills need white). */
+   background (they differ on light palettes, where accent fills need white).
+
+   THE GLASS MATERIAL (v1.0.84), ported from the Roon build's v1.7.81–v1.7.89
+   arc. Four tokens, and the rules for using them are not negotiable:
+
+     --bg-veil   THE ground WITH ALPHA — never a lighter colour of its own.
+                 That identity is the whole design: over an unscrolled page the
+                 backdrop IS --bg, so a veiled bar composites to exactly --bg
+                 and there is no seam at the top of any screen; once the page
+                 moves, album art passes underneath and tints it. The Roon
+                 build shipped a lighter translucent surface (--glass-bg) for
+                 one release and had to take it back out — two materials meant
+                 to look alike never quite did. A new palette's veil is that
+                 palette's own --bg written as rgba() at .84, and
+                 lib/glass.test.js recomputes it rather than trusting the file.
+     --glass-edge  The lit 1px edge. Load-bearing, not decoration: where
+                 nothing happens to be behind a veil it settles to the page
+                 colour, and this border plus the drop shadow are the only
+                 things keeping it from reading as a hole.
+     --glass-fill  A wash for CONTROLS sitting ON a veiled surface. It is a
+                 white/ink alpha rather than the ground, because a control
+                 painted --bg-veil on the page ground would composite to
+                 exactly the page and vanish. This one is ours: the Roon build
+                 never glassed Settings, and the owner asked for it here.
+     --glass-fill-strong  the same wash at hover/active weight.
+
+   NO `backdrop-filter` ON ANYTHING THAT SITS OVER A SCROLLER. iOS Safari
+   re-samples and re-blurs every pixel beneath one on EVERY scroll frame, and
+   `saturate()` does not only soften the backdrop, it BRIGHTENS it — so a
+   filter toggled on scroll is visibly two different bars over a wall of album
+   covers. The Roon build shipped that twice and removed it twice. Modal
+   BACKDROPS keep theirs: nothing moves behind a scrim. */
 :root,
 [data-theme="dark"][data-palette="classic"] {
   --font-sans: "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system,
@@ -29,12 +60,22 @@
   --accent-text:  #4cb7e6;
   --accent-soft:  rgba(76,183,230,.15);
   --on-accent:    #0b1418;
-  --bg-translucent: rgba(14,16,18,.85);
+  /* #0e1012 with alpha — see the glass note above. */
+  --bg-veil:      rgba(14,16,18,.84);
+  --glass-edge:   rgba(255,255,255,.10);
+  --glass-fill:   rgba(255,255,255,.07);
+  --glass-fill-strong: rgba(255,255,255,.13);
   --danger:       #e06464;
   --heart: #ff4d6d;                          /* favourited-heart red */
   --panel-hairline: rgba(255,255,255,.07);  /* separators on RAISED surfaces (sheets) */
   --shadow-card:  0 2px 6px rgba(0,0,0,.45), 0 10px 24px rgba(0,0,0,.35);
   --shadow-modal: 0 24px 64px rgba(0,0,0,.6);
+
+  /* How much of the scroller the top bar covers. app.js measures the real bar
+     and writes this onto .app; the value here is what the layout uses for the
+     one frame before that happens, and if scripting is off entirely. It is a
+     :root token rather than a per-palette one — it is geometry, not colour. */
+  --topbar-h: calc(56px + env(safe-area-inset-top));
 }
 
 [data-theme="light"] {
@@ -49,7 +90,11 @@
   --accent-text:  #1f8fc1;
   --accent-soft:  rgba(31,143,193,.12);
   --on-accent:    #ffffff;
-  --bg-translucent: rgba(246,245,242,.85);
+  /* #f6f5f2 with alpha. */
+  --bg-veil:      rgba(246,245,242,.84);
+  --glass-edge:   rgba(26,39,64,.12);
+  --glass-fill:   rgba(26,39,64,.05);
+  --glass-fill-strong: rgba(26,39,64,.09);
   --heart: #ff4d6d;                          /* favourited-heart red */
   --panel-hairline: rgba(26,39,64,.12);     /* separators on RAISED surfaces (sheets) */
   --danger:       #c0392b;
@@ -69,7 +114,13 @@
   --accent-text:  #d99a66;
   --accent-soft:  rgba(196,127,74,.15);
   --on-accent:    #17120d;
-  --bg-translucent: rgba(27,29,31,.85);
+  /* #1b1d1f with alpha. */
+  --bg-veil:      rgba(27,29,31,.84);
+  --glass-edge:   rgba(255,255,255,.10);
+  /* Warm white rather than pure white — a neutral wash reads faintly blue
+     against charcoal, the same reason --panel-hairline is warmed below. */
+  --glass-fill:   rgba(235,228,220,.07);
+  --glass-fill-strong: rgba(235,228,220,.13);
   --danger:       #e8776f;
   --heart: #ff4d6d;                          /* favourited-heart red */
   --panel-hairline: rgba(235,228,220,.08);
@@ -89,7 +140,12 @@
   --accent-text:  #8a5a35;
   --accent-soft:  rgba(138,90,53,.12);
   --on-accent:    #fffdf8;
-  --bg-translucent: rgba(247,244,237,.85);
+  /* #f7f4ed with alpha. */
+  --bg-veil:      rgba(247,244,237,.84);
+  --glass-edge:   rgba(60,45,30,.14);
+  /* Warm brown rather than a cool blue-grey, which would grey the parchment. */
+  --glass-fill:   rgba(58,44,26,.055);
+  --glass-fill-strong: rgba(58,44,26,.10);
   --heart: #ff4d6d;                          /* favourited-heart red */
   --panel-hairline: rgba(58,44,26,.13);
   --danger:       #b3271d;
@@ -134,15 +190,23 @@ button { font-family: inherit; }
 /*  Top bar                                                            */
 /* ------------------------------------------------------------------ */
 .topbar {
-  position: relative; z-index: 20;
-  flex: 0 0 auto;
+  /* OVER the scroller, not above it in the flow (v1.0.84). It was a flex
+     sibling of <main>, which is why it could never be see-through: nothing was
+     ever behind it to show, and the backdrop-filter it carried was blurring the
+     page background and nothing else. <main> now runs the full height of .app
+     and reserves this bar's height as padding, so album art scrolls underneath
+     and the veil shows it. .app is position: fixed, so this anchors to it. */
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 20;
   display: flex; flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
   padding-top: calc(12px + env(safe-area-inset-top));
-  background: var(--bg-translucent);
-  backdrop-filter: saturate(160%) blur(14px);
-  -webkit-backdrop-filter: saturate(160%) blur(14px);
+  /* The GROUND WITH ALPHA, and no backdrop-filter — see the glass note at the
+     top of this file. Over an unscrolled page this composites to exactly --bg,
+     so there is no step at the top of any screen; once the page moves, the
+     covers tint it. */
+  background: var(--bg-veil);
   border-bottom: 1px solid var(--border);
 }
 .topbar-row {
@@ -186,8 +250,15 @@ button { font-family: inherit; }
   position: fixed; z-index: 96;
   min-width: 240px; max-width: min(340px, calc(100vw - 16px));
   padding: 6px;
-  background: var(--bg-elev); color: var(--text);
-  border: 1px solid var(--border); border-radius: 12px;
+  /* OPAQUE, and it is the one piece of chrome that is (v1.0.84). Everything
+     else that floats takes --bg-veil; this does not, because it floats over
+     LIVE CONTENT with no scrim between and it carries TWO TIERS OF TEXT — every
+     row has a description under it ("Select two or more discs to merge them").
+     At 84% over a wall of album covers the second tier stops being readable,
+     which was measured, not guessed. A menu is a decision surface, not chrome.
+     It keeps the lit edge and the shadow, so it still belongs to the set. */
+  background: var(--bg-elev-2); color: var(--text);
+  border: 1px solid var(--glass-edge); border-radius: 14px;
   box-shadow: var(--shadow-modal);
   overflow-y: auto;
   animation: dropdownIn .14s cubic-bezier(.2,.8,.2,1);
@@ -244,11 +315,16 @@ button { font-family: inherit; }
 }
 .icon-btn {
   width: 38px; height: 38px;
-  background: var(--bg-elev);
+  /* THE GLASS CHIP (v1.0.84). --glass-fill, not --bg-veil: a control painted
+     with the veil sits on the page ground and composites to exactly the page,
+     so it would vanish. A white/ink wash lifts it off whatever is behind — the
+     veiled top bar, the page, a bottom sheet, an album cover — by the same
+     amount every time. */
+  background: var(--glass-fill);
   color: var(--text-dim);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-edge);
 }
-.icon-btn:hover { color: var(--text); background: var(--bg-elev-2); }
+.icon-btn:hover { color: var(--text); background: var(--glass-fill-strong); }
 .icon-btn:active { transform: scale(.96); }
 
 .primary-btn {
@@ -315,8 +391,11 @@ button { font-family: inherit; }
 .search-box {
   flex: 1 1 auto; min-width: 0;
   display: flex; align-items: center; gap: 8px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  /* --bg-veil, not --glass-fill: this sits ON the veiled top bar, so a wash
+     here would be a text field with album art showing through it. Two veils
+     composite to 97.4% and the field reads as a field. */
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
   border-radius: 999px;
   padding: 8px 8px 8px 14px;
   transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
@@ -435,14 +514,19 @@ button { font-family: inherit; }
 /* ------------------------------------------------------------------ */
 .update-toast {
   display: none;
-  flex: 0 0 auto;
+  /* No `flex: 0 0 auto` — it lives inside <main> as of v1.0.84 (see the note in
+     index.html), where a flex-child property does nothing. It takes main's own
+     padding rather than bleeding edge to edge, so a radius makes that read as
+     intended rather than as a band that failed to reach the sides. */
   flex-direction: column;
   padding: 10px 14px;
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right: max(14px, env(safe-area-inset-right));
   background: var(--accent-soft);
   color: var(--text);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
+  margin-bottom: 14px;
   font-size: 14px;
   animation: searchReveal .2s ease;
   gap: 8px;
@@ -515,6 +599,16 @@ main {
 @media (min-width: 1200px) {
   main { --home-gutter: 22px; padding-top: 22px; padding-right: 22px; padding-left: 22px; }
 }
+/* THE RESERVE FOR THE OVERLAID TOP BAR (v1.0.84). Separate from the rules
+   above, and deliberately after all three of them: each sets its own
+   padding-top, so this has to come last and add the bar's measured height to
+   whatever inset that breakpoint chose. `--topbar-h` is written onto `.app` by
+   app.js from a live measurement — the bar's height is not a constant (it grows
+   with the status-bar inset, with the search row, with the select row), and the
+   value in :root is only what the one frame before that measurement uses. */
+main { padding-top: calc(var(--topbar-h) + 14px); }
+@media (min-width: 768px)  { main { padding-top: calc(var(--topbar-h) + 18px); } }
+@media (min-width: 1200px) { main { padding-top: calc(var(--topbar-h) + 22px); } }
 
 .album-grid {
   display: grid;
@@ -630,16 +724,31 @@ main {
 }
 
 /* Back bar shown above the grid while viewing one label's albums */
-.labels-bar { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+/* Mechanism 1 (see the note by .settings-head): <main> is the scroller here,
+   so this band pins to the top of it and the label grid passes under it. It
+   used to be an ordinary block, so "All labels" — a SECOND-level back, to the
+   label list rather than to Home — scrolled off the top of a long one.
+   `top: 0`, NOT `top: var(--topbar-h)`: <main> reserves the overlaid bar's
+   height as padding-top, and a sticky child's offset is measured from the
+   CONTENT box, so the bar's height would be counted twice and the band would
+   park a bar's height too low. The negative side margins bleed it through
+   main's own gutter so no tile shows down either side of it. */
+.labels-bar {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 16px;
+  position: sticky; top: 0; z-index: 14;
+  margin-left: calc(0px - var(--home-gutter)); margin-right: calc(0px - var(--home-gutter));
+  padding: 8px var(--home-gutter);
+  background: var(--bg);
+}
 .labels-bar.hidden { display: none; }
 .labels-back {
   display: inline-flex; align-items: center; gap: 6px;
-  background: var(--bg-elev); border: 1px solid var(--border);
+  background: var(--glass-fill); border: 1px solid var(--glass-edge);
   color: var(--text-dim); border-radius: 999px; padding: 6px 14px 6px 10px;
   font-size: 13px; cursor: pointer;
   transition: background .15s ease, color .15s ease;
 }
-.labels-back:hover { color: var(--text); background: var(--bg-elev-2); }
+.labels-back:hover { color: var(--text); background: var(--glass-fill-strong); }
 .labels-back:active { transform: scale(.97); }
 .labels-title {
   font-size: 15px; font-weight: 600; color: var(--text);
@@ -748,14 +857,18 @@ main {
 .modal-backdrop {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .modal-panel {
   position: relative;
   width: 100%; height: 100vh; max-height: 100vh;
   height: 100dvh; max-height: 100dvh;
-  background: var(--bg-elev); color: var(--text);
+  /* A SCREEN, not a card: the album view and Now playing fill the display, so
+     they take the GROUND like every other screen (v1.0.84). --bg-elev made
+     them a different tone from the veiled top bar directly above them, which
+     read as a seam the moment the panel opened. */
+  background: var(--bg); color: var(--text);
   border-radius: 0; border: 0;
   box-shadow: var(--shadow-modal);
   overflow: hidden;
@@ -814,9 +927,10 @@ main {
   display: flex; flex-direction: column;
   gap: 22px;
   padding: 64px 18px 40px;
-  /* Leave room at the bottom so the mini transport (≈78px tall + safe area)
-     stays visible / not overlapping the last bit of content. */
-  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  /* Leave room at the bottom so the floating transport pill (72px tall, lifted
+     8px + the indicator inset) stays visible and never overlaps the last bit of
+     content. Grew from 96px with the pill (v1.0.84). */
+  padding-bottom: calc(106px + env(safe-area-inset-bottom));
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -869,9 +983,9 @@ main {
   border-radius: 999px;
   padding: 10px 8px;
   font-size: 13px; font-weight: 500;
-  background: var(--bg-elev-2);
+  background: var(--glass-fill);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-edge);
   cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: filter .15s ease, transform .08s ease;
@@ -887,12 +1001,12 @@ main {
 .action-btn[disabled] { opacity: .55; cursor: not-allowed; }
 
 .modal-actions .action-btn {
-  background: transparent;
-  border-color: var(--border);
+  background: var(--glass-fill);
+  border-color: var(--glass-edge);
   font-weight: 600;
   padding: 11px 8px;
 }
-.modal-actions .action-btn:hover { background: var(--bg-elev-2); filter: none; }
+.modal-actions .action-btn:hover { background: var(--glass-fill-strong); filter: none; }
 .modal-actions .action-btn.primary {
   background: var(--accent);
   border-color: transparent;
@@ -997,8 +1111,11 @@ main {
   position: fixed; left: 50%;
   bottom: calc(28px + env(safe-area-inset-bottom));
   transform: translateX(-50%) translateY(8px);
-  background: var(--bg-elev); color: var(--text);
-  border: 1px solid var(--border);
+  /* Opaque, same reason as .dropdown-menu: it appears over whatever screen is
+     up, with no scrim, and it is usually the only report that an action
+     succeeded or failed. */
+  background: var(--bg-elev-2); color: var(--text);
+  border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-modal);
   padding: 12px 18px; border-radius: 999px;
   font-size: 14px; opacity: 0;
@@ -1109,21 +1226,41 @@ main {
 /* ------------------------------------------------------------------ */
 .mini-transport {
   position: fixed;
-  left: 0; right: 0;
-  bottom: 0;
   z-index: 70;   /* above modal (50) so it's visible even when an album sheet is open */
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
-  /* Solid, no backdrop blur: this bar floats over the scrolling <main>, and
-     iOS Safari re-samples + re-blurs the pixels beneath a backdrop-filter on
-     EVERY scroll frame — a major source of scroll jank whenever something is
-     playing. A solid elevated background reads near-identically. */
-  background: var(--bg-elev);
-  border-top: 1px solid var(--border);
-  box-shadow: 0 -6px 24px rgba(0,0,0,.22);
+  padding: 9px 12px;
+  /* A FLOATING PILL rather than a bar welded to the bottom edge (v1.0.84).
+     LIFT OR PAD, NEVER BOTH: the whole pill is lifted clear of the home
+     indicator by its `bottom`, which is what the full-bleed bar used a
+     padding-bottom for. The inset is still honoured — it moves the element
+     instead of padding it — and keeping the old padding as well would put 34px
+     of dead glass INSIDE the pill on any device that has an indicator.
+     lib/glass.test.js counts the inset across every .mini-transport block and
+     requires exactly one, because headless Chromium reports every inset as 0
+     and measures a perfectly proportioned pill either way. */
+  left: 10px; right: 10px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  border-radius: 18px;
+  /* Both of these are load-bearing, not decoration. --bg-veil is the ground
+     with alpha, so where nothing is scrolled behind the pill — the very bottom
+     of a short page — it settles to exactly --bg, and this border and shadow
+     are the only things keeping it from reading as a hole in the page. */
+  border: 1px solid var(--glass-edge);
+  box-shadow: 0 8px 30px rgba(0,0,0,.34);
+  /* ONE APPEARANCE, ALWAYS. NO backdrop-filter — do not add one back. iOS
+     Safari re-samples and re-blurs everything beneath one on every scroll
+     frame, and it was the main scroll-jank source while music was playing.
+     The Roon build tried stripping the filter for the duration of each scroll
+     so the look and the frame rate could coexist, twice, and it was visible
+     both times: `saturate()` does not only soften the backdrop, it BRIGHTENS
+     it, so whatever fraction of the page shows through is vivid while the
+     filter is on and muted while it is off. A wall of album covers is the
+     worst case and is exactly where it was reported. There is no version of a
+     conditional filter that is invisible, and an unconditional one is the
+     documented jank — so the pill is translucent and nothing else. */
+  background: var(--bg-veil);
 }
 /* The side menu is a modal dialog, and this bar is a ROOT-LEVEL fixed element
    while the drawer lives inside `.app` — which is `z-index: 0`, i.e. its own
@@ -1140,16 +1277,54 @@ body.menu-open .mini-transport { display: none; }
 /* Thin Roon-style progress line along the top edge of the bar */
 .mt-progress {
   position: absolute;
-  top: -1px; left: 0; right: 0;
-  height: 2px;
+  /* THE WHOLE PILL, not a 2px strip across the top of it (v1.0.84).
+     A 2px-tall box cannot carry an 18px corner: CSS scales every radius down
+     until the two on a side fit that side's length, so an 18px radius on a 2px
+     strip becomes a 2px radius and the line runs straight past the glass at
+     both ends — a blue chord overhanging the pill's top corners.
+     Clipping against a box the SHAPE OF THE PILL makes the line stop exactly
+     where the curve does, so it reads as following the edge.
+     Clipped here and NOT on .mini-transport: that element's overflow must stay
+     visible, because the zone and volume popovers open upwards out of it. They
+     are siblings of this element, so this clip never touches them. */
+  top: 0; right: 0; bottom: 0; left: 0;
   pointer-events: none;
+  /* 17px, not 18. This box is positioned against the padding box, i.e. inside
+     the pill's 1px border, and an inner corner's radius is the outer radius
+     less the border it sits inside. */
+  border-radius: 17px;
+  overflow: hidden;
 }
 .mt-progress-fill {
+  /* Full pill height, and the LINE IS ITS TOP BORDER — not a filled 2px block.
+     A border is drawn along the box's rounded outline, so the left end curves
+     down into the corner instead of ending square, and the clipper above cuts
+     the right end to the far curve as the fill approaches 100%.
+     box-sizing so the 100% height is the border box and the border does not
+     add to it. The background must stay transparent: a full-height fill with
+     one would flood the pill. */
   height: 100%;
   width: 0%;
-  background: var(--accent);
+  box-sizing: border-box;
+  background: transparent;
+  border-top: 2.5px solid var(--accent);
+  border-top-left-radius: 17px;
   transition: width .4s linear;
 }
+
+/* The cover of what is playing (v1.0.84). It is deliberately the TALLEST thing
+   in the pill — see the control sizes further down — so this number is the
+   pill's height less its padding, which is how the bar is made taller without
+   the extra room becoming empty glass. */
+.mt-art {
+  width: 54px; height: 54px;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  object-fit: cover;
+  background: var(--bg-elev-2);
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+}
+.mt-art.hidden { display: none; }
 
 .mt-info {
   display: flex;
@@ -1210,10 +1385,10 @@ body.menu-open .mini-transport { display: none; }
   right: 60px;
   bottom: calc(100% + 4px);
   padding: 10px 6px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
+  box-shadow: var(--shadow-modal);
   min-width: 200px;
   z-index: 71;
 }
@@ -1244,9 +1419,10 @@ body.menu-open .mini-transport { display: none; }
   text-align: right;
 }
 
-/* Push the main grid above the mini transport */
+/* Push the main grid above the mini transport. The pill floats clear of the
+   bottom edge, so this reserves its height plus that gap (v1.0.84). */
 main {
-  padding-bottom: 88px;
+  padding-bottom: 94px;
 }
 
 /* On mobile, hide track info if the bar is cramped */
@@ -1270,8 +1446,8 @@ main {
 .share-backdrop {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,.65);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 .share-panel {
   position: relative;
@@ -1279,9 +1455,12 @@ main {
   max-height: calc(100vh - 40px);
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  /* The app's own material. The .share-backdrop's blur stays — the rule against
+     backdrop-filter is about surfaces over a SCROLLER; this is a modal and
+     nothing moves behind it. */
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
   box-shadow: var(--shadow-modal);
   padding: 24px 18px 18px;
   animation: modal-in .18s ease-out;
@@ -1539,21 +1718,62 @@ main {
   background: transparent; box-shadow: none;
   aspect-ratio: auto; border-radius: 0; overflow: visible;
 }
-.modal.np-mode.tab-album .modal-art img {
-  /* Height-driven: fills the leftover vertical space, capped at the usual
-     size; width follows the (square) cover's intrinsic ratio, so this needs
-     no aspect-ratio support. object-fit contain guards odd-shaped art.
-     The old fixed `400px` term is gone: it was a phone-of-2020 number, and on
-     a 440px-wide display it held the cover 4px below the width it could
-     actually use while the wrapper grew regardless. The width terms are the
-     real constraint and they scale on their own. */
-  height: 100%;
-  max-height: min(400px, 92vw, calc(100vw - 36px));  /* never taller than the padded width — keeps shadow/radius on the art */
-  width: auto; max-width: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-  box-shadow: var(--shadow-card);
+/* ── THE NOW-PLAYING ARTWORK (v1.0.84) ────────────────────────────────
+   Now playing LEADS WITH THE ARTWORK. It was a framed card — height-driven,
+   object-fit: contain, capped at min(400px, 92vw, 100vw-36px), with a radius
+   and a card shadow — floating in the middle of a padded column. It is now the
+   screen: full width, cropping rather than letterboxing, with no radius and no
+   shadow (both are how a floating card reads, and this is no longer floating),
+   dissolving into the ground at the bottom so the title and the transport sit
+   in the tail of the image rather than under a hard edge.
+
+   FULL-BLEED FROM INSIDE A PADDED COLUMN. .modal-body pads 18px either side and
+   the art is one of its flex children, so the art cancels that padding with a
+   negative margin and takes the width back. THE ARITHMETIC HAS TO STAY EXACT:
+   .modal-body declares overflow-y: auto, and a box with one axis scrollable and
+   the other `visible` computes the visible one to `auto` — so a bleed ONE PIXEL
+   wider than the padding it cancels does not spill, it gives the whole screen a
+   horizontal scrollport. -18px/+36px are literally .modal-body's 18px padding;
+   if that padding ever changes, both numbers change with it.
+
+   THE FADE IS A MASK, not an overlaid gradient, because the ground behind it is
+   a theme token: masking to transparent lets whatever --bg is for the current
+   palette come through, so one rule works in all four. An overlay would have to
+   hard-code a colour to fade TO.
+
+   THE TEXT STAYS OFF THE ARTWORK. Two of this app's four palettes have a
+   near-white ground and near-black text, so letting the title overlap the cover
+   would put dark text on whatever the sleeve happens to be. The mask finishes
+   the art at the element's own bottom edge and .modal-info starts under it —
+   the same dissolve, with no unknown image behind any text. .modal-art is
+   `flex: 1 1 0`, so the art already takes every pixel the controls do not;
+   there is nothing to reclaim by overlapping them.
+
+   Landscape ≥720px puts all of this back — see the media query below. */
+.modal.np-mode.tab-album .modal-art {
+  width: calc(100% + 36px);
+  margin: 0 -18px;
 }
+.modal.np-mode.tab-album .modal-art img {
+  height: 100%;
+  width: 100%; max-width: none; max-height: none;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-mask-image: linear-gradient(to bottom,
+    #000 0 62%, rgba(0,0,0,.7) 82%, transparent 100%);
+          mask-image: linear-gradient(to bottom,
+    #000 0 62%, rgba(0,0,0,.7) 82%, transparent 100%);
+}
+.modal.np-mode.tab-album .modal-info { margin-top: 0; }
+/* NO dark scrim under Home and Share here, deliberately. The Roon build gives
+   them one on its ALBUM view, where the hero runs edge to edge up through the
+   corner buttons; Now playing keeps its top padding and its tabs row, so the
+   art starts BELOW them and they sit on the plain ground. A scrim would be a
+   black disc on a light theme's header, solving a problem this screen does not
+   have. If the artwork is ever taken up behind them it comes back — and it must
+   be dark in every palette, because white-on-dark is the only pair that
+   survives an unknown sleeve. */
 /* Very short viewports (small desktop windows — phone landscape is already
    blocked by the rotate overlay): let the body scroll again rather than
    clip the transport controls unreachably. */
@@ -1600,6 +1820,8 @@ main {
     height: 100%;
     min-height: 0;
     justify-self: end;
+    /* Not full-bleed here — it is a column in a two-column grid. */
+    width: auto; margin: 0;
   }
   .modal.np-mode.tab-album .modal-art img {
     /* Auto-size under BOTH max constraints (the grid row is definite, so the
@@ -1608,6 +1830,14 @@ main {
        and big screens get big art (the portrait 400px cap is dropped). */
     height: auto;
     max-height: calc(100% - 16px);
+    width: auto; max-width: 100%;
+    object-fit: contain;
+    /* THE FRAMED CARD COMES BACK. Nothing bleeds off a screen edge in this
+       layout, so a hard-edged crop would just look like a mistake. */
+    border-radius: 8px;
+    box-shadow: var(--shadow-card);
+    -webkit-mask-image: none;
+            mask-image: none;
   }
   .modal.np-mode.tab-album .modal-info {
     grid-area: info;
@@ -1740,28 +1970,37 @@ main {
 /*  Mini transport — Roon-style sizing                                 */
 /* ------------------------------------------------------------------ */
 .mini-transport {
-  padding: 10px 14px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  /* NO padding-bottom inset here — see the LIFT OR PAD note on the base rule.
+     This block used to repeat it, which is the double-inset the pill would
+     otherwise carry. */
+  padding: 9px 11px;
 }
 .mt-info { gap: 13px; }
 .mt-info { cursor: pointer; }  /* tappable to open the now-playing screen */
 .mt-title  { font-size: 16px; font-weight: 700; }
 .mt-artist { font-size: 13px; }
 
-.mt-btn { width: 52px; height: 52px; }
-.mt-btn svg { width: 30px; height: 30px; }
-.mt-playpause { width: 54px; height: 54px; }
-.mt-playpause svg { width: 32px; height: 32px; }
+/* Sized so the ARTWORK sets the pill's height, not the buttons. At 54px the
+   play control was the tallest thing in it and drove the whole bar; the cover
+   is 54px now, so nothing else needs to be bigger than 46. The width the
+   buttons give back goes to the title, which was truncating. */
+.mt-btn { width: 44px; height: 44px; }
+.mt-btn svg { width: 26px; height: 26px; }
+.mt-playpause { width: 46px; height: 46px; }
+.mt-playpause svg { width: 28px; height: 28px; }
 
-main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+/* The pill is 72px tall (9px padding either side of a 54px cover) and floats
+   8px + the indicator inset clear of the bottom edge, so this reserves its
+   height plus that gap. It grew from 80px with the pill (v1.0.84). */
+main { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 
 @media (max-width: 480px) {
-  .mt-info { gap: 11px; }
-  .mt-controls { gap: 2px; }
-  .mt-btn { width: 44px; height: 44px; }
-  .mt-btn svg { width: 26px; height: 26px; }
-  .mt-playpause { width: 46px; height: 46px; }
-  .mt-playpause svg { width: 28px; height: 28px; }
+  .mt-info { gap: 10px; }
+  .mt-controls { gap: 0; }
+  .mt-btn { width: 40px; height: 40px; }
+  .mt-btn svg { width: 24px; height: 24px; }
+  .mt-playpause { width: 42px; height: 42px; }
+  .mt-playpause svg { width: 26px; height: 26px; }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1771,14 +2010,16 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   /* Sit just above the mini transport, span the full width. */
   position: fixed;
   left: 0; right: 0;
-  bottom: calc(78px + env(safe-area-inset-bottom));
+  bottom: calc(88px + env(safe-area-inset-bottom));
   margin: 0 10px;
   z-index: 71;   /* one above .mini-transport (70) */
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px 14px;
   min-width: 0;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  /* The pill's material, shared: the sheet, the pill it opens from and the top
+     bar are one surface. Still no backdrop-filter — same rule as the pill. */
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-modal);
   display: flex;
   align-items: center;
@@ -1811,8 +2052,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   justify-content: center;
   width: 36px; height: 36px;
   border-radius: 50%;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
   color: var(--text);
   cursor: pointer;
   flex: 0 0 auto;
@@ -1835,7 +2076,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* ------------------------------------------------------------------ */
 .filter-bar {
   position: sticky;
-  top: calc(56px + env(safe-area-inset-top));  /* under the topbar */
+  /* Was a hard-coded 56px + inset — a guess at the bar's height that had to be
+     kept in step by hand. It is measured now (v1.0.84). */
+  top: var(--topbar-h);
   z-index: 15;
   margin: 0 -14px 16px;            /* bleed into main's horizontal padding */
   padding: 8px 14px 10px;
@@ -1863,8 +2106,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
-  background: transparent;
-  border: 1px solid var(--border);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
   color: var(--text-dim);
   font-size: 13px;
   font-weight: 600;
@@ -1966,14 +2209,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* ------------------------------------------------------------------ */
 .filter-panel {
   position: fixed;
-  top: calc(60px + env(safe-area-inset-top));
+  top: calc(var(--topbar-h) + 4px);
   right: 14px;
   z-index: 80;
   width: min(360px, calc(100vw - 28px));
   max-height: calc(100vh - 80px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
+  border-radius: 16px;
   box-shadow: 0 18px 48px rgba(0,0,0,.4);
   overflow: hidden;
   display: flex;
@@ -2082,12 +2325,17 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* ------------------------------------------------------------------ */
 .settings-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 90; display: flex; align-items: flex-end; }
 .settings-overlay.hidden { display: none; }
-.settings-backdrop { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.5); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.settings-backdrop { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.5); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .settings-sheet {
   position: relative; width: 100%; max-width: 720px; margin: 0 auto;
-  background: var(--bg-elev);
+  /* Glass, over a dimmed and blurred page (v1.0.84). The sticky heads inside
+     take the SAME veil rather than an opaque colour: two 84% layers composite
+     to 97.4%, so content passing under a head is invisible while the head and
+     the sheet stay one material. An opaque head on a translucent sheet is the
+     visible step this avoids. */
+  background: var(--bg-veil);
   border-top-left-radius: 22px; border-top-right-radius: 22px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--glass-edge);
   box-shadow: 0 -16px 40px rgba(0,0,0,.4);
   padding: 10px 20px calc(24px + env(safe-area-inset-bottom));
   max-height: 86vh; overflow-y: auto;
@@ -2095,14 +2343,63 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 @keyframes sheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .settings-grip { width: 40px; height: 4px; border-radius: 999px; background: var(--border); margin: 4px auto 14px; }
+/* ── DISMISS CONTROLS NEVER SCROLL AWAY (v1.0.84, owner decision) ──────
+   Every back / close affordance in the app is pinned to the screen it
+   dismisses, and the content passes UNDER it rather than pushing it off the
+   top. There are exactly three mechanisms, and which one a screen uses is
+   decided by WHAT SCROLLS on it, not by taste:
+
+     1. the screen's scroller is <main>  → the control lives in .topbar, which
+        overlays the scroller and is glass, or in a band that sticks to
+        var(--topbar-h) directly beneath it (.labels-bar, .content-count);
+     2. the screen is a full-screen PANEL → the control is absolutely
+        positioned on .modal-panel, outside .modal-body (.modal-close,
+        .modal-home, .modal-chrome). These were already correct;
+     3. the screen is a SHEET, i.e. the sheet itself is the scroller → the head
+        is `position: sticky; top: 0` and carries the sheet's own veil.
+
+   Mechanism 3 is what these rules add. It takes the SHEET'S VEIL rather than
+   an opaque colour: two 84% layers composite to 97.4%, so rows passing under a
+   head are invisible while the head and the sheet stay one material — an
+   opaque head on a translucent sheet is a visible step.
+
+   The negative side margins bleed the head through .settings-sheet's own 20px
+   padding, so it reaches the sheet's edges instead of leaving two vertical
+   stripes of un-covered content beside it as rows scroll past. */
+.settings-head,
+.settings-pane-head {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg-veil);
+  border-bottom: 1px solid var(--glass-edge);
+  margin-left: -20px; margin-right: -20px;
+  padding: 6px 20px 10px;
+}
+/* Inside a .qobuz-pin the pin is already the sticky element and already
+   carries the veil; a second sticky layer inside it would double the hairline
+   and the padding. */
+.qobuz-pin .settings-head {
+  position: static;
+  background: none;
+  border-bottom: 0;
+  margin-left: 0; margin-right: 0;
+  padding: 0;
+}
 .settings-head { margin-bottom: 18px; }
 .settings-head h2 { margin: 0; font-size: 22px; font-weight: 700; color: var(--text); }
+/* Settings home had NO dismiss control at all — backdrop or Escape only, which
+   is not discoverable and is unreachable once the pane is scrolled. */
+#settings-overlay > .settings-sheet > .settings-view > .settings-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
 /* Full-page browser overlays (Qobuz/Tidal/Pitchfork) put the close button on
    the same row as the title, pinned top-right. Scoped to these overlays so the
    plain Settings/Filter heads (title only, no button) are unaffected. */
 #qobuz-overlay .settings-head,
 #tidal-overlay .settings-head,
-#pitchfork-overlay .settings-head {
+#pitchfork-overlay .settings-head,
+.filter-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 /* Explanatory line under a settings row — the sentence that says WHY the
@@ -2208,15 +2505,20 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   display: flex; align-items: center; gap: 14px;
   padding: 10px 14px;
   padding-top: max(10px, env(safe-area-inset-top));
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
+  border-bottom: 1px solid var(--glass-edge);
+  background: var(--bg-veil);
   flex: 0 0 auto;
 }
+/* A chevron chip, like every other back control (v1.0.84). Its bar is
+   `flex: 0 0 auto` above the iframe, so it never scrolls. */
 .lmsset-close {
-  background: none; border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text); font-size: 13px; padding: 6px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; flex: 0 0 auto;
+  background: var(--glass-fill); border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  color: var(--text); cursor: pointer;
 }
-.lmsset-close:hover { background: var(--bg); }
+.lmsset-close:hover { background: var(--glass-fill-strong); }
 .lmsset-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lmsset-newtab { font-size: 13px; color: var(--accent); text-decoration: none; flex: 0 0 auto; }
 /* Dark, not white: short pages and load gaps must never flash white
@@ -2282,12 +2584,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 
 /* Artist albums view */
-.artist-view-back {
-  background: none; border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text-dim); font-size: 13px; padding: 5px 12px;
-  cursor: pointer; margin-right: 10px; transition: color .15s, background .15s;
-  flex-shrink: 0;
-}
+/* .artist-view-back is GONE (v1.0.84) — the artist view uses #topbar-back. */
 .artist-view-back:hover { color: var(--text); background: var(--bg-elev); }
 .count-text { font-size: 13px; color: var(--text-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artist-section-header {
@@ -2300,11 +2597,13 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   grid-column: 1 / -1; padding: 48px 0;
   text-align: center; color: var(--text-dim); font-size: 15px;
 }
+/* Text only as of v1.0.84 — the artist view's Back moved into the top bar,
+   which is pinned and glass. It used to live in here, inside the scroller, and
+   scrolled off the top of any artist with more than a screenful of albums. */
 .content-count {
   display: flex; align-items: center; padding: 8px 16px;
   font-size: 14px; color: var(--text-dim);
 }
-.content-count.hidden { display: none; }
 
 .settings-info-btn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -2320,10 +2619,11 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
      it and the toast rendered behind the bar. Same anchor as
      .mt-vol-popover, which sits above the transport for the same reason. */
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  background: var(--bg-elev-2); border: 1px solid var(--border);
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  /* Opaque — a paragraph of explanatory text over live content. */
+  background: var(--bg-elev-2); border: 1px solid var(--glass-edge);
   color: var(--text); font-size: 14px; line-height: 1.5;
-  padding: 12px 18px; border-radius: 12px; max-width: min(400px, 92vw);
+  padding: 12px 18px; border-radius: 14px; max-width: min(400px, 92vw);
   box-shadow: var(--shadow-modal); z-index: 9999;
   opacity: 0; pointer-events: none;
   transition: opacity .2s ease;
@@ -2333,11 +2633,13 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .settings-select-wrap { position: relative; flex: 0 0 auto; }
 .settings-select {
   appearance: none; -webkit-appearance: none;
-  background: var(--bg-elev-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--glass-fill); color: var(--text);
+  border: 1px solid var(--glass-edge); border-radius: 12px;
   font-size: 15px; padding: 9px 34px 9px 16px;
   min-width: 110px; cursor: pointer;
 }
+/* The option list is drawn by the platform, not by us — it has to be an
+   opaque colour or it renders unreadable on Android. */
 .settings-select option { background: var(--bg-elev-2); color: var(--text); }
 .settings-caret { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
 .settings-divider { height: 1px; background: var(--border); margin: 18px 0; }
@@ -2347,16 +2649,16 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .settings-nav-item {
   display: flex; align-items: center; gap: 14px; width: 100%;
   padding: 12px 14px; border-radius: 14px;
-  border: 1px solid var(--border); background: var(--bg-elev-2);
+  border: 1px solid var(--glass-edge); background: var(--glass-fill);
   color: var(--text); text-align: left; cursor: pointer;
   transition: background .15s ease, border-color .15s ease;
 }
-.settings-nav-item:hover { background: var(--bg-elev); border-color: var(--text-faint); }
+.settings-nav-item:hover { background: var(--glass-fill-strong); border-color: var(--text-faint); }
 .settings-nav-item:active { transform: scale(.995); }
 .settings-nav-ico {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; border-radius: 10px;
-  background: var(--bg-elev); color: var(--accent);
+  background: var(--glass-fill); color: var(--accent-text);
 }
 .settings-nav-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
 .settings-nav-title { font-size: 16px; font-weight: 600; color: var(--text); }
@@ -2365,15 +2667,21 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 
 /* Pane header: back chevron + title, mirroring a pushed page. */
 .settings-pane-head { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+/* Sits above the sheet's own top padding, which the sticky head has to cancel
+   or the first pane starts 10px lower than the rest. */
+.settings-pane-head { margin-top: -10px; }
 .settings-pane-head h2 { margin: 0; font-size: 22px; font-weight: 700; color: var(--text); }
 .settings-back {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; margin-left: -6px;
-  border: none; border-radius: 999px; background: none;
+  width: 38px; height: 38px;
+  /* The same glass chevron chip as every other back control in the app —
+     .icon-btn's material, restated here because .settings-back is not one. */
+  border: 1px solid var(--glass-edge); border-radius: 999px;
+  background: var(--glass-fill);
   color: var(--text-dim); cursor: pointer;
   transition: color .15s ease, background .15s ease;
 }
-.settings-back:hover { color: var(--text); background: var(--bg-elev-2); }
+.settings-back:hover { color: var(--text); background: var(--glass-fill-strong); }
 .settings-back:active { transform: scale(.94); }
 
 .settings-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; }
@@ -2381,17 +2689,17 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .settings-repo {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 8px 14px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--bg-elev-2);
+  border: 1px solid var(--glass-edge); background: var(--glass-fill);
   color: var(--text-dim); font-size: 13px; text-decoration: none;
   transition: color .15s ease, background .15s ease;
 }
-.settings-repo:hover { color: var(--text); background: var(--bg-elev); }
+.settings-repo:hover { color: var(--text); background: var(--glass-fill-strong); }
 .settings-update-btn {
-  padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--bg-elev-2); color: var(--text-dim); font-size: 13px;
+  padding: 7px 14px; border-radius: 999px; border: 1px solid var(--glass-edge);
+  background: var(--glass-fill); color: var(--text-dim); font-size: 13px;
   cursor: pointer; transition: color .15s ease, background .15s ease;
 }
-.settings-update-btn:hover:not(:disabled) { color: var(--text); background: var(--bg-elev); }
+.settings-update-btn:hover:not(:disabled) { color: var(--text); background: var(--glass-fill-strong); }
 .settings-update-btn:disabled { opacity: .6; cursor: default; }
 /* When a check has found an update, the button IS the install action —
    accent it so it reads as tappable. The :hover restatement out-ranks the
@@ -2406,8 +2714,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 .settings-token-input {
   flex: 1; min-width: 0;
-  background: var(--bg-elev-2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 7px 10px;
+  background: var(--glass-fill); border: 1px solid var(--glass-edge);
+  border-radius: 10px; padding: 7px 10px;
   color: var(--text); font-size: 13px; font-family: inherit;
 }
 .settings-token-input:focus { outline: none; border-color: var(--accent); }
@@ -2416,7 +2724,13 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* ------------------------------------------------------------------ */
 /*  Docker migration banner                                            */
 /* ------------------------------------------------------------------ */
-.docker-banner { background: #7c5500; color: #fff; padding: 16px 20px; font-size: 14px; line-height: 1.6; }
+/* Inside <main> as of v1.0.84 — see .update-toast above for why, and why it
+   takes a radius now that it no longer reaches the screen edges. */
+.docker-banner {
+  background: #7c5500; color: #fff; padding: 16px 20px;
+  font-size: 14px; line-height: 1.6;
+  border-radius: 14px; margin-bottom: 14px;
+}
 .docker-banner.hidden { display: none; }
 .docker-banner-body { max-width: 900px; margin: 0 auto; }
 .docker-banner-body strong { font-weight: 700; }
@@ -2438,10 +2752,10 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* ------------------------------------------------------------------ */
 .confirm-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 95; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .confirm-overlay.hidden { display: none; }
-.confirm-backdrop { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.confirm-backdrop { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,.55); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .confirm-box {
   position: relative; width: 100%; max-width: 340px;
-  background: var(--bg-elev); border: 1px solid var(--border);
+  background: var(--bg-veil); border: 1px solid var(--glass-edge);
   border-radius: 18px; padding: 22px 20px 16px;
   box-shadow: 0 20px 50px rgba(0,0,0,.45);
   animation: searchReveal .18s ease;
@@ -2451,7 +2765,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .confirm-btn {
   flex: 1 1 0; height: 44px; border-radius: 12px;
   font-size: 15px; font-weight: 600; cursor: pointer;
-  background: var(--bg-elev-2); color: var(--text);
+  background: var(--glass-fill); color: var(--text);
   border: 1px solid var(--border);
   transition: filter .15s ease, transform .08s ease;
 }
@@ -2466,7 +2780,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .switch-track {
   width: 46px; height: 28px; border-radius: 999px;
-  background: var(--bg-elev-2); border: 1px solid var(--border);
+  background: var(--glass-fill); border: 1px solid var(--glass-edge);
   display: inline-flex; align-items: center; padding: 0 3px;
   transition: background .18s ease, border-color .18s ease;
 }
@@ -2489,9 +2803,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   position: absolute;
   bottom: calc(100% + 10px);
   z-index: 6;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--bg-veil);
+  border: 1px solid var(--glass-edge);
+  border-radius: 14px;
   box-shadow: var(--shadow-modal);
   padding: 10px;
 }
@@ -2622,9 +2936,11 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 16px;
   padding-bottom: calc(12px + env(safe-area-inset-bottom));
-  /* Solid, no backdrop blur — fixed bar over the scroller (see .mini-transport). */
-  background: var(--bg-elev-2);
-  border-top: 1px solid var(--border);
+  /* Glass, and STILL no backdrop blur — fixed bar over the scroller (see
+     .mini-transport). --bg-veil composites to the page where nothing is behind
+     it, so the border and shadow are what separate it. */
+  background: var(--bg-veil);
+  border-top: 1px solid var(--glass-edge);
   box-shadow: 0 -4px 16px rgba(0,0,0,.22);
 }
 .label-merge-bar.hidden { display: none; }
@@ -2640,8 +2956,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* Unmerge bottom sheet */
 .label-unmerge-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
-  background: var(--bg-elev); border-top: 1px solid var(--border);
-  border-radius: 14px 14px 0 0;
+  background: var(--bg-veil); border-top: 1px solid var(--glass-edge);
+  border-radius: 18px 18px 0 0;
   padding: 0 0 calc(8px + env(safe-area-inset-bottom));
   box-shadow: 0 -8px 32px rgba(0,0,0,.4);
   max-height: 55vh; overflow-y: auto;
@@ -2652,7 +2968,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 14px; color: var(--text-dim);
-  position: sticky; top: 0; background: var(--bg-elev);
+  position: sticky; top: 0; background: var(--bg-veil);
 }
 .label-unmerge-header strong { color: var(--text); }
 .label-unmerge-list { padding: 6px 0; }
@@ -2676,8 +2992,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    label unmerge sheet, plus form fields and an artwork-candidate grid. */
 .album-edit-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
-  background: var(--bg-elev); border-top: 1px solid var(--border);
-  border-radius: 14px 14px 0 0;
+  background: var(--bg-veil); border-top: 1px solid var(--glass-edge);
+  border-radius: 18px 18px 0 0;
   padding: 0 0 calc(8px + env(safe-area-inset-bottom));
   box-shadow: 0 -8px 32px rgba(0,0,0,.4);
   max-height: 82vh; overflow-y: auto;
@@ -2688,7 +3004,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 15px; font-weight: 600; color: var(--text);
-  position: sticky; top: 0; background: var(--bg-elev); z-index: 1;
+  position: sticky; top: 0; background: var(--bg-veil); z-index: 1;
 }
 .album-edit-body { padding: 12px 16px 4px; max-width: 640px; margin: 0 auto; }
 .album-edit-field { display: block; margin-bottom: 12px; }
@@ -2746,11 +3062,16 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    frame stays put while results load/clear (no bottom-sheet "ducking" on
    mobile while typing). Scoped to the Qobuz overlay only — the base
    .settings-overlay/.settings-sheet rules used by Settings are untouched. */
-#qobuz-overlay, #tidal-overlay, #pitchfork-overlay { align-items: stretch; }
-#qobuz-overlay .qobuz-sheet,
-#tidal-overlay .qobuz-sheet,
-#pitchfork-overlay .qobuz-sheet,
-#qobuz-browse-overlay .qobuz-sheet {
+#qobuz-overlay, #tidal-overlay, #pitchfork-overlay, #qobuz-browse-overlay,
+#merged-overlay, #favourites-overlay, #playlists-overlay,
+#live-playlists-overlay { align-items: stretch; }
+/* Keyed on the MODIFIER CLASS, not a list of ids (v1.0.84). Four overlays —
+   Favourites, Merged albums, Playlists and Dynamic Playlists — carry exactly
+   this markup and were simply missing from the id list, so their sheets were
+   86vh with an unpinned header and their Back/Close buttons scrolled away with
+   the content. A class selector cannot fall out of step with the markup the
+   way that list did. */
+.qobuz-sheet {
   height: 100vh;   /* fallback for browsers without dvh support */
   height: 100dvh;
   max-height: none;
@@ -2764,14 +3085,16 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    rows scrolling beneath. The 2px bottom padding stops the tabs' bottom
    margin collapsing out of the wrapper, so the background covers the full
    pinned area. */
-#qobuz-overlay .qobuz-pin,
-#tidal-overlay .qobuz-pin,
-#pitchfork-overlay .qobuz-pin,
-#qobuz-browse-overlay .qobuz-pin {
+.qobuz-sheet .qobuz-pin {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: var(--bg-elev);
+  /* The SHEET'S OWN VEIL, not an opaque colour. Two 84% layers composite to
+     97.4%, so rows passing under the pinned header are invisible and there is
+     no step between the header and the sheet — which an opaque header on a
+     translucent sheet would show. */
+  background: var(--bg-veil);
+  border-bottom: 1px solid var(--glass-edge);
   padding-top: calc(10px + env(safe-area-inset-top));
   padding-bottom: 2px;
 }
@@ -2784,8 +3107,8 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .qb-nodes { display: flex; flex-direction: column; gap: 6px; }
 .qb-node {
   display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 14px 14px; border: none; border-radius: 10px;
-  background: var(--bg-elev-2); color: var(--text);
+  padding: 14px 14px; border: 1px solid var(--glass-edge); border-radius: 12px;
+  background: var(--glass-fill); color: var(--text);
   font-family: inherit; font-size: 15px; font-weight: 600; text-align: left; cursor: pointer;
 }
 .qb-node:active { background: var(--bg-elev); }
@@ -3060,10 +3383,17 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 
 /* Detail (single review) view */
 .pf-detail { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 4px 0 16px; }
+/* Mechanism 3: the Pitchfork overlay's sheet is the scroller and a review can
+   be several screens long, so Back has to stick. Its own veiled band rather
+   than the .qobuz-pin above it — the pin belongs to the overlay's title row,
+   which the detail view replaces. */
 .pf-back {
-  align-self: flex-start; cursor: pointer;
-  background: none; border: none; color: var(--accent);
-  font-size: 15px; padding: 4px 2px; font-family: inherit;
+  align-self: stretch; cursor: pointer;
+  position: sticky; top: 0; z-index: 4;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--bg-veil); border: none; color: var(--accent-text);
+  font-size: 15px; padding: 10px 2px; font-family: inherit;
+  text-align: left;
 }
 .pf-detail-head { display: flex; gap: 14px; align-items: flex-start; }
 .pf-detail-art {
@@ -3141,10 +3471,17 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 
 .menu-overlay { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 95; display: flex; }
 .menu-overlay.hidden { display: none; }
+/* SCRIM BLUR, 14px (v1.0.84). It was 2px, which did little behind an opaque
+   drawer; behind a translucent one it is what stops the page reading as clutter
+   through the glass. Allowed on a scrim and forbidden on the bars for the same
+   reason: nothing moves behind a scrim, so it is composited once rather than
+   re-blurred on every scroll frame. The five 2px blurs left in this file are
+   the TILE CHIPS (source / quality / favourite / merge badges), which are
+   welded to a cover and move with it. */
 .menu-backdrop {
   position: absolute; top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,.5);
-  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .menu-drawer {
   position: relative; z-index: 1;
@@ -3154,8 +3491,9 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
      at full scroll. dvh is the visible height. */
   height: 100%;
   height: 100dvh;
-  background: var(--bg-elev);
-  border-right: 1px solid var(--border);
+  /* Glass: it floats over the blurred, dimmed page. */
+  background: var(--bg-veil);
+  border-right: 1px solid var(--glass-edge);
   box-shadow: 8px 0 40px rgba(0,0,0,.4);
   display: flex; flex-direction: column;
   padding-top: env(safe-area-inset-top);
@@ -3163,7 +3501,14 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
   animation: menuSlideIn .24s cubic-bezier(.2,.8,.2,1);
 }
 @keyframes menuSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
-.menu-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 10px; }
+/* Pinned: the drawer is the scroller, so a head in the flow would take the
+   close button off the top of a menu long enough to scroll. Mechanism 3. */
+.menu-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 14px 10px;
+  position: sticky; top: 0; z-index: 2;
+  background: var(--bg-veil);
+}
 .menu-brand { font-size: 17px; font-weight: 700; color: var(--text); }
 /* The bottom reserve must live on the CONTENT, not on the scroll container:
    padding-bottom on an overflow-y:auto element is not added to scrollable
@@ -3326,7 +3671,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
    selector for "the dismiss button" can't accidentally match Queue or Add. */
 .pick-add, .pick-block, .pick-secondary {
   padding: 8px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
-  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  border: 1px solid var(--glass-edge); background: var(--glass-fill); color: var(--text);
   cursor: pointer; white-space: nowrap;
 }
 .pick-add { background: var(--accent); color: var(--on-accent); border-color: transparent; }
@@ -3554,13 +3899,16 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 /* Bottom sheet shell (Sort, Focus, pickers) */
 .lib-sheet-backdrop {
   position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.55);
+  /* A scrim, not a surface over a scroller — a backdrop-filter is safe here,
+     and every other dismiss backdrop in this file already has one. */
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   display: flex; align-items: flex-end; justify-content: center;
 }
 .lib-sheet {
   width: 100%; max-width: 560px; max-height: 82vh; max-height: 82dvh;
   display: flex; flex-direction: column;
-  background: var(--bg-elev); color: var(--text);
-  border-radius: 16px 16px 0 0; border-top: 1px solid var(--border);
+  background: var(--bg-veil); color: var(--text);
+  border-radius: 18px 18px 0 0; border-top: 1px solid var(--glass-edge);
   box-shadow: var(--shadow-modal); padding-bottom: env(safe-area-inset-bottom);
   animation: sheetUp .26s cubic-bezier(.2,.8,.2,1);
 }
@@ -3600,7 +3948,7 @@ main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 .lib-chips { display: flex; flex-wrap: wrap; gap: 7px; padding-bottom: 12px; }
 .lib-chip {
   padding: 7px 12px; border-radius: 999px;
-  background: var(--bg-elev-2); border: 1px solid var(--border);
+  background: var(--glass-fill); border: 1px solid var(--glass-edge);
   color: var(--text-dim); font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
 .lib-chip.is-on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }

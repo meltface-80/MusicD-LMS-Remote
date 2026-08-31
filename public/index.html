@@ -299,39 +299,44 @@
     </nav>
   </div>
 
-  <div id="docker-migration-banner" class="docker-banner hidden" role="alert">
-    <div class="docker-banner-body">
-      <strong>Switch to Docker</strong> — Updates are now Docker-only. Download the latest release from
-      <a href="https://github.com/meltface-80/MusicD-LMS-Remote/releases/latest" target="_blank" rel="noopener noreferrer">github.com/meltface-80/MusicD-LMS-Remote/releases/latest</a>,
-      then run (replacing VERSION with the release you downloaded):
-      <pre class="docker-banner-pre">sudo mkdir -p /opt/musicd-remote && cd /opt/musicd-remote
-wget https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/vVERSION/MusicD-LMS-Remote-vVERSION.tar.gz
-tar -xzf MusicD-LMS-Remote-vVERSION.tar.gz
-docker build -t musicd-remote:VERSION .
-docker run -d --name musicd-remote --restart unless-stopped --network host -v musicd-remote-data:/app/data musicd-remote:VERSION
-sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
-      <button id="docker-migration-dismiss" class="docker-banner-dismiss" type="button">Got it</button>
-    </div>
-  </div>
-
-  <div id="update-toast" class="update-toast" role="status" aria-live="polite">
-    <div class="update-toast-top">
-      <svg class="update-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-           aria-hidden="true">
-        <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/>
-        <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/>
-      </svg>
-      <span class="update-text" id="update-text"></span>
-      <div class="update-actions" id="update-actions">
-        <button id="update-now" class="primary-btn" type="button"><span>Update</span></button>
-        <button id="update-later" class="icon-btn update-later" type="button" aria-label="Dismiss">Later</button>
+  <main>
+    <!-- Inside <main> as of v1.0.84, not flex children of .app. The top bar
+         overlays the scroller now, so anything left in the shell's flow would
+         sit underneath it — moving the two notices into the scroller means the
+         bar has exactly one thing to sit over and the reserve lives in one
+         place (main's padding-top). -->
+    <div id="docker-migration-banner" class="docker-banner hidden" role="alert">
+      <div class="docker-banner-body">
+        <strong>Switch to Docker</strong> — Updates are now Docker-only. Download the latest release from
+        <a href="https://github.com/meltface-80/MusicD-LMS-Remote/releases/latest" target="_blank" rel="noopener noreferrer">github.com/meltface-80/MusicD-LMS-Remote/releases/latest</a>,
+        then run (replacing VERSION with the release you downloaded):
+        <pre class="docker-banner-pre">sudo mkdir -p /opt/musicd-remote && cd /opt/musicd-remote
+  wget https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/vVERSION/MusicD-LMS-Remote-vVERSION.tar.gz
+  tar -xzf MusicD-LMS-Remote-vVERSION.tar.gz
+  docker build -t musicd-remote:VERSION .
+  docker run -d --name musicd-remote --restart unless-stopped --network host -v musicd-remote-data:/app/data musicd-remote:VERSION
+  sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
+        <button id="docker-migration-dismiss" class="docker-banner-dismiss" type="button">Got it</button>
       </div>
     </div>
-    <div id="update-notes" class="update-notes hidden"></div>
-  </div>
 
-  <main>
+    <div id="update-toast" class="update-toast" role="status" aria-live="polite">
+      <div class="update-toast-top">
+        <svg class="update-ico" width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             aria-hidden="true">
+          <path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/>
+          <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/>
+        </svg>
+        <span class="update-text" id="update-text"></span>
+        <div class="update-actions" id="update-actions">
+          <button id="update-now" class="primary-btn" type="button"><span>Update</span></button>
+          <button id="update-later" class="icon-btn update-later" type="button" aria-label="Dismiss">Later</button>
+        </div>
+      </div>
+      <div id="update-notes" class="update-notes hidden"></div>
+    </div>
+
     <div id="labels-bar" class="labels-bar hidden">
       <button id="labels-back" class="labels-back" type="button" aria-label="Back to all labels">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -803,6 +808,9 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     </button>
 
     <div class="mt-info">
+      <!-- Inside .mt-info, which is the region that opens Now playing: tapping
+           the cover of the thing you are listening to should get you to it. -->
+      <img id="mt-art" class="mt-art hidden" alt="" aria-hidden="true">
       <div class="mt-text">
         <div id="mt-title"  class="mt-title">—</div>
         <div id="mt-artist" class="mt-artist">—</div>
@@ -1024,8 +1032,11 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
 
       <!-- Settings home: category list. Each row opens a pane below. -->
       <div class="settings-view" data-view="home">
+        <!-- Settings home had no dismiss control at all until v1.0.84 — the
+             backdrop and Escape only, neither of them discoverable on a phone. -->
         <div class="settings-head">
           <h2>Settings</h2>
+          <button class="icon-btn" type="button" aria-label="Close" data-settings-close><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
 
         <nav class="settings-nav" aria-label="Settings categories">
@@ -1558,8 +1569,9 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
     <div class="settings-backdrop" data-filter-close></div>
     <div class="settings-sheet filter-sheet">
       <div class="settings-grip"></div>
-      <div class="settings-head">
+      <div class="settings-head filter-head">
         <h2>Filter</h2>
+        <button class="icon-btn" type="button" aria-label="Close" data-filter-close><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
 
       <button class="filter-row" id="filter-all" type="button">
@@ -1614,7 +1626,7 @@ sudo systemctl stop musicd-remote && sudo systemctl disable musicd-remote</pre>
        Material plugin is installed, classic Lyrion settings otherwise). -->
   <div id="lmsset-overlay" class="lmsset-overlay hidden" role="dialog" aria-modal="true" aria-label="LMS server settings">
     <div class="lmsset-bar">
-      <button id="lmsset-close" class="lmsset-close" type="button">← Back</button>
+      <button id="lmsset-close" class="lmsset-close" type="button" aria-label="Back" title="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
       <span class="lmsset-title">LMS server settings</span>
       <a id="lmsset-newtab" class="lmsset-newtab" href="#" target="_blank" rel="noopener noreferrer">Open in new tab ↗</a>
     </div>

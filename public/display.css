@@ -144,6 +144,16 @@ body {
 .slide .video-wrap iframe { width: 100%; height: 100%; border: 0; pointer-events: none; }
 .slide .video-wrap video  { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 
+/* THE WALL'S CHROME IS ALREADY THE APP'S GLASS, and stays hand-written rather
+   than tokenised (v1.0.84). This stylesheet has no custom properties at all and
+   deliberately so: the wall is always dark, has no theme picker, and runs on a
+   TV that never sees the app's four palettes. The two surfaces below were
+   translucent-with-a-lit-edge before the glass pass and are simply matched to
+   it now — same alphas as the dark palette's --bg-veil / --glass-edge, same
+   radii as the app's sheets. NO backdrop-filter: the slideshow crossfades
+   underneath these, which is the same per-frame re-composite the phone app's
+   bars have to avoid, on hardware that is usually weaker. */
+
 /* Mode controls — revealed on tap/pointer, fade out after a few seconds */
 .controls {
   position: fixed;
@@ -153,8 +163,8 @@ body {
   display: flex; gap: 8px;
   padding: 6px;
   border-radius: 999px;
-  background: rgba(10,12,14,.72);
-  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(14,16,18,.84);          /* the dark palette's --bg-veil */
+  border: 1px solid rgba(255,255,255,.10);  /* …and its --glass-edge */
   opacity: 0;
   pointer-events: none;
   transition: opacity .3s ease;
@@ -180,9 +190,12 @@ body.show-ui .controls { opacity: 1; pointer-events: auto; }
   z-index: 20;
   min-width: min(420px, 90vw);
   padding: 18px 22px;
-  border-radius: 16px;
-  background: rgba(10,12,14,.92);
-  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  /* Denser than .controls: this one carries a title and two labelled buttons,
+     i.e. it is a decision surface over live artwork — the same reason the
+     app's dropdown menu is opaque. */
+  background: rgba(14,16,18,.94);
+  border: 1px solid rgba(255,255,255,.10);
   box-shadow: 0 18px 60px rgba(0,0,0,.6);
   text-align: center;
 }
@@ -191,10 +204,10 @@ body.show-ui .controls { opacity: 1; pointer-events: auto; }
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pp-actions { display: flex; gap: 10px; justify-content: center; }
 .pp-btn {
-  border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10); border-radius: 999px;
   padding: 12px 20px;
   font: 600 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: rgba(255,255,255,.08); color: #f2f3f5;
+  background: rgba(255,255,255,.07); color: #f2f3f5;   /* the --glass-fill wash */
   cursor: pointer;
 }
 .pp-primary { background: #f2f3f5; color: #0e1012; border-color: transparent; }
