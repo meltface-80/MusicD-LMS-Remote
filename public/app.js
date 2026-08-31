@@ -300,7 +300,15 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   // Topbar chrome per view: Back button (off Home), Refresh button (random /
   // genre grids), and the Search box (Home only, beside the hamburger).
+  // Set while a screen owns the chevron (see the listener below); every other
+  // screen leaves it null and gets showHome.
+  let topbarBackOverride = null;
   function setTopbarNav(back, refresh, search) {
+    // Any screen that reconfigures the chrome is taking the chevron back, so
+    // an override left behind by a screen that was navigated away from without
+    // its own teardown running cannot survive to send the next Back somewhere
+    // unrelated.
+    topbarBackOverride = null;
     if (topbarBack)    topbarBack.classList.toggle("hidden", !back);
     if (topbarRefresh) topbarRefresh.classList.toggle("hidden", !refresh);
     if (topbarSearch)  topbarSearch.classList.toggle("hidden", !search);
@@ -447,7 +455,22 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // they show Back but not Refresh.
   window.__setTopbarNav = setTopbarNav;
 
-  if (topbarBack)    topbarBack.addEventListener("click", showHome);
+  // WHERE THE TOP BAR'S BACK CHEVRON GOES (v1.0.84). Home, unless a screen has
+  // claimed it: the artist view returns to WHERE IT WAS OPENED FROM (a wall, a
+  // search, the Home landing), which is not the same thing. It used to carry
+  // its own "← Back" button inside the scroller and that button scrolled off
+  // the top of any artist with more than a screenful of albums — the defect this
+  // release was asked to fix. Pinning it in the content is not the answer here:
+  // <main> reserves the bar's height as padding, and a sticky child's offset is
+  // measured from the content box, so a band pinned under the bar leaves a
+  // gutter-wide strip of tiles between the two. The bar is already pinned and
+  // already glass; the chevron belongs in it.
+  // One slot, one override, cleared by whoever set it.
+  window.__setTopbarBack = (fn) => { topbarBackOverride = fn || null; };
+  if (topbarBack) topbarBack.addEventListener("click", () => {
+    if (topbarBackOverride) { const f = topbarBackOverride; topbarBackOverride = null; f(); }
+    else showHome();
+  });
   if (topbarRefresh) topbarRefresh.addEventListener("click", () => loadRandom());
 
   // Home unplayed/random rows are reused within this TTL instead of being
@@ -5404,6 +5427,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   const bar       = document.getElementById("mini-transport");
   const titleEl   = document.getElementById("mt-title");
   const artistEl  = document.getElementById("mt-artist");
+  const artEl     = document.getElementById("mt-art");
   const btnPP     = document.getElementById("mt-playpause");
   const btnZone   = document.getElementById("mt-zone");
   const zonePop   = document.getElementById("mt-zone-popover");
@@ -5602,6 +5626,26 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
 
   let lastTransportSig = "";
+  // The cover for the playing track (v1.0.84 — it is what gives the floating
+  // pill its height). HIDDEN rather than broken when the zone reports no art (a
+  // stream, a zone mid-handshake): an empty <img> draws the browser's
+  // broken-image glyph, which looks like a fault rather than like nothing.
+  function paintTransportArt(imageKey) {
+    if (!artEl) return;
+    if (imageKey) {
+      const src = `/api/image/${encodeURIComponent(imageKey)}?size=120`;
+      // Guarded: assigning the same src restarts the request on some browsers,
+      // and this runs off the transport poll.
+      if (artEl.getAttribute("src") !== src) artEl.setAttribute("src", src);
+      artEl.classList.remove("hidden");
+    } else {
+      artEl.removeAttribute("src");
+      artEl.classList.add("hidden");
+    }
+  }
+  // A cover LMS cannot serve must not leave a broken-image glyph in the pill.
+  if (artEl) artEl.addEventListener("error", () => paintTransportArt(null));
+
   function saveTransportState(zone) {
     if (!zone || !zone.now_playing) return;
     const np = zone.now_playing;
@@ -5625,6 +5669,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       titleEl.textContent  = saved.line1;
       const sub = [saved.line2, saved.line3].filter(Boolean).join(" · ");
       artistEl.textContent = sub || "—";
+      paintTransportArt(saved.image_key);
       bar.classList.remove("hidden");
     } catch (e) {} // corrupt localStorage — transport bar stays hidden, no action needed
   }
@@ -5664,7 +5709,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const volOutput = (zone.outputs || []).find(o => o.volume);
     const muted = (zone.outputs || []).some(o => o.is_muted);
     const playing = zone.state === "playing" || zone.state === "loading";
-    const barSig = [np.line1, np.line2, np.line3, zone.state, muted,
+    const barSig = [np.line1, np.line2, np.line3, np.image_key, zone.state, muted,
                     volOutput ? volOutput.volume.value : "novol"].join("|");
     if (barSig !== lastBarSig) {
       lastBarSig = barSig;
@@ -5673,6 +5718,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       titleEl.textContent  = np.line1 || "—";
       const sub = [np.line2, np.line3].filter(Boolean).join(" · ");
       artistEl.textContent = sub || "—";
+      paintTransportArt(np.image_key);
 
       // Play/pause state
       iconPlay .classList.toggle("hidden",  playing);
@@ -7647,7 +7693,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   openBtn.addEventListener("click", open);
   overlay.addEventListener("click", (e) => {
-    if (e.target.hasAttribute("data-settings-close")) close();
+    // `closest`, not `hasAttribute`: the close button added in v1.0.84 carries
+    // an SVG, and a tap lands on the <line> inside it, not on the button.
+    if (e.target.closest && e.target.closest("[data-settings-close]")) close();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || overlay.classList.contains("hidden")) return;
@@ -8189,6 +8237,10 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   function exitArtistView() {
     if (!artistViewActive) return;
     artistViewActive = false;
+    // Hand the shared chevron back before restoring the previous screen's
+    // chrome — the snapshot below decides whether it is even shown, and a
+    // stale override would send the NEXT screen's Back here.
+    if (window.__setTopbarBack) window.__setTopbarBack(null);
     // The restored grid is the SAME live nodes, so any .is-selected classes
     // would come back with it — clear the selection rather than restoring a
     // highlighted set the action bar no longer describes.
@@ -8243,20 +8295,20 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     if (homeView)     homeView.classList.add("hidden");
     if (homeSections) homeSections.classList.add("hidden");
     grid.classList.remove("hidden");
-    // Hide the shared topbar nav — this view has its own "← Back" button in
-    // countBar, so leaving the shared Back/Refresh/Search visible (whatever the
-    // previous screen set them to) would show a second, redundant back control.
-    if (topbarBack)    topbarBack.classList.add("hidden");
+    // The shared top-bar chevron IS this view's Back (v1.0.84) — it is pinned
+    // and glass, where the old in-flow button scrolled away. Refresh and Search
+    // belong to other screens and go, whatever the previous one set them to.
+    if (topbarBack)    topbarBack.classList.remove("hidden");
     if (topbarRefresh) topbarRefresh.classList.add("hidden");
     if (topbarSearch)  topbarSearch.classList.add("hidden");
+    // Back here means "the screen I came from", not Home — hence the override
+    // rather than the default handler.
+    if (window.__setTopbarBack) window.__setTopbarBack(exitArtistView);
 
     // Show loading state
     if (countBar) {
       countBar.classList.remove("hidden");
-      countBar.innerHTML = `
-        <button class="artist-view-back" id="artist-back-btn">← Back</button>
-        <span class="count-text">Loading…</span>`;
-      document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
+      countBar.innerHTML = `<span class="count-text">Loading…</span>`;
     }
     grid.innerHTML = "";
 
@@ -8281,10 +8333,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       const total = j.primary.length + j.featured.length;
 
       if (countBar) {
-        countBar.innerHTML = `
-          <button class="artist-view-back" id="artist-back-btn">← Back</button>
-          <span class="count-text">${total} album${total !== 1 ? "s" : ""} · ${esc(artistName)}</span>`;
-        document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
+        countBar.innerHTML =
+          `<span class="count-text">${total} album${total !== 1 ? "s" : ""} · ${esc(artistName)}</span>`;
       }
 
       if (!total) {
@@ -8319,10 +8369,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       grid.appendChild(frag);
     } catch (e) {
       if (countBar) {
-        countBar.innerHTML = `
-          <button class="artist-view-back" id="artist-back-btn">← Back</button>
-          <span class="count-text" style="color:var(--danger)">Error: ${esc(e.message)}</span>`;
-        document.getElementById("artist-back-btn").addEventListener("click", exitArtistView);
+        countBar.innerHTML =
+          `<span class="count-text" style="color:var(--danger)">Error: ${esc(e.message)}</span>`;
       }
     }
   }
@@ -9626,4 +9674,45 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
   openBtn.addEventListener("click", open);
   window.__openMergedAlbums = open;
+})();
+
+/* ------------------------------------------------------------------ */
+/*  Top bar height -> --topbar-h                                        */
+/* ------------------------------------------------------------------ */
+/* v1.0.84. The top bar overlays the scroller now, so album art passes under it
+   and shows through the veil. The cost of taking it out of the flow is that
+   <main> has to reserve its height itself, and that height is not a constant:
+   it grows with the status-bar inset, and it changes when the search row is
+   hidden, when the album-select row replaces the normal one, and on rotation.
+   So it is MEASURED rather than guessed. style.css carries a fallback for the
+   frame before this runs (and for no-JS); this replaces it with the real number
+   and keeps it current. .filter-bar and .filter-panel stick to the same
+   variable, which until now hard-coded 56px/60px and had to be kept in step by
+   hand. */
+(() => {
+  const bar = document.querySelector(".topbar");
+  const app = document.querySelector(".app");
+  if (!bar || !app) return;
+
+  let last = -1;
+  const publish = () => {
+    // Rounded UP: half a pixel short leaves a hairline of album art peeking
+    // above the first row, which reads as a rendering fault rather than a
+    // design. A pixel of extra reserve is invisible.
+    const h = Math.ceil(bar.getBoundingClientRect().height);
+    if (h > 0 && h !== last) {
+      last = h;
+      app.style.setProperty("--topbar-h", h + "px");
+    }
+  };
+  publish();
+
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(publish).observe(bar);
+  } else {
+    // Safari < 13.1. Rotation and the search row are the changes that matter,
+    // and both fire one of these.
+    window.addEventListener("resize", publish, { passive: true });
+    window.addEventListener("orientationchange", publish, { passive: true });
+  }
 })();
