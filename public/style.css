@@ -935,6 +935,12 @@ main { padding-top: calc(var(--topbar-h) + 14px); }
   -webkit-overflow-scrolling: touch;
 }
 .modal-art {
+  /* The positioning context for #modal-quality. Without this the badge resolves
+     against .modal-body (the nearest positioned ancestor) and renders on the
+     scrollport instead of on the cover — a pre-existing defect, invisible only
+     because the badge is off by default. The @supports fallback below already
+     declares the same thing for browsers with no aspect-ratio. */
+  position: relative;
   width: 100%; max-width: 280px; margin: 0 auto;
   aspect-ratio: 1 / 1;
   background: var(--bg-elev-2);
@@ -1774,6 +1780,114 @@ main {
    have. If the artwork is ever taken up behind them it comes back — and it must
    be dark in every palette, because white-on-dark is the only pair that
    survives an unknown sleeve. */
+/* ── THE ALBUM-ART HERO (v1.0.85) ─────────────────────────────────────
+   The album view leads with the cover now, the same way Now playing does. It
+   used to be a 280px square floating in the middle of a padded column with a
+   card radius and a shadow; it is the cover itself, edge to edge, running up
+   under the corner buttons and dissolving into the ground with the title in the
+   tail of the fade.
+
+   SCOPED TO THE PHONE, deliberately, with a max-width query rather than by
+   source order. At ≥720px `.modal-panel` is a 960px CENTRED CARD with 28px of
+   padding and a two-column body — "full-bleed" there would bleed off the card's
+   own padding, not off the screen, which is not a bleed, it is a misalignment.
+   The Roon build leaves these rules unscoped and relies on its ≥720px block
+   coming later in the file; ours says what it means, so reordering cannot
+   silently turn the hero on for the tablet layout.
+
+   FULL-BLEED FROM INSIDE A PADDED COLUMN. `.modal-body` pads 18px either side
+   and the art is one of its flex children, so the art cancels that padding with
+   a negative margin and takes the width back. THE ARITHMETIC HAS TO STAY EXACT:
+   `.modal-body` declares `overflow-y: auto`, and a box with one axis scrollable
+   and the other `visible` computes the visible one to `auto` — so a bleed ONE
+   PIXEL wider than the padding it cancels does not spill, it gives the whole
+   album view a horizontal scrollport. `-18px` / `+36px` ARE that padding; if it
+   ever changes, both change with it.
+
+   `padding-top: 0` is what lets the art reach the top of the panel, and it is
+   the ONLY place in this file allowed to give that reserve up — the base
+   `.modal-body` rule's 64px is what keeps the track list clear of the pinned
+   corner buttons on every other screen. `lib/safearea.test.js` pins exactly
+   that: one `.modal-body` block may zero its top padding, and its selector must
+   name `:not(.np-mode)`. */
+@media (max-width: 719px) {
+  .modal:not(.np-mode) .modal-body {
+    padding-top: 0;
+    gap: 0;
+  }
+  .modal:not(.np-mode) .modal-art {
+    width: calc(100% + 36px);
+    max-width: none;
+    margin: 0 -18px;
+    aspect-ratio: 1 / 1;
+    /* Both go: a radius and a card shadow are how a FLOATING card reads, and
+       this is no longer floating. */
+    border-radius: 0;
+    box-shadow: none;
+    /* AND SO DOES THE BACKGROUND. The mask is on the img, so with the wrapper
+       still painting --bg-elev-2 the cover dissolves into an OPAQUE RECTANGLE
+       one step lighter than the page — #1d2125 on a #0e1012 ground, worse in
+       copper — with a hard bottom edge exactly where the dissolve is meant to
+       finish. Transparent lets it reach the real ground. np-mode's own hero
+       nulls this for the same reason. */
+    background: transparent;
+  }
+  /* The fade is a MASK, not an overlaid gradient, because the ground behind it
+     is a theme token: masking to transparent lets whatever `--bg` is for the
+     current palette come through, so one rule works in all four. An overlay
+     would have to hard-code a colour to fade TO, and would be wrong in two of
+     them. */
+  .modal:not(.np-mode) .modal-art img {
+    -webkit-mask-image: linear-gradient(to bottom,
+      #000 0 58%, rgba(0,0,0,.72) 78%, transparent 100%);
+            mask-image: linear-gradient(to bottom,
+      #000 0 58%, rgba(0,0,0,.72) 78%, transparent 100%);
+  }
+  /* THE TEXT STAYS OFF THE ARTWORK — the same rule as Now playing, for the same
+     reason: two of this app's four palettes have a near-white ground and
+     near-black text, so a title overlapping the cover puts dark text on
+     whatever the sleeve happens to be, invisible on the first cover tried. The
+     mask finishes the art at the element's own bottom edge and the title starts
+     under it: the same dissolve, with no unknown image behind any text.
+     Only the title, the subtitle and the action row centre. `.modal-info` holds
+     the TRACK LIST too, and centring that would centre every row. */
+  .modal:not(.np-mode) #modal-title,
+  .modal:not(.np-mode) .modal-subtitle { text-align: center; }
+  .modal:not(.np-mode) .modal-action-row { justify-content: center; }
+  /* The quality chip is welded to the artwork, so in the hero it has to stay on
+     the part of the artwork that is still THERE: at the art's bottom edge it
+     would sit in the fully dissolved tail and read as a chip floating on the
+     page. 58% is where the mask starts to fall away, so this parks it just
+     inside the solid region. Left, to stay clear of the chrome cluster. */
+  .modal:not(.np-mode) .modal-art #modal-quality {
+    top: auto; bottom: 44%; left: 12px;
+  }
+  /* Back, Share and Edit sit ON the artwork now, and it can be any colour at
+     all. A scrim under each is what makes them legible on a white sleeve as
+     well as a black one, and it is dark in EVERY palette on purpose:
+     white-on-dark is the pair that survives an unknown image, where the glass
+     chip they wear elsewhere would vanish into half the covers in a library.
+     No backdrop-filter: the art scrolls underneath these, which is the same
+     per-frame re-blur the transport pill has to avoid.
+     Written as their own selectors and never folded into the standalone
+     `.modal-close` / `.modal-share` / `.modal-edit` rules above —
+     `lib/safearea.test.js` resolves those by exact selector text, and a rule
+     whose selector merely CONTAINS the name is deliberately not matched. */
+  .modal:not(.np-mode) .modal-close,
+  .modal:not(.np-mode) .modal-share,
+  .modal:not(.np-mode) .modal-edit {
+    background: rgba(0,0,0,.42);
+    border-color: rgba(255,255,255,.24);
+    color: #fff;
+  }
+  .modal:not(.np-mode) .modal-close:hover,
+  .modal:not(.np-mode) .modal-share:hover,
+  .modal:not(.np-mode) .modal-edit:hover {
+    background: rgba(0,0,0,.58);
+    color: #fff;
+  }
+}
+
 /* Very short viewports (small desktop windows — phone landscape is already
    blocked by the rotate overlay): let the body scroll again rather than
    clip the transport controls unreachably. */
