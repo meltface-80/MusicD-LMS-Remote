@@ -1160,6 +1160,17 @@
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
+          <button class="settings-nav-item" type="button" data-pane="shelf">
+            <span class="settings-nav-ico" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="3" height="16" rx="1"/><rect x="8" y="4" width="3" height="16" rx="1"/><path d="M13.5 5.2l2.9-.8 3.9 14.6-2.9.8z"/><line x1="2" y1="21" x2="22" y2="21"/></svg>
+            </span>
+            <span class="settings-nav-txt">
+              <span class="settings-nav-title">Shelf</span>
+              <span class="settings-nav-desc">The record-shop browser, on or off</span>
+            </span>
+            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+
           <button class="settings-nav-item" type="button" data-pane="appearance">
             <span class="settings-nav-ico" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5,3 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M15.5,3 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M4.5,14 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M14,15 h7 M14,19 h5"/></svg>
@@ -1478,6 +1489,16 @@
           <div id="youtube-key-status" class="settings-token-status"></div>
         </div>
 
+      </div>
+
+      <!-- Shelf (as Mandarin's Settings → Shelf): its switch, read by both apps (shelf-entry.js, Mallard's ShelfPane). -->
+      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="shelf">
+        <div class="settings-pane-head">
+          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2>Shelf</h2>
+        </div>
         <div class="settings-block">
           <div class="settings-row">
             <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and in the side menu (and Mallard's) while it is on." aria-label="Info">ⓘ</button></span>
