@@ -110,15 +110,9 @@ internal fun HomeScreen(prefs: WallPrefs, zoneId: String, client: () -> ServerCl
             r.onSuccess { picked = it }.onFailure { toast(com.musicd.mallard.client.Failure.said(it, "Could not choose an album")) }
         }
     }
-    // A tile tapped: the album's page over Home with its row as the list; one of the phone's own, the page's own page of it; a download the library no longer has, played from the phone.
+    // A tile tapped: the album's page over Home with its row as the list.
     fun open(albums: List<AlbumSummary>, i: Int) {
         val a = albums[i]
-        HomeKept.phoneKeys[a.offset]?.let { onPage("phone-album", it); return }
-        HomeKept.phoneDownload(a.offset)?.let { d ->
-            if (d.state == "away") toast("On a card that isn’t in right now")
-            else { DownloadTiles.play(context, d.id); toast("Not in the library right now — playing from this phone") }
-            return
-        }
         val items = albums.filter { it.offset >= 0 }
         onAlbum(a.offset, zone, NavList(items.map { NavItem(it.offset, it.title) }, items.indexOfFirst { it.offset == a.offset }))
     }
@@ -168,15 +162,13 @@ internal fun HomeScreen(prefs: WallPrefs, zoneId: String, client: () -> ServerCl
                             Column {
                                 when (row.id) {
                                     "unplayed" -> SectionTitle(Modifier.parity("home.unplayed-title", Contract.label("home.unplayed-title")).clickable { onWall("unplayed", "") }, "Not played in 6 months", true)
-                                    "later" -> SectionTitle(Modifier.parity("home.later-title", Contract.label("home.later-title")).clickable { onWall("later", "") }, "Listen later", true)
+                                    "lotw" -> SectionTitle(Modifier.clickable { onWall("lotw", "") }, "Label of the week" + (HomeKept.lotwLabel?.let { ": $it" } ?: ""), true)
                                     "favourites" -> SectionTitle(Modifier.parity("home.favourites-title", Contract.label("home.favourites-title")).clickable { onWall("favourites", "") }, "Favourites", true)
                                     "history" -> SectionTitle(Modifier.parity("home.history-title", Contract.label("home.history-title")).clickable { onWall("history", "") }, "Recently played", true)
                                     "random" -> SectionTitle(Modifier.parity("home.random-title", Contract.label("home.random-title")).clickable { onWall("random", "") }, "Random albums", true)
                                     "library" -> SectionTitle(Modifier.parity("home.library-title", Contract.label("home.library-title")).clickable(onClick = onLibrary), "Library", true)
-                                    "downloads" -> SectionTitle(Modifier.parity("home.downloads-title", Contract.label("home.downloads-title")).clickable { onWall("downloads", "") }, "Downloaded albums", true)
-                                    "phone" -> SectionTitle(Modifier.parity("home.phone-title", Contract.label("home.phone-title")).clickable { onWall("phone", "") }, "Music on device", true)
                                 }
-                                AlbumRowItems(kept, prefs, coverPx, client, badges = row.id == "downloads", onOpen = { list, i -> open(list, i) })
+                                AlbumRowItems(kept, prefs, coverPx, client, badges = false, onOpen = { list, i -> open(list, i) })
                             }
                         }
                     }
@@ -232,7 +224,7 @@ private fun AlbumRowItems(row: RowKept, prefs: WallPrefs, coverPx: Int, client: 
     val albums = row.albums.toList()
     if (albums.isEmpty()) row.note?.let { RowNote(it) }
     else Carousel(albums, key = { it.offset }) { i, a ->
-        Box(Modifier.width((144 * prefs.tile).dp)) { AlbumTile(a, prefs, coverPx, client, dl = if (badges) HomeKept.downloads[a.offset]?.badge else null, fourLines = true) { onOpen(albums, i) } }
+        Box(Modifier.width((144 * prefs.tile).dp)) { AlbumTile(a, prefs, coverPx, client, dl = null, fourLines = true) { onOpen(albums, i) } }
     }
     Spacer(Modifier.height(ROW_GAP))
 }

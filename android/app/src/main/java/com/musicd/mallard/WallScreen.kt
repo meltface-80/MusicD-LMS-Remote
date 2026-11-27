@@ -88,13 +88,6 @@ internal fun WallScreen(kind: String, filterQuery: String, prefs: WallPrefs, zon
     fun open(i: Int) {
         if (selecting) { pick(i); return }
         val a = shown[i]
-        // One of the phone's own: the page's own page of it; a download the library no longer has: played from the phone, as the page does.
-        HomeKept.phoneKeys[a.offset]?.let { onPage("phone-album", it); return }
-        HomeKept.phoneDownload(a.offset)?.let { d ->
-            if (d.state == "away") toast("On a card that isn’t in right now")
-            else { DownloadTiles.play(context, d.id); toast("Not in the library right now — playing from this phone") }
-            return
-        }
         val items = shown.filter { it.offset >= 0 }
         onAlbum(a.offset, zone, NavList(items.map { NavItem(it.offset, it.title) }, items.indexOfFirst { it.offset == a.offset }))
     }
@@ -123,7 +116,7 @@ internal fun WallScreen(kind: String, filterQuery: String, prefs: WallPrefs, zon
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         AlbumGrid(listOf(GridBlock(null, shown)), prefs, cols, coverPx, client, wall.loaded, picks.map { it.offset }.toSet(), grid, list,
-            onOpen = ::open, onLongPress = { i -> if (!own && !selecting) { selecting = true; pick(i) } }, dl = { a -> if (kind == "downloads") HomeKept.downloads[a.offset]?.badge else null }) {
+            onOpen = ::open, onLongPress = { i -> if (!own && !selecting) { selecting = true; pick(i) } }, dl = { null }) {
             WallHead(title, prefs, banner)
         }
         WallBack(onBack)
@@ -201,7 +194,7 @@ internal object Walls {
 
     /** The wall's heading, as the page's. */
     fun title(kind: String): String = when (kind) {
-        "later" -> "Listen later"; "favourites" -> "Favourites"; "history" -> "Recently played"; "unplayed" -> "Not played in 6 months"
-        "downloads" -> "Downloaded albums"; "phone" -> "Music on device"; else -> "Random albums"
+        "favourites" -> "Favourites"; "history" -> "Recently played"; "unplayed" -> "Not played in 6 months"
+        "lotw" -> "Label of the week" + (HomeKept.lotwLabel?.let { ": $it" } ?: ""); else -> "Random albums"
     }
 }

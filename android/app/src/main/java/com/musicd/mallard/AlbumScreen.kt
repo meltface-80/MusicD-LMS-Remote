@@ -54,6 +54,7 @@ import com.musicd.mallard.client.AlbumExtras
 import com.musicd.mallard.client.ArtistAct
 import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.Failure
+import com.musicd.mallard.client.FavouriteKey
 import com.musicd.mallard.client.LibraryClient
 import com.musicd.mallard.client.NavList
 import com.musicd.mallard.client.Palette
