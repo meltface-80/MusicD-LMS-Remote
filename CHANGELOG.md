@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Mallard updates itself, as Mandarin's app does: Home offers a newer build (Update / Later) and Settings → System has a Mallard row beside the server's. Test builds are offered each new test build; the download is checked against its SHA-256 before Android installs it over the top
 - Changed - Mallard has its own mark, on the Android app, the web app (installed or not), the share card and the Pages site: half the MusicD duck in Mandarin's brass beside half of Lyrion's waveform in its green
 - Added - Mallard has the Share card: Share on the album screen and on Now playing, with Copy image and Download (to Pictures/Mallard)
 - Changed - The web app's Share card is redrawn to match Mallard's, the two now being one design (Mandarin's): the cover softened as the ground under a glass pane, a larger cover, the release, title and artist, the album's review across the card with whose words they are, Pitchfork's score and Best New Music, and the MusicD duck in the corner. The card appears at once and fills in the year and review as they arrive

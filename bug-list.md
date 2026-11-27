@@ -40,4 +40,6 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     LMS's 3483/9000; (3) Tailscale built into Mallard.
 15. **Mallard's own logo** (owner request): as Rouen's is the MusicD duck blended with Roon's mark, Mallard's is the duck
     blended with Lyrion's waveform. Launcher icon, the PWA's icons, the share card's corner tile, the Pages site.
-    The owner chose the half waveform. — *On dev (testing).*
+    The owner chose the flipped brass duck with the green waveform. — *On dev (testing).*
+16. **Mallard updates itself** (owner request, as Mandarin): `mallard.json` beside every APK, Home's banner with
+    Mandarin's update symbol, a Mallard row in Settings → System, a by-hand Mallard release channel. — *On dev (testing).*

@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- The share card's Download on Android 8 and 9 (10 on save through MediaStore and need none). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- Mallard updates itself (AppUpdate): the new APK handed to Android's installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".MusicDApp"
@@ -79,7 +81,7 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
-        <!-- The share card leaves the app as a content:// URI (Copy image). -->
+        <!-- The share card (Copy image) and a downloaded update leave the app as content:// URIs. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.shares"
