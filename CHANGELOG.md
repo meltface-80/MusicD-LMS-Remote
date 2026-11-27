@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Mallard's side menu has the web app's collections: Merged albums (with Unmerge), Smart Picks, Dynamic Playlists (each playlist's albums, Play now, Add to queue, Delete), Playlists (tracks with covers, Play now, Add to queue, play from a track, Delete for your own playlist files) and Import a playlist (paste a share, see what matched and what's missing, save it). The rows and their icons are the web menu's, and Shelf and Smart Picks follow the server's switches as the web menu does
 - Changed - The web app's Settings is drawn as Mallard's: full screen, the brass close or back disc before the title, a flat list with Mallard's own icons and words, compact buttons in the panes, and "MusicD LMS Remote v…" with View on GitHub at the foot
 - Fixed - The web app's side menu head is solid, as Mallard's is, so the rows no longer show through it when the menu scrolls
 - Added - Mallard installs LMS plugins too: Settings → LMS server → Plugins, the same list, buttons, warning and Restart LMS as the web app
