@@ -38,6 +38,7 @@ internal fun LmsPane(client: () -> ServerClient?, onBack: () -> Unit, info: (Str
     var status by remember { mutableStateOf("…") }
     var mode by remember { mutableStateOf("") }
     var plugins by remember { mutableStateOf(false) }
+    var settingsOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         val j = withContext(Dispatchers.IO) { runCatching { c.lmsConnection() }.getOrNull() }
@@ -49,6 +50,7 @@ internal fun LmsPane(client: () -> ServerClient?, onBack: () -> Unit, info: (Str
         }
     }
     if (plugins) { PluginsPane(client) { plugins = false }; return }
+    if (settingsOpen) { LmsPage(null, "Server settings", client) { settingsOpen = false }; return }
     SettingsFrame {
         PaneHead("LMS server", onBack)
         Block {
@@ -57,10 +59,10 @@ internal fun LmsPane(client: () -> ServerClient?, onBack: () -> Unit, info: (Str
         }
         SettingsDivider()
         Block {
-            SetupRow("Server settings", Modifier, Modifier.clickable { info("The full Lyrion server settings (library, plugins, players, advanced…), in the phone's browser. Uses Material Skin's pages when that plugin is installed.") }) {
-                SetupButton("Open", false, Modifier.clickable { openLmsSettings(context, client, scope) })
+            SetupRow("Server settings", Modifier, Modifier.clickable { info("The full Lyrion server settings (library, plugins, players, advanced…), opened here in Mallard. Uses Material Skin's pages when that plugin is installed.") }) {
+                SetupButton("Open", false, Modifier.clickable { settingsOpen = true })
             }
-            SetupNote("Opens Lyrion's own settings pages in the browser.", Modifier)
+            SetupNote("Opens Lyrion's own settings pages here in Mallard.", Modifier)
         }
         SettingsDivider()
         Block {

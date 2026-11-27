@@ -29,6 +29,36 @@ class ShelfTest {
     private val lib = ShelfLibrary.parse(answer)!!
     private fun titles(l: List<ShelfCase>) = l.map { it.title }
 
+    @Test fun `labels are a tab, a filter and an order as on the page (shelf-order byLabel)`() {
+        assertEquals(listOf("Apple", "Columbia"), lib.labels.map { it.name })
+        assertEquals("Columbia", lib.labelName(lib.albums[2]))
+        assertEquals("", lib.labelName(lib.albums[0]))
+        val c = ShelfChoices()
+        assertEquals(mapOf("Apple" to 1, "Columbia" to 2), c.counts(lib, "label"))
+        c.toggle("label", "Columbia")
+        assertEquals(listOf("Kind of Blue", "Discovery (Deluxe Edition)"), titles(c.list(lib)))
+        assertEquals("1 label chosen", c.note(lib, "label"))
+        c.clearAll()
+        // each label together in catalogue order (CL 99 before CL 1355), then the unlabelled by catalogue number (none
+        // last) and title, exactly as the page's comparator has them
+        assertEquals(listOf("Abbey Road", "Discovery (Deluxe Edition)", "Kind of Blue", "an Album", "Best Of", "The Wall"),
+            titles(ShelfSort.filed(lib, lib.albums, "label", 1)))
+        assertEquals("Columbia · CL 1355 · 1959", c.lineOf(lib, lib.albums[2]))
+        assertTrue(ShelfSort.ORDERS.any { it.first == "label" })
+    }
+
+    @Test fun `Types shows only when something names a kind (LMS never does), Labels always, saying why when empty`() {
+        assertTrue(ShelfChoices().tabs(lib).any { it.first == "type" })
+        val lms = ShelfLibrary.parse(JSONObject("""{"genres":[],"labels":[],"kinds":[],"albums":[{"o":1,"t":"A","a":"B","g":[],"b":"B","y":2000,"l":null,"c":null,"ty":null}]}"""))!!
+        val tabs = ShelfChoices().tabs(lms).map { it.first }
+        assertFalse("type" in tabs)
+        assertTrue("label" in tabs)
+        assertTrue(ShelfChoices().tiles(lms, "label").isEmpty())
+        assertTrue(ShelfChoices().message("label")!!.contains("Settings → Labels"))
+        // every tab Mallard can draw has its words in the contract (Contract.label throws on a key it doesn't know)
+        for ((id, _) in ShelfChoices.TABS) Contract.label("shelf-choices.tab-$id")
+    }
+
     @Test fun `the library is read as the page reads it, and a signature still current is the same shelf`() {
         assertEquals(listOf("Rock", "Jazz"), lib.genres.map { it.name })
         assertEquals("abc123", lib.sig)
@@ -47,10 +77,10 @@ class ShelfTest {
         val c = ShelfChoices()
         assertEquals(listOf("The Wall", "Abbey Road", "Kind of Blue", "Discovery (Deluxe Edition)", "Best Of", "an Album"), titles(c.list(lib)))
         // Rouen's orders (item 213: Mandarin's A → Z by album gone); a device that kept it opens by artist.
-        // By label went with the labels (item 492): a device that kept it opens by artist, as one that kept A → Z by album.
-        assertEquals(listOf("artist", "catno", "year", "random"), ShelfSort.ORDERS.map { it.first })
+        // By label is back with the labels (this server sends them, as the page shows them): a device that kept it opens by label.
+        assertEquals(listOf("artist", "label", "catno", "year", "random"), ShelfSort.ORDERS.map { it.first })
         assertEquals("artist", ShelfChoices(keptOrder = "album").order())
-        assertEquals("artist", ShelfChoices(keptOrder = "label").order())
+        assertEquals("label", ShelfChoices(keptOrder = "label").order())
         c.toggle("order", "catno")
         assertEquals(listOf("Discovery (Deluxe Edition)", "an Album", "Kind of Blue", "Abbey Road", "Best Of", "The Wall"), titles(c.list(lib)))
         c.toggle("order", "year")
@@ -138,7 +168,7 @@ class ShelfTest {
         assertEquals(listOf(true, false), c.tiles(lib, "artist").filter { it.id in listOf("A", "B") }.map { it.zero })
         assertEquals("Tap to choose. Choose as many as you like.", c.note(lib, "genre"))
         assertEquals("How the shelf is filed. One order at a time.", c.note(lib, "order"))
-        assertEquals("CL 99 · Compilation · 2001", c.lineOf(lib, lib.albums[3]))
+        assertEquals("Columbia · CL 99 · Compilation · 2001", c.lineOf(lib, lib.albums[3]))
         c.toggle("artist", "B"); c.toggle("artist", "M")
         assertTrue(c.clearShown("artist"))
         assertEquals("2 letters chosen", c.note(lib, "artist"))
@@ -154,7 +184,7 @@ class ShelfTest {
         assertEquals(listOf("16/44.1", "24/96", "DSD64 2CH", "MP3"), ShelfLibrary.parse(JSONObject(answer.toString())
             .put("formats", org.json.JSONArray(l.formats)))!!.formats)
         val c = ShelfChoices()
-        assertEquals(listOf("Genres", "Artists", "Years", "Types", "Formats", "Favourites", "Order"), ShelfChoices.TABS.map { it.second })
+        assertEquals(listOf("Genres", "Artists", "Years", "Labels", "Types", "Formats", "Favourites", "Order"), ShelfChoices.TABS.map { it.second })
         assertEquals(listOf("16/44.1", "24/96", "DSD64 2CH", "MP3"), c.tiles(l, "format").map { it.name })
         assertEquals(mapOf("16/44.1" to 2, "24/96" to 1, "MP3" to 1, "DSD64 2CH" to 1), c.counts(l, "format"))
         c.toggle("format", "16/44.1"); c.toggle("format", "DSD64 2CH")
@@ -179,7 +209,7 @@ class ShelfTest {
         val c = ShelfChoices()
         c.toggle("genre", "Jazz"); c.toggle("artist", "B"); c.toggle("year", "none")
         assertEquals(Triple("Nothing on this shelf", "No albums match Jazz, artists under B and no year.", true), c.empty(lib, 0))
-        assertEquals(Triple("The shelf is empty", "Mandarin hasn’t found any albums in your music folders yet.", false), c.empty(lib.copy(albums = emptyList()), 0))
+        assertEquals(Triple("The shelf is empty", "Mallard hasn’t found any albums in your library yet.", false), c.empty(lib.copy(albums = emptyList()), 0))
         assertNull(c.empty(lib, 3))
     }
 
