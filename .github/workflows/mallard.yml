@@ -143,8 +143,9 @@ jobs:
           CODE: ${{ steps.apk.outputs.code }}
         run: |
           cp "$FILE" mallard-test.apk
-          # What's new: CHANGELOG.md's Unreleased section, which is what dev holds.
-          NOTES=$(awk '$0 == "## Unreleased" { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | head -c 1500)
+          # What's new: CHANGELOG.md's Unreleased lines about Mallard (the server's own aren't news to the app), whole
+          # lines up to 1200 characters — never cut mid-sentence.
+          NOTES=$(awk '$0 == "## Unreleased" { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | .github/mallard-notes.sh)
           .github/mallard-manifest.sh mallard-test.apk "$VERSION" "$CODE" mallard-test mallard-test.apk "$NOTES" > mallard.json
           cat mallard.json
           if ! gh release view mallard-test > /dev/null 2>&1; then
@@ -166,7 +167,7 @@ jobs:
         run: |
           case "$VERSION" in *-t*) echo "a test build ($VERSION) is never a release"; exit 1;; esac
           cp "$FILE" mallard.apk
-          NOTES=$(awk -v h="## Mallard v$VERSION" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | head -c 1500)
+          NOTES=$(awk -v h="## Mallard v$VERSION" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | .github/mallard-notes.sh all)
           TAG="mallard-v$VERSION"
           for T in "$TAG" mallard-latest; do
             .github/mallard-manifest.sh mallard.apk "$VERSION" "$CODE" "$T" mallard.apk "$NOTES" > mallard.json
