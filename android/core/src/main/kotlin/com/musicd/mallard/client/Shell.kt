@@ -67,6 +67,17 @@ object ShellRoute {
     const val PICKS = "picks?$ZONE={$ZONE}"
     fun picks(zoneId: String): String = "picks?$ZONE=" + enc(zoneId)
 
+    /** The plugins (LMS "apps"): their list ([KIND] app or radio), and one of their menus by its token ([TOKEN]), titled
+     *  [TITLE]; with [TERM], the search that token takes, run with it. */
+    const val TOKEN = "token"
+    const val TITLE = "title"
+    const val TERM = "term"
+    const val APPS = "apps?$KIND={$KIND}&$ZONE={$ZONE}"
+    fun apps(kind: String, zoneId: String): String = "apps?$KIND=" + enc(kind) + "&$ZONE=" + enc(zoneId)
+    const val APP_MENU = "appmenu?$TOKEN={$TOKEN}&$TITLE={$TITLE}&$TERM={$TERM}&$ZONE={$ZONE}"
+    fun appMenu(token: String, title: String, zoneId: String, term: String = ""): String =
+        "appmenu?$TOKEN=" + enc(token) + "&$TITLE=" + enc(title) + "&$TERM=" + enc(term) + "&$ZONE=" + enc(zoneId)
+
     const val Q = "q"
     /** The search (item 61): the words it opens with ([Q], none for an empty field), its albums playing in [ZONE]. */
     const val SEARCH = "search?$Q={$Q}&$ZONE={$ZONE}"
