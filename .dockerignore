@@ -1,0 +1,6 @@
+# The server image needs only the server: the Android app (Mallard) and the
+# repo's own plumbing stay out of it.
+.git
+android
+data
+node_modules

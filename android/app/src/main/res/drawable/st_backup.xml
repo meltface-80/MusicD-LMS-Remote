@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's own Settings icon for "backup" (public/index.html), for the native Settings list (item 76). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M21,15 v4 a2,2,0,0,1,-2,2 H5 a2,2,0,0,1,-2,-2 v-4 M7,10 L12,15 L17,10 M12,15 L12,3" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+</vector>

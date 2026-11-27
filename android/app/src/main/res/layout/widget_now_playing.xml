@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately plain. A widget is drawn by the launcher's process through
+  RemoteViews, which supports a small set of views and no custom ones, so this
+  is what the platform actually guarantees rather than a design that half
+  renders on some launchers.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="8dp"
+    android:background="@drawable/widget_background">
+
+    <!-- The cover doubles as the random-album button: the app's most-used
+         action, on the biggest target the widget has. -->
+    <ImageView
+        android:id="@+id/widget_art"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:scaleType="centerCrop"
+        android:contentDescription="Play a random album"
+        android:src="@mipmap/ic_launcher_foreground" />
+
+    <LinearLayout
+        android:id="@+id/widget_text"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="10dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF"
+            android:text="Nothing playing" />
+
+        <TextView
+            android:id="@+id/widget_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textSize="12sp"
+            android:textColor="#B9BDC1"
+            android:text="Tap the cover for a random album" />
+    </LinearLayout>
+
+    <!--
+      48dp targets with a gap between them, and the gap matters more than the
+      size does.
+
+      These were three 40dp buttons touching each other. 40dp is under the
+      platform minimum of 48dp, and with no gap the boundary between play/pause
+      and next sat 20dp — about 3mm — from the centre of a target smaller than
+      a fingertip. Aim at play, land on next, and the record skips: the press
+      does something confident and wrong, with nothing to suggest it was not
+      what you asked for.
+
+      The gap is what turns that into a miss instead. A tap that lands between
+      two buttons now does nothing at all, which is always the better failure
+      for a transport control — you press again, rather than hunting for the
+      track you were listening to.
+
+      The dial widget hit this in its own way and left the same note: its tap
+      cells were sized off a fixed grid, "tapping the microphone skipped a
+      track instead".
+    -->
+    <ImageButton
+        android:id="@+id/widget_previous"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="4dp"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Previous"
+        android:src="@android:drawable/ic_media_previous" />
+
+    <ImageButton
+        android:id="@+id/widget_playpause"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="4dp"
+        android:padding="11dp"
+        android:scaleType="fitCenter"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Play or pause"
+        android:src="@android:drawable/ic_media_play" />
+
+    <ImageButton
+        android:id="@+id/widget_next"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Next"
+        android:src="@android:drawable/ic_media_next" />
+</LinearLayout>

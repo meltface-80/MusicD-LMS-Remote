@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's own device icon (public/index.html, Now playing), for the native screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M7.5,2.5h9a2.5,2.5 0,0 1,2.5 2.5v14a2.5,2.5 0,0 1,-2.5 2.5h-9a2.5,2.5 0,0 1,-2.5 -2.5v-14a2.5,2.5 0,0 1,2.5 -2.5zM8.6,14a3.4,3.4 0,1 0,6.8 0a3.4,3.4 0,1 0,-6.8 0zM10.9,6.4a1.1,1.1 0,1 0,2.2 0a1.1,1.1 0,1 0,-2.2 0" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+</vector>
