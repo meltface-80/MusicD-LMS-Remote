@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Away from home, built in: Tailscale is part of the server's Docker image. Settings → Away from home (web app and Mallard) signs it in once (or set `TS_AUTHKEY`), and the server is on your tailnet by itself — nothing to install on the machine, no ports opened, ordinary bridge networking. Only your own devices on the tailnet are let in. `TS_HOSTNAME` names it, `TAILSCALE=off` leaves it out
 - Changed - The Shelf's switch has its own row, Settings → Shelf, in both the web app and Mallard (as Mandarin's), instead of sitting inside Wall display, and Mallard can now switch it on
 - Fixed - Mallard's Server settings showed Material's "Basic Settings" with nothing under it: Material's pages only lay out inside Material's own app, so Mallard now opens Material's settings the way Material does (its app with the server-settings dialog open)
 - Fixed - The LMS proxy dropped the body of JSON requests (Material's live updates and JSON-RPC calls arrived empty), because the server had already read them

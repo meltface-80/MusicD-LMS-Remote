@@ -1,3 +1,17 @@
+# The built-in Tailscale engine (musicdnet/, Go on tailscale.com/tsnet; lib/tailscale.js runs it): cross-compiled on
+# the build machine for each image platform (amd64, arm64, arm/v7) with no cgo, so it is one static file and nothing
+# is downloaded at run time. Userspace networking: no NET_ADMIN, no /dev/net/tun, plain bridge networking works.
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS engine
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+WORKDIR /src
+COPY musicdnet/go.mod musicdnet/go.sum ./
+RUN go mod download
+COPY musicdnet/ ./
+RUN GOARM="${TARGETVARIANT#v}" CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+    go build -trimpath -ldflags="-s -w" -o /out/musicdnet .
+
 FROM node:20-bookworm-slim
 
 WORKDIR /app
@@ -11,6 +25,7 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN npm install --omit=dev --no-audit --no-fund --loglevel=error
 
 COPY . .
+COPY --from=engine /out/musicdnet /usr/local/bin/musicdnet
 
 RUN mkdir -p /app/data
 
@@ -32,6 +47,10 @@ ENV APP_CHANNEL=$APP_CHANNEL
 # on the local network and you can also set the host in the in-app settings.
 # ENV LMS_HOST=192.168.1.50
 # ENV LMS_PORT=9000
+
+# Away from home: Tailscale is built in (Settings → Away from home, or set TS_AUTHKEY to join without a browser).
+# TS_HOSTNAME names the machine on the tailnet (default musicd-lms); TAILSCALE=off leaves it out.
+# ENV TS_AUTHKEY=tskey-auth-…
 
 # Run the launcher directly (not via `npm start`) so it is PID 1: it supervises
 # index.js and applies in-app updates (index.js exits 75 → launcher overlays the

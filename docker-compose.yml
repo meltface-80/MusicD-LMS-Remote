@@ -32,6 +32,10 @@ services:
       # LMS_USER: ""   # only if your LMS has HTTP auth enabled
       # LMS_PASS: ""
       # MUSIC_DIR: "/music"   # in-container path of the optional mount below
+      # --- Away from home: Tailscale is built in (Settings → Away from home) ---
+      # TS_AUTHKEY: "tskey-auth-…"   # join your tailnet without the browser sign-in
+      # TS_HOSTNAME: "musicd-lms"    # its name on your tailnet
+      # TAILSCALE: "off"             # leave the built-in engine out
     volumes:
       # Persistent app data (settings, caches, plays log, label caches).
       - musicd-lms-remote-data:/app/data

@@ -386,20 +386,24 @@ image name.
 
 Mallard and the web app can reach your server from anywhere — over mobile data, at work, on holiday — with
 [Tailscale](https://tailscale.com), a free private network between your own devices. Nothing is opened to the
-internet, and no router ports are forwarded.
+internet, and no router ports are forwarded. **Tailscale is built into the server's Docker image**: nothing to install
+on the machine it runs on, and it works with ordinary bridge networking.
 
-1. **On the machine that runs this server**, install Tailscale and sign in
-   ([download](https://tailscale.com/download)). With the usual `--network host` Docker command, the server is then
-   reachable at that machine's Tailscale name, e.g. `http://my-nas:3390` (or its `100.x.y.z` address).
+1. **Sign the server in:** Settings → Away from home → Sign in to Tailscale (in the web app or Mallard), and sign in in
+   the page that opens. Or, to join without a browser, set `TS_AUTHKEY` (a key from Tailscale's admin console) in the
+   container's environment. The server joins your tailnet as `musicd-lms` (`TS_HOSTNAME` to change it), and Settings
+   shows its address, e.g. `100.80.0.5:3390`. Its identity lives in the data volume, so updates keep it.
 2. **On your phone**, install the Tailscale app and sign in to the **same** account.
-3. **In Mallard:** Settings → Mallard → Server → Change, and enter that name (or address) and port `3390`.
-   **In the web app:** open `http://my-nas:3390` in the phone's browser and add it to the home screen again.
+3. **In Mallard:** Settings → Mallard → Server → Change, and enter that address. **In the web app:** open it in the
+   phone's browser and add it to the home screen again.
 
-Away, Mallard is a full remote for your players at home: browse, search, play, queue, the Shelf, Settings. What it
-can't do yet is play music **on the phone itself** — that is the next stage of Away from home (Mallard as a Lyrion
-player, then Tailscale built into the server and the app so step 1 and 2 aren't needed). If the server runs in a
-container *without* host networking, give the container its own Tailscale node instead (Tailscale's own
-`tailscale/tailscale` image, as a sidecar) or install Tailscale on the host and use `--network host`.
+Only your own devices are let in over the tailnet — the nodes signed in as the server's own Tailscale user, not ones
+shared in from someone else's tailnet. `TAILSCALE=off` leaves the built-in engine out (Tailscale installed on the host,
+with `--network host`, works as before).
+
+Away, Mallard is a full remote for your players at home: browse, search, play, queue, the Shelf, Settings. Next stages:
+Tailscale built into Mallard too (so the phone needs no Tailscale app), then Mallard as a Lyrion player, to play music
+on the phone itself.
 
 ## Environment variables
 
@@ -408,6 +412,9 @@ container *without* host networking, give the container its own Tailscale node i
 | `PORT` | `3390` | HTTP port for this app |
 | `LMS_HOST` | *(discover)* | LMS server host/IP. Required when the app runs on a different machine/subnet than LMS (UDP discovery only works on the same LAN). |
 | `LMS_PORT` | `9000` | LMS JSON-RPC/web port |
+| `TS_AUTHKEY` | *(none)* | Joins the built-in Tailscale to your tailnet without the browser sign-in (Away from home) |
+| `TS_HOSTNAME` | `musicd-lms` | The server's name on your tailnet |
+| `TAILSCALE` | *(on)* | `off` leaves the built-in Tailscale engine out |
 | `LMS_USER` / `LMS_PASS` | – | LMS HTTP auth, if enabled |
 | `MUSIC_DIR` | `/music` | Where the optional read-only music mount lives inside the container (only used for file-tag label scanning). |
 | `DEBUG` | – | `1` for verbose logging |

@@ -64,7 +64,7 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
             "smartpicks" -> PicksPane(client, onBack, showInfo)
             "lms" -> LmsPane(client, onBack, showInfo)
             "display" -> DisplayPane(client, onBack, showInfo)
-            "shelf" -> ShelfPane(client, onBack, showInfo)   // SettingsShelf.kt
+            "shelf", "away" -> MorePane(pane, client, onBack, showInfo)   // SettingsShelf.kt, SettingsAway.kt
             "appearance" -> AppearancePane(onBack, showInfo)
             "system" -> SystemPane(client, onBack)
             else -> ConnectionPane(client, onBack)

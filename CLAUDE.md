@@ -277,6 +277,12 @@ tags, no automatic releases, no cluttered history.
   named, never addressed: the url and sha stay in LMS. Changes apply on `restartserver`, which drops the socket.
   `lib/lmsplugins.fixture.js` renders the page as LMS's template does — keep it in step with the template.
 
+- **Away from home** (`lib/tailscale.js`, `lib/tailscale-routes.js`, `musicdnet/`): Mandarin's Go tsnet engine, built
+  into the Docker image (a cross-compiling `golang` stage) and run as a child process; driven over a loopback HTTP API
+  with a per-start secret; it exits when its stdin closes. The tailnet reaches the app ONLY through a loopback port of
+  its own, and a request there is let in only from the owner's own nodes (`own_ips`) — this server has no sign-in, so
+  never route tailnet traffic to the LAN port. `TS_AUTHKEY` is passed through the engine's API, never inherited.
+
 ## Gotchas worth remembering
 
 - THE SHELF (`/shelf`, ported from the Roon build): a page of its own (`public/shelf*.js|css`, `shelf.html`,
