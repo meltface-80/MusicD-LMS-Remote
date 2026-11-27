@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The share card being copied right now (ShareBridge.copyImage), and nothing else. -->
+<!-- Scratch folders: the share card being copied right now (ShareBridge.copyImage), and a downloaded update on its way
+     to Android's installer (AppUpdate). -->
 <paths>
     <cache-path name="shares" path="shared/" />
+    <cache-path name="updates" path="updates/" />
 </paths>

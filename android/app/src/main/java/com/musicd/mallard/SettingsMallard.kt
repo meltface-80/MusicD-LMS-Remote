@@ -78,7 +78,7 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
 
 /** A pane's head: Back in the brass disc, its name in the serif. */
 @Composable
-private fun PaneHead(title: String, onBack: () -> Unit) {
+internal fun PaneHead(title: String, onBack: () -> Unit) {
     SettingsHead(Modifier.clip(CircleShape).clickable(onClick = onBack), R.drawable.np_back, title, Modifier)
 }
 
@@ -522,50 +522,6 @@ private fun AppearancePane(onBack: () -> Unit, info: (String) -> Unit) {
             }
         }
         SetupNote("Saved on this phone only.", Modifier.padding(bottom = 12.dp))
-    }
-}
-
-// ---- System ------------------------------------------------------------------------------------------------------
-
-@Composable
-private fun SystemPane(client: () -> ServerClient?, onBack: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf<JSONObject?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        val c = client() ?: return@LaunchedEffect
-        status = withContext(Dispatchers.IO) { runCatching { c.updateStatus() }.getOrNull() }
-    }
-    SettingsFrame {
-        PaneHead("System", onBack)
-        Block {
-            val s = status
-            val current = s?.optString("current").orEmpty()
-            val available = s?.optBoolean("available") == true && s.optBoolean("isDowngrade") != true
-            SetupRow("Updates", Modifier, null) {
-                if (available) SetupButton(if (busy) "…" else "Update to " + s!!.optString("latest"), busy, Modifier.clickable(enabled = !busy) {
-                    val c = client() ?: return@clickable
-                    busy = true
-                    scope.launch {
-                        val r = withContext(Dispatchers.IO) { runCatching { c.post("/api/update/apply", JSONObject(), 30_000) } }
-                        setupToast(context, r.fold({ "Updating — the server restarts by itself in a minute" }, { Failure.said(it, "Couldn't start the update") }))
-                        busy = false
-                    }
-                })
-                else SetupButton(if (busy) "…" else "Check for updates", busy, Modifier.clickable(enabled = !busy) {
-                    val c = client() ?: return@clickable
-                    busy = true
-                    scope.launch {
-                        status = withContext(Dispatchers.IO) { runCatching { c.post("/api/update/check", JSONObject(), 30_000) }.getOrNull() } ?: status
-                        busy = false
-                        if (status?.optBoolean("available") != true) setupToast(context, "You're on the newest version")
-                    }
-                })
-            }
-            SetupNote(if (current.isEmpty()) "…" else "MusicD LMS Remote v$current" + if (available) " · v${s!!.optString("latest")} is available" else " · up to date", Modifier)
-            s?.optString("notes")?.takeIf { available && it.isNotEmpty() && !s.isNull("notes") }?.let { SetupNote(it.take(1200), Modifier.padding(top = 8.dp)) }
-        }
     }
 }
 

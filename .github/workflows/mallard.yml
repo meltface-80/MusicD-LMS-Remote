@@ -3,9 +3,18 @@ name: Mallard (Android)
 # Builds Mallard, the native Android remote in android/. Every push that
 # touches it runs the core tests and builds a release APK (uploaded as a run
 # artifact). Pushes to dev also publish the APK on the rolling `mallard-test`
-# pre-release, so there is always one link to the newest test build. A
-# pre-release is never "latest", so it never reaches the server's in-app
-# updater (which reads releases/latest).
+# pre-release, so there is always one link to the newest test build.
+#
+# MALLARD UPDATES ITSELF (AppUpdate.kt, core's MallardRelease.kt) from what is
+# published here: beside every APK goes `mallard.json` = {version, code, url,
+# sha256, notes}, read from releases/download/<tag>/mallard.json. Two channels:
+#   mallard-test    every dev push (versionName 0.2.0-tN, code base*1000+N)
+#   mallard-latest  a Mallard RELEASE, by hand: Run workflow on main with
+#                   "stable" ticked (code base*1000+999), also kept as an
+#                   immutable mallard-v<version>.
+# EVERY Mallard release is a PRE-release and never "latest": releases/latest is
+# the SERVER's (lib/updater.js reads it), and a Mallard release there would be
+# offered to every server install. Tags never start with "v" for the same reason.
 #
 # Signing: with the MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD
 # secrets set, the APK is signed with that key; without them, with the public
@@ -18,6 +27,11 @@ on:
   pull_request:
     paths: ["android/**", ".github/workflows/mallard.yml"]
   workflow_dispatch:
+    inputs:
+      stable:
+        description: "Publish this build as a Mallard release (mallard-latest + mallard-v<version>). Run on main."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -65,6 +79,10 @@ jobs:
             echo "No release key set: signing with the committed test key."
           fi
 
+      # The run number, which rises with every run of this workflow: each test
+      # build's versionCode is above the last, as Android requires before it
+      # installs over it. At 999 runs it would wrap below the codes already out
+      # there; raise mallardBase (android/app/build.gradle.kts) before then.
       - name: Test build number (dev only)
         if: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' }}
         run: |
@@ -76,15 +94,21 @@ jobs:
           MALLARD_KEYSTORE_PASSWORD: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
+      # The name and code as the APK itself carries them (what Android and the
+      # updater will compare), not as the build script spells them.
       - name: Name it
         id: apk
         run: |
-          V=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)${MALLARD_TEST_BUILD:+-t$MALLARD_TEST_BUILD}
-          SHA=$(git rev-parse --short HEAD)
-          OUT="Mallard-$V-$SHA.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$OUT"
+          APK=app/build/outputs/apk/release/app-release.apk
+          BADGE=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -n 1)
+          V=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGE")
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$BADGE")
+          [ -n "$V" ] && [ -n "$CODE" ] || { echo "couldn't read the APK's version: $BADGE"; exit 1; }
+          OUT="Mallard-$V-$(git rev-parse --short HEAD).apk"
+          cp "$APK" "$OUT"
           echo "file=android/$OUT" >> "$GITHUB_OUTPUT"
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -98,12 +122,40 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.apk.outputs.file }}
           VERSION: ${{ steps.apk.outputs.version }}
+          CODE: ${{ steps.apk.outputs.code }}
         run: |
           cp "$FILE" mallard-test.apk
+          # What's new: CHANGELOG.md's Unreleased section, which is what dev holds.
+          NOTES=$(awk '$0 == "## Unreleased" { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | head -c 1500)
+          .github/mallard-manifest.sh mallard-test.apk "$VERSION" "$CODE" mallard-test mallard-test.apk "$NOTES" > mallard.json
+          cat mallard.json
           if ! gh release view mallard-test > /dev/null 2>&1; then
             gh release create mallard-test --target "$GITHUB_SHA" --prerelease --latest=false \
               --title "Mallard test build" --notes "The newest Mallard test build from the dev branch."
           fi
-          gh release upload mallard-test mallard-test.apk --clobber
+          gh release upload mallard-test mallard-test.apk mallard.json --clobber
           gh release edit mallard-test --prerelease --latest=false \
-            --notes "Mallard $VERSION test build from dev @ ${GITHUB_SHA::7}. Install mallard-test.apk on an Android 8.0+ phone."
+            --notes "Mallard $VERSION test build from dev @ ${GITHUB_SHA::7}. Install mallard-test.apk on an Android 8.0+ phone; installed, Mallard offers each new test build itself."
+
+      - name: Publish a Mallard release (by hand, from main)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.stable && github.ref == 'refs/heads/main' }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE: ${{ steps.apk.outputs.file }}
+          VERSION: ${{ steps.apk.outputs.version }}
+          CODE: ${{ steps.apk.outputs.code }}
+        run: |
+          case "$VERSION" in *-t*) echo "a test build ($VERSION) is never a release"; exit 1;; esac
+          cp "$FILE" mallard.apk
+          NOTES=$(awk -v h="## Mallard v$VERSION" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | head -c 1500)
+          TAG="mallard-v$VERSION"
+          for T in "$TAG" mallard-latest; do
+            .github/mallard-manifest.sh mallard.apk "$VERSION" "$CODE" "$T" mallard.apk "$NOTES" > mallard.json
+            if ! gh release view "$T" > /dev/null 2>&1; then
+              gh release create "$T" --target "$GITHUB_SHA" --prerelease --latest=false \
+                --title "Mallard $VERSION" --notes "Mallard $VERSION. Install mallard.apk on an Android 8.0+ phone."
+            fi
+            gh release upload "$T" mallard.apk mallard.json --clobber
+            gh release edit "$T" --prerelease --latest=false --title "Mallard $VERSION"
+          done

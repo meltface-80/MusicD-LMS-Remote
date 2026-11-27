@@ -290,7 +290,8 @@ its test version, e.g. `:1.0.87-t3`). Use `:dev` in place of `:latest` in any
 command below to test what is coming; Settings → System then says it is a test
 build, and you update it by pulling `:dev` again rather than from the app. The
 matching Android build is
-[mallard-test.apk](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk).
+[mallard-test.apk](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk);
+once installed, Mallard offers each newer build itself (Home, and Settings → System).
 
 ### Option A — same machine as LMS
 

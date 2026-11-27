@@ -71,11 +71,13 @@ tags, no automatic releases, no cluttered history.
    Check that both workflows actually published before saying so.
 4. When the owner says to bump: on one branch into `dev`, the version
    everywhere it is shown (`package.json`; Mallard `versionName` and
-   `mallardBase` in `android/app/build.gradle.kts`), `## Unreleased` renamed
+   `mallardBase` in `android/app/build.gradle.kts`, its notes under
+   `## Mallard v<version>` in CHANGELOG.md), `## Unreleased` renamed
    to the version, and README + the Pages site (`docs/index.html`, including
    the `#version-badge` fallback text) brought fully up to date, so a single
    merge of `dev` to `main` brings everything up to date. The owner merges
-   `dev` to `main`; then you run the Release workflow for that version.
+   `dev` to `main`; then you run the Release workflow for that version, and
+   `mallard.yml` with "stable" for Mallard's (see Mallard below).
    **Keep v1.0.x numbering** until the owner says otherwise.
 5. Mark a `bug-list.md` item Fixed only when the owner says so.
 
@@ -195,9 +197,27 @@ tags, no automatic releases, no cluttered history.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
   `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N
-  (`MALLARD_TEST_BUILD`, stamped by CI on dev) and `+999` for a release, so
-  every published build installs over the last; raise `mallardBase` and
-  `versionName` together with each Mallard release.
+  (`MALLARD_TEST_BUILD`, the workflow's run number, stamped by CI on dev) and
+  `+999` for a release, so every published build installs over the last.
+- **Mallard updates itself** (owner request, as Mandarin's app does):
+  `AppUpdate.kt` reads `mallard.json` ({version, code, url, sha256, notes})
+  from `releases/download/<tag>/`, offers it on Home (Mandarin's `up_icon`
+  banner, Update / Later) and in Settings → System, checks the SHA-256 and
+  hands the APK to Android's installer. Core's `MallardRelease.kt` decides:
+  newer means a higher versionCode; a release build follows `mallard-latest`,
+  a test build that AND `mallard-test`; the APK's url must be one of this
+  repository's `mallard-*` releases. RULES THAT KEEP IT SAFE:
+  - every Mallard release is a PRE-release, never "latest", and no Mallard tag
+    starts with `v` — `releases/latest` and `v*` tags are the SERVER's, and
+    `lib/updater.js` would offer a Mallard release to every server install;
+  - test and release builds must be signed with ONE key (today the committed
+    test key while `MALLARD_KEYSTORE_BASE64` is unset); a different key makes
+    Android refuse the update;
+  - a Mallard release is cut BY HAND: Run workflow on `mallard.yml` from main
+    with "stable" ticked (it publishes `mallard-v<version>` and refreshes
+    `mallard-latest`). Straight after, the next PR raises `mallardBase` and
+    `versionName` to the next version, or dev's test builds (base*1000+N)
+    would sit below the release's code and could never install over it.
 
 ## Plugins ("apps"), the generic engine
 
