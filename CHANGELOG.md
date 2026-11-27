@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Fixed - Mallard's Settings → LMS server → Server settings opens Lyrion's own settings pages (Material's when installed), not the web app's Home
 - Fixed - Google Play Protect still blocked Mallard as harmful once signed with the private key. Mallard no longer installs its updates itself: Update opens the new APK in your browser, which downloads and installs it, so Mallard needs no permission to install apps
 - Added - Shelf: the whole library as a record shop's racks, full screen at /shelf — flick through the spines, narrow by genre, artist, decade, label, format or favourites, file it by artist, label, year or at random, turn a case over to see its tracks and play it on any player. Off by default: Settings → Wall display → Shelf, then it is in the side menu (Mallard's Shelf follows)
 - Changed - Mallard's update offer lists only what changed in Mallard, whole lines, never cut off mid-sentence
