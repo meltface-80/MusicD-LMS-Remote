@@ -46,4 +46,6 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     Mandarin's update symbol, a Mallard row in Settings → System, a by-hand Mallard release channel. — *On dev (testing).*
 17. **Play Protect blocked Mallard as harmful** (owner report, 0.2.0-t32). Cause: published APKs were signed with the
     public debug key, and t32 added REQUEST_INSTALL_PACKAGES for the self-updater. Fix: Mandarin's rule — publish only
-    with the owner's private key (secrets), fail otherwise. — *On dev; needs the signing secrets in this repository.*
+    with the owner's private key (secrets), fail otherwise. Still blocked (t41, signed): the in-app installer itself
+    (REQUEST_INSTALL_PACKAGES + downloading and launching an APK) is the trigger for a new app with no install history.
+    Fix 2: Update hands the APK to the browser; Mallard installs nothing itself. — *On dev (testing).*
