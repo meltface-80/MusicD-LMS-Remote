@@ -186,6 +186,12 @@ tags, no automatic releases, no cluttered history.
   - `Artists.kt` is a third copy of the artist split (ANY_SPLIT_RE /
     ARTIST_SPLIT_RE).
   - Change one copy, change all three.
+  - The SHARE CARD is drawn twice, from one layout: `public/sharecard-layout.js`
+    (+ `sharecard.js`, `share-sheet.js`) and Mallard's `ShareCard.kt`
+    (`CardLayout`, + `ShareCardPainter.kt`, `ShareSheet.kt`). The owner rule is
+    that the two apps' cards are the same picture: `lib/sharecard.test.js` and
+    `ShareCardTest.kt` run the same cases with the same stand-in font, so a
+    number changed in one copy alone fails a suite.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
   `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N
