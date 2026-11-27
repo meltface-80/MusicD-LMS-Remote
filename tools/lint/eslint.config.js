@@ -20,6 +20,17 @@ const pages = {
   files: ["public/**/*.js"],
   languageOptions: { ecmaVersion: 2024, sourceType: "script", globals: { ...globals.browser, ...globals.es2024 } }
 };
+// The share card is three classic scripts, each binding one global the next reads, in the order index.html loads
+// them (sharecard-layout.js, sharecard.js, then share-sheet.js after app.js). The layout is also required by its Node
+// test (lib/sharecard.test.js), hence its guarded module.exports.
+const shareCard = {
+  files: ["public/sharecard.js", "public/share-sheet.js"],
+  languageOptions: { globals: { ShareCardLayout: "readonly", ShareCard: "readonly" } }
+};
+const shareCardLayout = {
+  files: ["public/sharecard-layout.js"],
+  languageOptions: { globals: { module: "readonly" } }
+};
 const rules = {
   rules: {
     // An argument or a caught error left unused is the code's style here (catch (e) { /* why */ }).
@@ -44,6 +55,8 @@ module.exports = [
   js.configs.recommended,
   node,
   pages,
+  shareCard,
+  shareCardLayout,
   rules,
   browserPages
 ];

@@ -106,9 +106,15 @@ internal fun NowPlayingScreen(zoneId: String, client: () -> ServerClient?, onBac
                         NpTab(Contract.label("now-playing.tab-now-playing"), !queueTab, Modifier.parity("now-playing.tab-now-playing queue.tab-now-playing", Contract.label("now-playing.tab-now-playing")).clickable(role = Role.Tab) { queueTab = false })
                         NpTab(Contract.label("now-playing.tab-queue"), queueTab, Modifier.parity("now-playing.tab-queue queue.tab-queue", Contract.label("now-playing.tab-queue")).clickable(role = Role.Tab) { queueTab = true })
                     }
+                    FilledIconButton(onClick = { sharing = true }, enabled = view != null, colors = disc,
+                        modifier = Modifier.parity("now-playing.share queue.share", Contract.label("now-playing.share")).size(40.dp).align(Alignment.TopEnd)) {
+                        Icon(painterResource(R.drawable.np_share), contentDescription = null, modifier = Modifier.size(20.dp))
+                    }
                 }
                 // The volume sheet, at the foot of the screen as the page's is (24px up), over whichever tab is on.
                 VolumeSheet(volumeOpen, { volumeOpen = false }, zoneId, view?.volume, ::act, above = false, inset = 24.dp)
+                // The Share card of what plays (the album, by the track's artist, as the page's): no mini player here, so no room kept.
+                if (sharing) view?.let { ShareSheet(it.album, it.artist, it.imageKey, 0.dp, client) { sharing = false } }
                 if (queueTab) {
                     QueueScreen(zoneId, client, changed = view?.answeredAtMs, modifier = Modifier.weight(1f).padding(horizontal = 18.dp))
                     return@Column
