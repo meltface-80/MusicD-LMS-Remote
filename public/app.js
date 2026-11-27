@@ -6508,10 +6508,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (r.ok) {
         const s = await r.json();
         if (s && s.current) {
-          const parts = (s.current || "").split(".");
-          versionEl.textContent = parts.length >= 3
-            ? "MusicD Remote v" + parts[0] + "." + parts[1] + " (Build " + parts[2] + ")"
-            : "MusicD Remote v" + s.current;
+          versionEl.textContent = "MusicD LMS Remote v" + s.current;   // Mallard's words (core SettingsLists.version)
           versionLoaded = true;
         }
       }
