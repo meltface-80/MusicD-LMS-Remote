@@ -2908,7 +2908,7 @@ app.post("/api/lms/player/:id/sync", async (req, res) => {
 // loopback-host case (LMS known as 127.0.0.1) and HTTPS mixed content.
 // Trust-wise this exposes nothing new: /api already offers full LMS control.
 // ---------------------------------------------------------------------------
-const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/music", "/imageproxy"];
+const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/jsonrpc.js", "/music", "/imageproxy"];
 const LMS_EMBED_CSS =
   '<style id="musicd-embed-fix">\n' +
   ':root {\n' +
@@ -2968,7 +2968,7 @@ function lmsProxy(req, res) {
     else res.destroy();
   });
   preq.setTimeout(30000, () => preq.destroy(new Error("LMS proxy timeout")));
-  req.pipe(preq);
+  if (req._body) { const b = Buffer.from(JSON.stringify(req.body)); preq.setHeader("content-length", b.length); preq.end(b); } else req.pipe(preq);   // express.json() may have read it
 }
 for (const p of LMS_PROXY_PREFIXES) app.use(p, lmsProxy);
 

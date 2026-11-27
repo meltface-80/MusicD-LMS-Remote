@@ -7,6 +7,8 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Fixed - Mallard's Server settings showed Material's "Basic Settings" with nothing under it: Material's pages only lay out inside Material's own app, so Mallard now opens Material's settings the way Material does (its app with the server-settings dialog open)
+- Fixed - The LMS proxy dropped the body of JSON requests (Material's live updates and JSON-RPC calls arrived empty), because the server had already read them
 - Changed - Mallard opens LMS's settings pages inside the app (Settings → LMS server → Server settings, and a plugin's Settings), with Back stepping back through the pages, instead of in the phone's browser. The web app is unchanged
 - Added - Mallard's Shelf has the web Shelf's Labels: a Labels tab (each label with its covers and count) and the "By label and catalogue №" order, with the label on the case's line
 - Changed - The Shelf's Types tab shows only when something says what kind of release an album is, which LMS never does, in both apps

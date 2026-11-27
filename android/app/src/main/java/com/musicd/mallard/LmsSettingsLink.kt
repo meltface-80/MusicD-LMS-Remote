@@ -45,11 +45,18 @@ import kotlinx.coroutines.withContext
  * proxy adds LMS's login and a phone viewport. Links to anywhere else leave for the browser. The web app is unchanged.
  */
 
-/** The settings page /api/lms/settings-info names, as a path on this server (Lyrion's classic index if it can't say). */
+/**
+ * The settings page /api/lms/settings-info names, as a path on this server (Lyrion's classic index if it can't say).
+ * Material's own pages (/material/settings/…) are drawn to sit inside Material's app, which hands them the heights they
+ * size themselves by (--vh, --all-pad, Material's iframe-dialog.js); opened alone in a WebView their settings came out
+ * empty (owner report). So Mallard opens Material's settings the way Material itself does (its settings/index.html):
+ * its app, with the server-settings dialog open.
+ */
 internal suspend fun lmsSettingsPath(client: () -> ServerClient?): String {
     val c = client() ?: return "/settings/index.html"
-    return withContext(Dispatchers.IO) { runCatching { c.getJson("/api/lms/settings-info").optString("settings_path") }.getOrNull() }
+    val path = withContext(Dispatchers.IO) { runCatching { c.getJson("/api/lms/settings-info").optString("settings_path") }.getOrNull() }
         ?.takeIf { it.startsWith("/") } ?: "/settings/index.html"
+    return if (path.startsWith("/material/")) "/material/?action=dlg.open/serversettings" else path
 }
 
 /**
