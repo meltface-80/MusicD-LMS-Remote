@@ -4677,3 +4677,34 @@ body.show-quality .album-quality.hidden { display: none; }
   border-radius: 4px; object-fit: cover;
   background: var(--bg-elev-2);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Apps & radio: every LMS plugin's menus (apps-browser.js)           */
+/* ------------------------------------------------------------------ */
+.apps-tabs { display: flex; gap: 6px; margin: 0 0 12px; }
+.apps-tabs[hidden] { display: none; }
+.apps-tabs button {
+  flex: 1; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.apps-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.app-node, .app-row { display: flex; align-items: center; gap: 12px; text-align: left; }
+.app-row { cursor: pointer; }
+.app-row.is-text { cursor: default; }
+.app-ico { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; object-fit: cover; background: var(--bg-elev-2); }
+.app-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-sub { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.app-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: var(--glass-fill); color: var(--accent-text);
+}
+.app-btn:first-child { background: var(--accent); color: var(--on-accent); }
+.app-choice { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--text-faint); }
+.app-choice.box { border-radius: 4px; }
+.app-choice.on { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--bg-elev); }
+.app-tile { display: flex; flex-direction: column; gap: 6px; }
+.app-tile-art { display: block; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: var(--bg-elev-2); }
+.app-tile-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.app-tile-t { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-more { align-self: center; margin-top: 8px; }

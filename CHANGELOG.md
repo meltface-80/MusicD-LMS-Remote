@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - The web app browses every LMS plugin, as Mallard does: Apps & radio in the side menu — each plugin's menus, search in its own words, play now, play next or add to the queue on the chosen player, settings choices, links. A plugin that doesn't answer says so
 - Added - Away from home, first step: the README and the Pages site say how to use Mallard and the web app anywhere with Tailscale, no ports opened
 - Changed - The web app looks as the Mallard app does: a new default theme, Mallard — graphite and brass, Manrope with titles in Young Serif, brass buttons and icons, Home's rows titled in small brass capitals, the mini player's progress as a level meter, and Mallard's mark and name at the head of the menu. The other four themes stay in Settings → Appearance
 - Added - Mallard has the Shelf too: Shelf in its side menu while the Shelf is switched on in Settings, the same racks, choices and orders as the web page, turning a case over into Mallard's own album screen

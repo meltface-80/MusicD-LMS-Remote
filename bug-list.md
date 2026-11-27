@@ -52,5 +52,6 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     Fix 2: Update hands the APK to the browser; Mallard installs nothing itself. — *On dev (testing).*
 18. **Mallard's "Server settings" opened the web app's Home** (owner report), not the LMS settings pages. Now opens
     the page /api/lms/settings-info names, through this server's LMS proxy. — *On dev (testing).*
-19. **Plugins, more** (owner request): adding plugins and making sure they work — install/enable LMS plugins from the
+19. **Plugins, more** (owner request). The web app's Apps & radio browser (every plugin's menus, as Mallard's): *On dev
+    (testing).* Still to come: adding plugins and making sure they work — install/enable LMS plugins from the
     apps (LMS's own plugin manager), and every plugin's menus working in Mallard and the web app. Widens item 11.

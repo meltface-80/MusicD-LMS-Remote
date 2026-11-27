@@ -262,6 +262,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           <span>Favourites</span>
         </button>
+        <button class="menu-item" type="button" id="menu-item-apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0z"/></svg>
+          <span>Apps &amp; radio</span>
+        </button>
         <button class="menu-item" type="button" data-target="merged-albums-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M11 12h2"/></svg>
           <span>Merged albums</span>
@@ -955,6 +959,30 @@
 
   <!-- This app's own Favourites (lib/favourites.js) — NOT the Qobuz account's
        favourites, which are the heart on Qobuz albums. Driven by initFavourites(). -->
+  <!-- Apps & radio: every LMS plugin's menus (apps-browser.js; Mallard's Apps and Radio screens' twin). -->
+  <div id="apps-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Apps and radio">
+    <div class="settings-backdrop" data-apps-close></div>
+    <div class="settings-sheet qobuz-sheet">
+      <div class="qobuz-pin">
+        <div class="settings-grip"></div>
+        <div class="settings-head qb-head">
+          <button id="apps-back" class="icon-btn" type="button" aria-label="Back" hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2 id="apps-title">Apps &amp; radio</h2>
+          <button class="icon-btn" type="button" aria-label="Close" data-apps-close>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div id="apps-tabs" class="apps-tabs" role="group" aria-label="Apps or radio">
+          <button type="button" data-kind="app" aria-pressed="true">Apps</button>
+          <button type="button" data-kind="radio" aria-pressed="false">Radio</button>
+        </div>
+      </div>
+      <div id="apps-body" class="qb-body"></div>
+    </div>
+  </div>
+
   <div id="favourites-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Favourites">
     <div class="settings-backdrop" data-fav-close></div>
     <div class="settings-sheet qobuz-sheet">
@@ -1667,5 +1695,6 @@
   <script src="/app.js"></script>
   <script src="/share-sheet.js"></script>
   <script src="/shelf-entry.js"></script>
+  <script src="/apps-browser.js"></script>
 </body>
 </html>
