@@ -258,6 +258,18 @@ tags, no automatic releases, no cluttered history.
 
 ## Gotchas worth remembering
 
+- THE SHELF (`/shelf`, ported from the Roon build): a page of its own (`public/shelf*.js|css`, `shelf.html`,
+  `shelf-off.html`), the whole library sent once by `/api/shelf/albums` (`lib/shelf.js`, `lib/shelf-routes.js`) and
+  filtered in the browser. OFF BY DEFAULT (`features` id `shelf`): off, `/shelf` serves `shelf-off.html` and the list
+  answers 403 WITHOUT reading the index — test that by counting reads, not by a hidden row. The switch is
+  `/api/settings/shelf`, which the web app (`shelf-entry.js`: menu row + Settings → Wall display) and Mallard both
+  read. No `/api/live` here: the page re-asks the list every 30 s with its signature and is told `same`. Its player
+  bar polls ADAPTIVELY (2 s playing / 6 s not), never the Roon build's fixed 4 s. LMS has no catalogue numbers or
+  release kinds (sent null); formats come from the album's first track (`fmtType/fmtRate/fmtBits` → `factsOf`, the
+  Roon file codes the Formats tab reads). Every file stays under the 400-line watch: `shelf-touch.js` and
+  `shelf-order.js` were cut out of the Roon build's `shelf.js` / `shelf-pick.js` for it, reaching the page's state
+  through the hub as the other parts do.
+
 - Artist strings split into separate clickable artists on ALL of " / ",
   "; ", ", ", " & ", " + " and feat./featuring/ft. (owner decision, v1.0.5 —
   band names containing " & " split too, knowingly; each part's artist page

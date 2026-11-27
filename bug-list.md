@@ -33,6 +33,7 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     by genre/artist/decade/format/favourites, its own player bar), in the web app and Mallard, behind a Settings switch
     that defaults off. Port from the Roon build's Node version (`lib/shelf.js`, `public/shelf*`) and Mandarin's Kotlin.
     Its fixed 4 s poll must become the adaptive 2 s/6 s one; its new page needs the iOS safe-area checks.
+    Web app and server: *On dev (testing).* Mallard's native Shelf: next.
 14. **Away from home** (owner request). Mandarin's away mode is its built-in Tailscale (a userspace `tsnet` engine in
     the server and the Android app) plus its OWN phone player — not Slimproto. Phases: (0) document remote control over
     an ordinary Tailscale install; (1) Mallard as an LMS Slimproto player on the LAN (Mandarin Bridge's `Slim.kt`,

@@ -7,6 +7,8 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Shelf: the whole library as a record shop's racks, full screen at /shelf — flick through the spines, narrow by genre, artist, decade, label, format or favourites, file it by artist, label, year or at random, turn a case over to see its tracks and play it on any player. Off by default: Settings → Wall display → Shelf, then it is in the side menu (Mallard's Shelf follows)
+- Changed - Mallard's update offer lists only what changed in Mallard, whole lines, never cut off mid-sentence
 - Fixed - Google Play Protect blocked Mallard 0.2.0-t32 as harmful: it was signed with the public test key while asking to install its own updates. Every published Mallard is now signed with the owner's private key, as Mandarin is (one-time: uninstall the old Mallard, then install the new one)
 - Added - Mallard updates itself, as Mandarin's app does: Home offers a newer build (Update / Later) and Settings → System has a Mallard row beside the server's. Test builds are offered each new test build; the download is checked against its SHA-256 before Android installs it over the top
 - Changed - Mallard has its own mark, on the Android app, the web app (installed or not), the share card and the Pages site: half the MusicD duck in Mandarin's brass beside half of Lyrion's waveform in its green

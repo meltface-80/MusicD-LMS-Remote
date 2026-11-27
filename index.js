@@ -3838,6 +3838,11 @@ app.post("/api/settings/youtube-key", (req, res) => {
 // "turned off" note (and fetches nothing) when disabled, so flipping the
 // Settings toggle brings a mounted wall tablet to life without a reload.
 app.get("/display", (req, res) => res.sendFile(path.join(__dirname, "public", "display.html")));
+// The Shelf (lib/shelf-routes.js): its page, the whole library it flicks through, and its switch (off by default).
+require("./lib/shelf-routes").mountShelf(app, { publicDir: path.join(__dirname, "public"), features, connected: () => state.connected,
+  ensureIndex, builtAt: () => index.builtAt || 0, libraryView, formatOf: (al) => al.quality || null, records: () => index.records, mainArtists: search.mainArtistNames,
+  favOf: (al) => favourites.has(al.title, al.subtitle) || favourites.has(al.origTitle || al.title, al.origArtist || al.subtitle),
+  labelOf: (al) => { const l = features.enabled("labels") ? labels.labelForAlbum({ title: al.title, subtitle: al.subtitle }) : null; return l ? labels.canonicalName(l) : null; } });
 
 // Assembled rotation content for the now-playing album on a zone: library
 // recommendations (other albums by the artist + label-mates, both from the
@@ -4515,31 +4520,6 @@ async function buildSmartPicks(day) {
 
 // Kick a build in the background. Never awaited by a request — the first build
 // takes a minute or two and no page load should wait for it.
-/* Evidence that a feature has ALREADY been in use on this data volume.
- *
- * Read once, by features.applyDefaults, to decide a flag nobody has set. Each
- * returns true / false / NULL, and null means "cannot tell" — an unreadable
- * store must never be recorded as "not used", because that would switch an
- * existing install's features off permanently and repairing the store would
- * not undo it (the setting is explicit by then).
- */
-function labelsHaveHistory() {
-  try {
-    const st = labels.status();
-    if (st && Number.isFinite(st.count)) return st.count > 0;
-    return null;
-  } catch (e) { return null; }
-}
-function smartPicksHaveHistory() {
-  try {
-    const f = path.join(DATA_DIR, "smart-picks.json");
-    if (!fs.existsSync(f)) return false;          // no store at all = never used
-    const j = JSON.parse(fs.readFileSync(f, "utf8"));
-    if (!j || typeof j !== "object") return null; // present but unreadable
-    return Object.keys(j.days || {}).length > 0 || Object.keys(j.attempts || {}).length > 0;
-  } catch (e) { return null; }
-}
-
 function kickSmartPicks(day, force) {
   // THE SINGLE GATE. Every caller — the timer, the request path and the
   // manual rebuild button — comes through here, so one check covers all of
@@ -5265,10 +5245,7 @@ app.listen(PORT, () => {
   // an upgrade must not switch somebody's features off underneath them. A
   // store that cannot be read defers rather than answering "no": see
   // lib/features.js.
-  features.applyDefaults({
-    labels:     () => labelsHaveHistory(),
-    smartPicks: () => smartPicksHaveHistory(),
-  });
+  features.applyDefaults(require("./lib/features-evidence").evidence({ labels, dataDir: DATA_DIR }));
   smartPicksTimer = startSmartPicksMaintenance();
 });
 
