@@ -26,6 +26,8 @@ class ServerClient(
         val waitingForLms get() = status == 503
         /** An offset or queue place that has moved on (the library was re-indexed, the queue changed). */
         val stale get() = status == 404 || status == 409
+        /** A plugin menu's token that has expired (they last 30 minutes): open the menu again. */
+        val expired get() = status == 410
     }
 
     // ---- the server itself -------------------------------------------------------------------------------------
@@ -201,6 +203,24 @@ class ServerClient(
         post("/api/smart-picks/add", JSONObject().put("artist", artist).put("album", album), 30_000)
 
     fun rebuildPicks(): JSONObject = post("/api/smart-picks/rebuild", JSONObject())
+
+    // ---- plugins (LMS apps) ----------------------------------------------------------------------------------
+
+    /** The plugins LMS offers [zoneId] (each plugin's own condition applied): apps and radio, each with its root token. */
+    fun apps(zoneId: String, refresh: Boolean = false): AppList =
+        AppList.parse(getJson("/api/apps?zone=" + enc(zoneId) + (if (refresh) "&refresh=1" else ""), 20_000))
+
+    /** One of a plugin's menus, by its token, [count] rows from [start]. Streaming plugins can be slow: 30 s allowed. */
+    fun appMenu(token: String, zoneId: String, start: Int = 0, count: Int = 100): AppMenu =
+        AppMenu.parse(getJson("/api/apps/browse?token=" + enc(token) + "&zone=" + enc(zoneId) + "&start=$start&count=$count", 30_000))
+
+    /** A row's action run in [zoneId]: play, add, insert, a choice, or a context menu (answered as a menu). */
+    fun appAct(token: String, zoneId: String): AppAct =
+        AppAct.parse(post("/api/apps/act", JSONObject().put("token", token).put("zone_or_output_id", zoneId), 30_000))
+
+    /** A plugin's search run with [term]. */
+    fun appSearch(token: String, term: String, zoneId: String, start: Int = 0, count: Int = 100): AppMenu =
+        AppMenu.parse(post("/api/apps/search", JSONObject().put("token", token).put("term", term).put("zone_or_output_id", zoneId).put("start", start).put("count", count), 30_000))
 
     // ---- settings ----------------------------------------------------------------------------------------------
 

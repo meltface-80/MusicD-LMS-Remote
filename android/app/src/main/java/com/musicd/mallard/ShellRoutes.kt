@@ -40,6 +40,32 @@ internal fun NavGraphBuilder.moreRoutes(nav: NavHostController, client: () -> Se
             onAlbum = { offset -> inPlace(nav, ShellRoute.album(offset, zone, "")) },
             onQobuz = { q -> inPlace(nav, ShellRoute.search(q, zone)) })
     }
+    // The plugins (LMS apps and radio): their list, and any of their menus, each over the screen that opened it.
+    composable(ShellRoute.APPS, arguments = listOf(navArgument(ShellRoute.KIND) { type = NavType.StringType; defaultValue = "app" }, navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
+        val zone = entry.arguments?.getString(ShellRoute.ZONE).orEmpty().ifEmpty { NativeShell.zone }
+        AppsScreen(entry.arguments?.getString(ShellRoute.KIND).orEmpty(), zone, client,
+            onBack = { nav.popBackStack() },
+            onOpen = { e -> nav.navigate(ShellRoute.appMenu(e.go, e.name, NativeShell.zone)) },
+            onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } },
+            onRoom = NativeShell::roomChosen,
+            onNav = { what -> navTap(nav, what) },
+            onPage = { what, arg -> handOver(nav, what, arg) })
+    }
+    composable(ShellRoute.APP_MENU, arguments = listOf(
+        navArgument(ShellRoute.TOKEN) { type = NavType.StringType },
+        navArgument(ShellRoute.TITLE) { type = NavType.StringType; defaultValue = "" },
+        navArgument(ShellRoute.TERM) { type = NavType.StringType; defaultValue = "" },
+        navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
+        val a = entry.arguments
+        AppMenuScreen(a?.getString(ShellRoute.TOKEN).orEmpty(), a?.getString(ShellRoute.TITLE).orEmpty(), a?.getString(ShellRoute.TERM).orEmpty(),
+            a?.getString(ShellRoute.ZONE).orEmpty().ifEmpty { NativeShell.zone }, client,
+            onBack = { nav.popBackStack() },
+            onMenu = { token, title, term -> nav.navigate(ShellRoute.appMenu(token, title, NativeShell.zone, term)) },
+            onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } },
+            onRoom = NativeShell::roomChosen,
+            onNav = { what -> navTap(nav, what) },
+            onPage = { what, arg -> handOver(nav, what, arg) })
+    }
     // Settings (item 76): its list, Setup's, and every page of it.
     composable(ShellRoute.SETTINGS, arguments = listOf(navArgument(ShellRoute.PANE) { type = NavType.StringType; defaultValue = "home" })) { entry ->
         SettingsScreen(entry.arguments?.getString(ShellRoute.PANE).orEmpty(), client,

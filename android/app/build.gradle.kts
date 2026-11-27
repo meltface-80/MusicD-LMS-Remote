@@ -20,8 +20,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // versionCode must rise with every published build or Android refuses to install over the previous one.
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     buildFeatures {

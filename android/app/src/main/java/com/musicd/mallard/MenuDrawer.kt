@@ -74,7 +74,7 @@ import org.json.JSONObject
 /**
  * The side menu over the native screens, opened by the row's Menu ([NativeShell.menuOpen]) and drawn as Mandarin's
  * drawer: from the left over the screen dimmed, Mallard's mark and name, then MusicD LMS Remote's own list — Home,
- * Random albums, Favourites, Pitchfork; Rescan library; Settings. A tap beside it closes it. Composed by the shell, whose
+ * Random albums, Favourites, Apps and Radio (every LMS plugin), Pitchfork; Rescan library; Settings. A tap beside it closes it. Composed by the shell, whose
  * coroutines it uses, so a rescan's last word comes when the menu has long gone.
  */
 @Composable
@@ -99,6 +99,8 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
         "home" -> navTap(nav, "home")
         "random" -> overHome(nav, ShellRoute.wall("random", z, ""))
         "favourites" -> overHome(nav, ShellRoute.wall("favourites", z, ""))
+        "apps" -> overHome(nav, ShellRoute.apps("app", z))
+        "radio" -> overHome(nav, ShellRoute.apps("radio", z))
         "pitchfork" -> overHome(nav, ShellRoute.pitchfork("", z))
         "settings" -> overHome(nav, ShellRoute.settings())
     }
@@ -170,6 +172,8 @@ private fun MenuList(lms: String, onRescan: () -> Unit, onItem: (String) -> Unit
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
         MenuSep()
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.st_services, "Apps")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")
         MenuItem(Modifier.parity("menu.pitchfork", Contract.label("menu.pitchfork")).clip(ITEM).clickable { onItem("pitchfork") }, R.drawable.mn_pitchfork, Contract.label("menu.pitchfork"))
         MenuSep()
         MenuItem(Modifier.parity("menu.rescan", Contract.label("menu.rescan")).clip(ITEM).clickable(onClick = onRescan), R.drawable.mn_rescan, Contract.label("menu.rescan"), lms)
