@@ -67,7 +67,9 @@ jobs:
 
       - name: Test build number (dev only)
         if: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' }}
-        run: echo "MALLARD_TEST_BUILD=$(( GITHUB_RUN_NUMBER % 999 == 0 ? 1 : GITHUB_RUN_NUMBER % 999 ))" >> "$GITHUB_ENV"
+        run: |
+          n=$(( GITHUB_RUN_NUMBER % 999 )); [ "$n" -gt 0 ] || n=1
+          echo "MALLARD_TEST_BUILD=$n" >> "$GITHUB_ENV"
 
       - name: Build the APK
         env:
