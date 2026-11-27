@@ -1,0 +1,12 @@
+[
+  "index.js",
+  "lib/albumart.js",
+  "lib/albuminfo.js",
+  "lib/albummerges.js",
+  "lib/discovery.js",
+  "lib/favourites.js",
+  "lib/labels.js",
+  "lib/lms.js",
+  "lib/radio.js",
+  "lib/updater.js"
+]

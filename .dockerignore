@@ -4,3 +4,7 @@
 android
 data
 node_modules
+.github
+.githooks
+.claude
+tools/lint/node_modules

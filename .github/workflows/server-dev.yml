@@ -1,0 +1,88 @@
+name: Server (dev)
+
+# dev's server image, for testing before a release: on every push to dev, once
+# CI has passed on the same commit (.github/wait-for-ci.sh), the image is built
+# exactly as a release builds it and pushed as
+#   ghcr.io/meltface-80/musicd-lms-remote:dev   and   :<test version>
+# The test version (tools/test-version.js) is the next release's number with
+# -tN, N the pull requests merged into dev since the last release (1.0.87-t3),
+# stamped into the image (APP_VERSION / APP_CHANNEL=dev, lib/build.js) so
+# Settings says which test build is running. Never :latest — that stays the
+# last release, which is what every ordinary install pulls.
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  actions: read     # to see CI's runs (.github/wait-for-ci.sh)
+
+concurrency:
+  group: server-dev
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the test version counts the commits since the last release
+
+      - name: Wait for CI to pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: .github/wait-for-ci.sh "$GITHUB_SHA"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test version and image name
+        id: v
+        run: |
+          echo "version=$(node tools/test-version.js)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/musicd-lms-remote" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push :dev
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          build-args: |
+            APP_VERSION=${{ steps.v.outputs.version }}
+            APP_CHANNEL=dev
+          tags: |
+            ${{ steps.v.outputs.image }}:dev
+            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=MusicD LMS Remote (dev)
+            org.opencontainers.image.description=Test build from the dev branch — not a release
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true
+
+      - name: Say what was published
+        run: |
+          {
+            echo "### Server test build ${{ steps.v.outputs.version }}"
+            echo '```'
+            echo "docker pull ${{ steps.v.outputs.image }}:dev"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

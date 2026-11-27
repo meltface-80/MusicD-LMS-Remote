@@ -20,6 +20,14 @@ EXPOSE 3390
 
 ENV PORT=3390
 ENV DOCKER=1
+# A dev test build is stamped with its test version and channel
+# (.github/workflows/server-dev.yml; lib/build.js): it says which build it is,
+# and the in-app updater tells it to pull :dev rather than offering a release.
+# A release leaves both empty and reports package.json's version.
+ARG APP_VERSION=""
+ARG APP_CHANNEL=""
+ENV APP_VERSION=$APP_VERSION
+ENV APP_CHANNEL=$APP_CHANNEL
 # Point at your Lyrion Music Server. If unset, the app tries UDP auto-discovery
 # on the local network and you can also set the host in the in-app settings.
 # ENV LMS_HOST=192.168.1.50

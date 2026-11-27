@@ -44,6 +44,7 @@ const makeRadio       = require("./lib/radio");
 const makeApps        = require("./lib/apps");
 
 const pkg = require("./package.json");
+const build = require("./lib/build").buildInfo(process.env, pkg);   // release, or a :dev test build
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
 const log = makeLogger("app");
 // DEBUG stays a boolean for the many existing `if (DEBUG)` gates; the leveled
@@ -255,10 +256,11 @@ const albumInfo = makeAlbumInfo({
 // RRA_VIA_LAUNCHER=1; see lib/updater.js. Backs the /api/update/* routes.
 // ---------------------------------------------------------------------------
 const { makeUpdater } = require("./lib/updater");
+const { updateStatus } = require("./lib/build");
 const updater = makeUpdater({
   owner: "meltface-80",
   repo: "MusicD-LMS-Remote",
-  currentVersion: pkg.version,
+  currentVersion: build.version,
   dir: __dirname,
   viaLauncher: process.env.RRA_VIA_LAUNCHER === "1",
   debug: DEBUG
@@ -1022,7 +1024,8 @@ app.get("/api/status", (req, res) => {
     // Names the server, so a native client finding it on the network (Mallard's
     // address sweep) can tell it from anything else answering on the port.
     app:        "musicd-lms-remote",
-    version:    pkg.version,
+    version:    build.version,
+    channel:    build.channel,
     paired:     state.connected,
     core_id:    state.server ? state.server.uuid : null,
     core_name:  state.server ? ("Lyrion Music Server " + (state.server.version || "")) : null,
@@ -1217,43 +1220,8 @@ app.get("/api/artist-albums", async (req, res) => {
   });
 });
 
-// The streaming albums in the library, and why there may be none. LMS's Online
-// Music Library integration imports each service's FAVOURITE albums into the
-// library (albums.extid "qobuz:album:<id>"); with it off — or with its
-// per-service switch off, which LMS sets to 0 for good if it once polled with no
-// account signed in — those albums exist only inside the plugin's own menus.
-// Every pref here is read-only; nothing is changed on the server.
-app.get("/api/library/online", async (req, res) => {
-  if (!state.connected) return notConnected(res);
-  const counts = { qobuz: 0, tidal: 0, local: 0 };
-  for (const r of index.records) counts[r.source === "qobuz" ? "qobuz" : r.source === "tidal" ? "tidal" : "local"]++;
-  const pref = async (name) => { try { const v = await state.lms.getPref(name); return v == null || v === "" ? null : String(v); } catch (e) { return null; } };
-  const [state_, qobuz, tidal, purchases] = await Promise.all([
-    pref("plugin.state:OnlineLibrary"), pref("plugin.onlinelibrary:enable_PLUGIN_QOBUZ"),
-    pref("plugin.onlinelibrary:enable_PLUGIN_TIDAL"), pref("plugin.qobuz:dontImportPurchases")]);
-  const list = await services(false).catch(() => []);
-  const installed = (tag) => { const s = list.find(x => x.tag === tag); return s ? !!s.installed : null; };
-  const onlineOn = state_ == null ? null : state_ === "enabled";
-  // What both apps say, worded once HERE so the web app and Mallard can't drift.
-  const service = (tag, imported, importOn) => {
-    const name = SERVICE_LABEL[tag] || tag;
-    const importEnabled = importOn == null ? null : importOn === "1";
-    let say, problem = false;
-    if (imported > 0) say = imported + " " + name + " album" + (imported === 1 ? "" : "s") + " in your library.";
-    else if (onlineOn === false) { problem = true; say = "LMS\u2019s Online Music Library integration is off, so your " + name + " favourites stay inside the " + name + " plugin and never reach the library. Turn it on in LMS\u2019s settings (Online Music Library), then Import now."; }
-    else if (importEnabled === false) { problem = true; say = "LMS has " + name + " import switched off \u2014 it does that by itself if it ever looked before your " + name + " account was signed in. Turn " + name + " back on in LMS\u2019s Online Music Library settings, then Import now."; }
-    else say = "No " + name + " albums in your library yet. LMS imports the albums you\u2019ve favourited in " + name + " (not every album you\u2019ve played) \u2014 Import now fetches them.";
-    return { tag, name, installed: installed(tag), albums: imported, import_enabled: importEnabled, problem, say };
-  };
-  res.json({
-    online_library: onlineOn,
-    // Only services the server has (or might have: installed unknown).
-    services: [service("qobuz", counts.qobuz, qobuz), service("tidal", counts.tidal, tidal)].filter(x => x.installed !== false || x.albums > 0),
-    import_purchases: purchases == null ? null : purchases !== "1",
-    local_albums: counts.local,
-    index_built_at: index.builtAt || null,
-  });
-});
+// The streaming albums in the library, and why there may be none (lib/onlinelib.js).
+require("./lib/onlinelib").route(app, { state, index, notConnected, services: () => services(false), label: (t) => SERVICE_LABEL[t] || t });
 
 app.get("/api/library-stats", (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -3983,16 +3951,17 @@ app.get("/api/display/content", async (req, res) => {
 // progress) and `viaLauncher`, which the frontend poll reads to drive the UI.
 app.get("/api/update/status", (req, res) => {
   updater.maybeCheck(); // fire-and-forget background refresh (throttled to hourly)
-  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+  res.json(updateStatus(build, updater.getStatus()));
 });
 app.post("/api/update/check", async (req, res) => {
-  await updater.checkNow();
-  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+  if (build.channel !== "dev") await updater.checkNow();
+  res.json(updateStatus(build, updater.getStatus()));
 });
 app.post("/api/update/apply", async (req, res) => {
   // Respond BEFORE apply() runs — a successful apply exits the process (code 75)
   // so the launcher can restart into the new build, and we'd never get to send a
   // reply after that. The frontend then polls /api/update/status for progress.
+  if (build.channel === "dev") return res.status(409).json({ error: require("./lib/build").DEV_NOTE });
   let st = updater.getStatus();
   if (!st.available) {
     st = await updater.checkNow();
@@ -5009,7 +4978,7 @@ app.get("/api/qobuz/debug", async (req, res) => {
   if (!state.connected || !state.lms) return res.status(503).json({ error: "not connected to LMS" });
   const q = String(req.query.q || "radiohead").trim();
   const player = state.players[0] && state.players[0].id;
-  const out = { version: pkg.version, player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
+  const out = { version: build.version, player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
   const call = async (label, cmd) => { try { out[label] = await state.lms.request(player, cmd); } catch (e) { out[label] = { error: e.message }; } };
   if (!player) { out.error = "no player available (qobuz commands need a player id)"; return res.json(out); }
   await call("root", ["qobuz", "items", 0, 50, "menu:1"]);
@@ -5275,7 +5244,7 @@ app.post("/api/settings/label-folder-depth", (req, res) => {
 // Boot
 // ---------------------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`MusicD LMS Remote v${pkg.version} listening on :${PORT}`);
+  console.log(`MusicD LMS Remote v${build.version} (${build.channel}) listening on :${PORT}`);
   log.info("log level:", levelName(),
     "(set DEBUG=1 for diagnostics, DEBUG=trace or LOG_LEVEL=trace for the firehose)");
   refreshConnection();

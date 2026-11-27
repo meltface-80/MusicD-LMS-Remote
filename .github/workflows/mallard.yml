@@ -65,6 +65,10 @@ jobs:
             echo "No release key set: signing with the committed test key."
           fi
 
+      - name: Test build number (dev only)
+        if: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' }}
+        run: echo "MALLARD_TEST_BUILD=$(( GITHUB_RUN_NUMBER % 999 == 0 ? 1 : GITHUB_RUN_NUMBER % 999 ))" >> "$GITHUB_ENV"
+
       - name: Build the APK
         env:
           MALLARD_KEYSTORE_PASSWORD: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
@@ -73,7 +77,7 @@ jobs:
       - name: Name it
         id: apk
         run: |
-          V=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
+          V=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)${MALLARD_TEST_BUILD:+-t$MALLARD_TEST_BUILD}
           SHA=$(git rev-parse --short HEAD)
           OUT="Mallard-$V-$SHA.apk"
           cp app/build/outputs/apk/release/app-release.apk "$OUT"
