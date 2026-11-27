@@ -595,6 +595,15 @@ async function refreshConnectionInner() {
       log.info("lms: library rescan detected (lastScan changed) — rebuilding the index");
       libraryViewCache.clear();
       ensureIndex();
+    } else if (!indexBuilding && indexAlbumTotal != null && Date.now() - albumCountCheckedAt > ALBUM_COUNT_CHECK_MS) {
+      albumCountCheckedAt = Date.now();
+      state.lms.countAlbums().then(n => {
+        if (n === indexAlbumTotal || indexBuilding) return;
+        log.info("lms: album count moved (" + indexAlbumTotal + " → " + n + ", e.g. an online-library import) — rebuilding the index");
+        indexCountMoved = true;
+        libraryViewCache.clear();
+        ensureIndex();
+      }).catch(e => log.debug("lms: album count check failed:", e.message));
     }
   } catch (e) {
     state.connected = false;
@@ -688,7 +697,9 @@ async function fetchAlbumPages(total) {
 async function buildIndex() {
   if (!state.lms) throw new Error("Not connected to LMS");
   indexProgress = 0;
+  indexCountMoved = false;
   const total = await state.lms.countAlbums();
+  indexAlbumTotal = total;
   const sig = indexCacheSig(total);
   let rows = readIndexCache(sig);
   const fromCache = !!rows;
@@ -880,6 +891,17 @@ async function applyAddedTimes(sig, albumCount) {
 // in-app rescan happened to be fine only because the client pokes /api/reindex
 // when it sees the scan finish, which needs the page to be open.
 let indexScanStamp = null;
+// LMS's album count when the index was built, and whether a later look found it
+// moved. A scan moves lastScan, but LMS's Online Music Library integration
+// imports (and removes) streaming favourites — Qobuz, Tidal — in the
+// BACKGROUND, from its poller, and nothing in that path is known to move
+// lastScan: imported albums could stay invisible here for up to
+// INDEX_MAX_AGE_MS. So refreshConnection also compares the count (one cheap
+// `albums 0 1`) every ALBUM_COUNT_CHECK_MS.
+let indexAlbumTotal = null;
+let indexCountMoved = false;
+let albumCountCheckedAt = 0;
+const ALBUM_COUNT_CHECK_MS = Number(process.env.ALBUM_COUNT_CHECK_MS) || 5 * 60 * 1000;   // env: tests only
 function scanChangedSinceIndex() {
   const scan = state.server && state.server.lastScan;
   if (scan == null || indexScanStamp == null) return false;
@@ -891,7 +913,7 @@ function ensureIndex() {
   // empty/still-scanning library has a valid built-but-empty index and must not
   // re-trigger a build (and its countAlbums RPC) on every request.
   const stale = !index.builtAt || (Date.now() - index.builtAt) > INDEX_MAX_AGE_MS
-                || scanChangedSinceIndex();
+                || scanChangedSinceIndex() || indexCountMoved;
   if (stale && !indexBuilding) {
     indexBuilding = buildIndex()
       .catch(e => { if (DEBUG) console.error("[index] build failed:", e.message); })
@@ -1192,6 +1214,44 @@ app.get("/api/artist-albums", async (req, res) => {
     artist,
     primary:  [...primary.values()].map(albumOut).sort(byTitle),
     featured: [...featured.values()].map(albumOut).sort(byTitle)
+  });
+});
+
+// The streaming albums in the library, and why there may be none. LMS's Online
+// Music Library integration imports each service's FAVOURITE albums into the
+// library (albums.extid "qobuz:album:<id>"); with it off — or with its
+// per-service switch off, which LMS sets to 0 for good if it once polled with no
+// account signed in — those albums exist only inside the plugin's own menus.
+// Every pref here is read-only; nothing is changed on the server.
+app.get("/api/library/online", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const counts = { qobuz: 0, tidal: 0, local: 0 };
+  for (const r of index.records) counts[r.source === "qobuz" ? "qobuz" : r.source === "tidal" ? "tidal" : "local"]++;
+  const pref = async (name) => { try { const v = await state.lms.getPref(name); return v == null || v === "" ? null : String(v); } catch (e) { return null; } };
+  const [state_, qobuz, tidal, purchases] = await Promise.all([
+    pref("plugin.state:OnlineLibrary"), pref("plugin.onlinelibrary:enable_PLUGIN_QOBUZ"),
+    pref("plugin.onlinelibrary:enable_PLUGIN_TIDAL"), pref("plugin.qobuz:dontImportPurchases")]);
+  const list = await services(false).catch(() => []);
+  const installed = (tag) => { const s = list.find(x => x.tag === tag); return s ? !!s.installed : null; };
+  const onlineOn = state_ == null ? null : state_ === "enabled";
+  // What both apps say, worded once HERE so the web app and Mallard can't drift.
+  const service = (tag, imported, importOn) => {
+    const name = SERVICE_LABEL[tag] || tag;
+    const importEnabled = importOn == null ? null : importOn === "1";
+    let say, problem = false;
+    if (imported > 0) say = imported + " " + name + " album" + (imported === 1 ? "" : "s") + " in your library.";
+    else if (onlineOn === false) { problem = true; say = "LMS\u2019s Online Music Library integration is off, so your " + name + " favourites stay inside the " + name + " plugin and never reach the library. Turn it on in LMS\u2019s settings (Online Music Library), then Import now."; }
+    else if (importEnabled === false) { problem = true; say = "LMS has " + name + " import switched off \u2014 it does that by itself if it ever looked before your " + name + " account was signed in. Turn " + name + " back on in LMS\u2019s Online Music Library settings, then Import now."; }
+    else say = "No " + name + " albums in your library yet. LMS imports the albums you\u2019ve favourited in " + name + " (not every album you\u2019ve played) \u2014 Import now fetches them.";
+    return { tag, name, installed: installed(tag), albums: imported, import_enabled: importEnabled, problem, say };
+  };
+  res.json({
+    online_library: onlineOn,
+    // Only services the server has (or might have: installed unknown).
+    services: [service("qobuz", counts.qobuz, qobuz), service("tidal", counts.tidal, tidal)].filter(x => x.installed !== false || x.albums > 0),
+    import_purchases: purchases == null ? null : purchases !== "1",
+    local_albums: counts.local,
+    index_built_at: index.builtAt || null,
   });
 });
 
@@ -2758,6 +2818,8 @@ app.post("/api/lms/rescan", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const raw = (req.body || {}).mode;
   const mode = RESCAN_MODES.has(raw) ? raw : null;
+  // An import may not move lastScan: check the album count on the next turns of the poll instead.
+  if (mode === "onlinelibrary") albumCountCheckedAt = Math.min(albumCountCheckedAt, Date.now() - ALBUM_COUNT_CHECK_MS + 60 * 1000);
   try { await state.lms.rescan(mode); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });

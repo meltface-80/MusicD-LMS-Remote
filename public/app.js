@@ -7288,6 +7288,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   async function loadLmsPane() {
     if (!lmsPane.status) return;
     lmsPane.status.textContent = "…";
+    loadOnlineLib();
     try {
       const r = await fetch("/api/lms/settings-info");
       const j = await r.json();
@@ -7307,6 +7308,47 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       lmsPane.open.disabled = true;
     }
   }
+
+  // Streaming albums in the library: how many, or why none (worded by the server).
+  const onlineLib = { list: document.getElementById("online-lib-list"), go: document.getElementById("online-lib-import") };
+  async function loadOnlineLib() {
+    if (!onlineLib.list) return;
+    onlineLib.list.textContent = "";
+    try {
+      const r = await fetch("/api/library/online");
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      const frag = document.createDocumentFragment();
+      for (const svc of j.services || []) {
+        const d = document.createElement("div");
+        d.className = "settings-sub";
+        d.style.paddingTop = "6px";
+        if (svc.problem) d.style.color = "var(--danger, #e57373)";
+        d.textContent = svc.say;
+        frag.appendChild(d);
+      }
+      if (!(j.services || []).length) {
+        const d = document.createElement("div");
+        d.className = "settings-sub"; d.style.paddingTop = "6px";
+        d.textContent = "No streaming plugin is installed on your server.";
+        frag.appendChild(d);
+      }
+      onlineLib.list.appendChild(frag);
+    } catch (e) {
+      onlineLib.list.textContent = e.message;
+    }
+  }
+  if (onlineLib.go) onlineLib.go.addEventListener("click", async () => {
+    onlineLib.go.disabled = true;
+    try {
+      const r = await fetch("/api/lms/rescan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "onlinelibrary" }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      if (window.__showToast) window.__showToast("Importing your streaming favourites — they appear here once LMS has them");
+      if (window.__watchLmsScan) window.__watchLmsScan();
+    } catch (e) { if (window.__showToast) window.__showToast("Couldn't start the import: " + e.message, "error"); }
+    finally { onlineLib.go.disabled = false; }
+  });
 
   function closeLmsFrame() {
     if (!lmsPane.overlay) return;
