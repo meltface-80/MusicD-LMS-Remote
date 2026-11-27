@@ -210,7 +210,7 @@ internal object ContractLabels2 {
         "album.similar-artists-more" to listOf("More", "Less"),
         "album.similar-album" to listOf("{album}"),
         "album.similar-albums-more" to listOf("More", "Less"),
-        "shelf.back" to listOf("Back to Mandarin"),
+        "shelf.back" to listOf("Back"),
         "shelf.stage" to listOf("{album} by {artist}, {n} of {count}. Arrow keys move along the shelf, Enter turns the case over."),
         "shelf.undo" to listOf("Undo last choice"),
         "shelf.note-reset" to listOf("Reset shelf"),

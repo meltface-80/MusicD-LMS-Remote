@@ -83,15 +83,16 @@ data class LibraryView(
     }
 
     companion object {
-        /** The facets, in the sheet's order (the page's LIB_FACET_IDS). */
-        val FACET_IDS = listOf("genre", "source", "decade", "format", "rate", "bits", "chan", "letter", "added")
+        /** The facets, in the sheet's order: MusicD LMS Remote's own (libFacetDefs in index.js). */
+        val FACET_IDS = listOf("genre", "source", "decade", "label", "format", "rate", "bits", "letter", "added")
         val SORTS = listOf(
             Sort("album", "Album name", "asc", "A → Z", "Z → A"),
             Sort("artist", "Artist", "asc", "A → Z", "Z → A"),
-            Sort("year", "Release date", "desc", "Oldest first", "Newest first", "from dates collected during scanning"),
-            Sort("added", "Recently added", "desc", "Oldest first", "Newest first", "from dates Mandarin could work out"),
-            Sort("plays", "Most played", "desc", "Least played first", "Most played first", "from plays Mandarin has seen"),
-            Sort("lastplayed", "Last played", "desc", "Longest ago first", "Most recent first", "from plays Mandarin has seen"),
+            Sort("genre", "Genre", "asc", "A → Z", "Z → A"),
+            Sort("year", "Release year", "desc", "Oldest first", "Newest first", "undated albums last"),
+            Sort("added", "Date added", "desc", "Oldest first", "Newest first", "when LMS first added the album's tracks"),
+            Sort("plays", "Most played", "desc", "Least played first", "Most played first", "from about 13 months of plays this server has seen"),
+            Sort("lastplayed", "Last played", "desc", "Longest ago first", "Most recent first", "from about 13 months of plays this server has seen"),
             Sort("random", "Random", "asc", "", "")
         )
         val PLAYED = listOf(Played("any", "Any"), Played("never", "Never played"), Played("6", "Not in 6 months"), Played("12", "Not in 12 months"))

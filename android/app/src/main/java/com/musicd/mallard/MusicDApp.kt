@@ -20,7 +20,6 @@ class MusicDApp : Application() {
         AppLog.start(this)
         CrashLog.install(this)
         CrashLog.watchMainThread(this)
-        ExitNote.keep(this)
     }
 }
 

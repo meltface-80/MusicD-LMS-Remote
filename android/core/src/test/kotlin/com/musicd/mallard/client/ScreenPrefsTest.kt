@@ -37,7 +37,7 @@ class ScreenPrefsTest {
         assertFalse(j.has("rra-filter"))
         assertEquals("1", j.getString("rra-np-reduced"))
         assertEquals("what the app alone keeps, kept", "kept", j.getString("appOnly"))
-        assertEquals("a label kept in an older view, passed over (item 492)", "sort=artist&dir=desc", j.getString("view"))
+        assertEquals("a label kept in a view: MusicD LMS filters by label", "sort=artist&dir=desc&label=ECM", j.getString("view"))
         assertEquals("list", WallPrefs.parse(ScreenPrefs.backup(prefs, null).let { ScreenPrefs.restore(it, null).first }).layout)
     }
 

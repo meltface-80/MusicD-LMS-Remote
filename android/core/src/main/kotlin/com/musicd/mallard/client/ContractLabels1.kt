@@ -160,7 +160,7 @@ internal object ContractLabels1 {
         "search.service-fav" to listOf("{service} favourite", "In {service} favourites"),
         "search.review" to listOf("{album} by {artist}", "{album}"),
         "menu.close" to listOf("Close the menu"),
-        "menu.power" to listOf("Restart or shut down Mandarin"),
+        "menu.power" to listOf("Power"),
         "menu.power-restart" to listOf("Restart"),
         "menu.power-shutdown" to listOf("Shut down"),
         "menu.offline" to listOf("Offline mode"),

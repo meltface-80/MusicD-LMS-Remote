@@ -90,6 +90,44 @@ Layout section of README.md.
   so the history keeps a reviewable record of each release.
 - Report the merged version back to the owner so they know what's live.
 
+## Mallard (android/)
+
+- `android/` is **Mallard**, the native Android remote for this server. It is a
+  port of Mandarin Remote's Compose app (meltface-80/Mandarin `android/`), with
+  everything Mandarin-only removed: Tailscale, phone playback, the USB DAC,
+  downloads, shelf, editor and sign-in. Package `com.musicd.mallard`; `:core`
+  is pure Kotlin/JVM (API client, models, view logic) and `:app` is Compose.
+- **Look and Settings**: the look is Mandarin's (Palette, Manrope and Young
+  Serif). The Settings LAYOUT is this server's page (owner decision), in
+  Mandarin's colours: `SettingsLists.HOME` mirrors index.html's
+  settings-nav order.
+- **Builds in this sandbox**: `:core` builds and tests locally with plain
+  Gradle (Kotlin plugin from the plugin portal plus Maven Central). Google
+  Maven and dl.google.com are blocked here, so `:app` compiles only in CI
+  (`.github/workflows/mallard.yml`). Pushes to `dev` publish the APK on the
+  rolling `mallard-test` PRE-release, which never counts as "latest" for the
+  server's updater.
+- **API rules from this file that Mallard follows** (`ServerClient.kt`):
+  - Track identity is album offset plus place. `/api/album` now also sends
+    `offset` and each track's `track_id`, which is its place, plus
+    `length`/`tracknum`/`disc`.
+  - Transport modes are sent as concrete values to
+    `/api/lms/player/:id/mode`.
+  - Player ids are always passed explicitly.
+  - `/api/zone-state` is polled ADAPTIVELY at 2 s/6 s, never long-polled,
+    and Mandarin's `wait_for` is gone.
+  - `/api/status` now names itself (`app`, `version`) so Mallard's Wi-Fi
+    sweep can recognise it.
+- **Duplicated logic that must stay in step**:
+  - `FavouriteKey.kt` is a THIRD copy of `keyFor()` (after lib/favourites.js
+    and app.js); `FavouriteKeyTest` carries the server's cases.
+  - `Artists.kt` is a third copy of the artist split (ANY_SPLIT_RE /
+    ARTIST_SPLIT_RE).
+  - Change one copy, change all three.
+- **Versioning**: Mallard has its own `versionName`/`versionCode` in
+  `android/app/build.gradle.kts`, separate from the server's
+  `package.json`. Bump `versionCode` with every published build.
+
 ## Gotchas worth remembering
 
 - Artist strings split into separate clickable artists on ALL of " / ",
