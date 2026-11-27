@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Mallard installs LMS plugins too: Settings → LMS server → Plugins, the same list, buttons, warning and Restart LMS as the web app
 - Added - Install LMS plugins from the web app: Settings → LMS server → Plugins lists what is installed and what LMS's plugin repositories offer, with Install, Update, Remove, Enable / Disable, each plugin's own settings, and Restart LMS to apply. It works through LMS's own plugin page, so LMS downloads and checks every plugin itself, and asks once (as LMS does) that you accept plugins are third-party software
 - Changed - The LMS settings-page lookup (`/api/lms/settings-info`) moved into `lib/lms-settings-routes.js`, and now sends LMS's login when it checks for Material
 - Added - The web app browses every LMS plugin, as Mallard does: Apps & radio in the side menu — each plugin's menus, search in its own words, play now, play next or add to the queue on the chosen player, settings choices, links. A plugin that doesn't answer says so

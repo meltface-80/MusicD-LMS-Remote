@@ -55,5 +55,5 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
 19. **Plugins, more** (owner request). The web app's Apps & radio browser (every plugin's menus, as Mallard's): *On dev
     (testing).* Adding plugins: Settings → LMS server → Plugins in the web app lists what LMS has installed and what
     its repositories offer, and installs, updates, removes, switches on/off and restarts LMS — through LMS's own
-    plugin page (it has no command for this), so LMS checks every download itself: *on dev (testing)*. Still to
-    come: the same Plugins pane in Mallard. Widens item 11.
+    plugin page (it has no command for this), so LMS checks every download itself; Mallard has the same Plugins
+    pane (Settings → LMS server → Plugins): *on dev (testing)*. Widens item 11.
