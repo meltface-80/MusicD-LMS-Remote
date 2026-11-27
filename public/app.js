@@ -523,7 +523,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const glyph = document.createElement("span");
     glyph.className = "unheard-glyph";
     glyph.setAttribute("aria-hidden", "true");
-    glyph.textContent = "\u2727";
+    glyph.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><path d="M6.5 8.3a6.6 6.6 0 0 1 3.6-2.6M17.5 15.7a6.6 6.6 0 0 1-3.6 2.6"/></svg>';   // Mallard's disc
     art.appendChild(glyph);
     btn.appendChild(art);
 
@@ -531,11 +531,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     meta.className = "album-meta";
     const t = document.createElement("div");
     t.className = "album-title";
-    t.textContent = "Play something unheard";
-    const sub = document.createElement("div");
-    sub.className = "album-artist";
-    sub.textContent = "Surprise me";
-    meta.appendChild(t); meta.appendChild(sub);
+    t.textContent = "Random Album";   // Mallard's words: an album not played in six months
+    meta.appendChild(t);
     btn.appendChild(meta);
 
     // One implementation, two triggers: the request, the zone check and the
@@ -550,17 +547,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   function renderHomeUnplayed(aotd, albums) {
     albums = albums || [];
     homeUnplayed.innerHTML = "";
-    if (!albums.length && !aotd) {
-      homeUnplayed.innerHTML = '<div class="home-carousel-empty">Nothing here yet — play some music and check back.</div>';
-      return;
-    }
+    // Random Album and today's album: the strip under the greeting, as Mallard's Home (no longer the head of this row).
+    const today = document.getElementById("home-today");
     const frag = document.createDocumentFragment();
-    // "Play something unheard" leads the row it belongs to: this carousel IS
-    // the unheard albums, so the action and the row mean the same thing, and
-    // it sits at the top of Home without needing a place of its own. Built as
-    // a tile so it inherits the carousel's sizing on every screen rather than
-    // carrying breakpoints of its own. It comes AFTER the empty check above,
-    // so a row holding only the action tile can't read as content.
     frag.appendChild(buildUnheardTile());
     if (aotd) {
       const tile = homeTile(aotd, "home-aotd");
@@ -573,8 +562,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       }
       frag.appendChild(tile);
     }
-    for (const a of albums) frag.appendChild(homeTile(a));
-    homeUnplayed.appendChild(frag);
+    if (today) { today.innerHTML = ""; today.appendChild(frag); }
+    if (!albums.length) { homeUnplayed.innerHTML = '<div class="home-carousel-empty">Nothing here yet — play some music and check back.</div>'; return; }
+    for (const a of albums) homeUnplayed.appendChild(homeTile(a));
   }
 
   async function loadHomeUnplayed() {

@@ -4736,3 +4736,6 @@ body.show-quality .album-quality.hidden { display: none; }
 
 /* Settings → Away from home (away-settings.js): a warning in the danger colour. */
 .away-error { color: var(--danger, #e57373); }
+/* Random Album's disc (Mallard's RandomAlbumTile): an outline drawing at about half the sleeve. */
+.unheard-glyph svg { display: block; width: 3.2rem; height: 3.2rem; }
+.home-today { margin-bottom: 26px; }

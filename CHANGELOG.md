@@ -7,6 +7,8 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - The web app's Home starts as Mallard's: the date and "Good evening", then Random Album beside the Album of the Day, then Not played in 6 months with its albums only. In the Mallard theme every Home row is a single row on tablets too
+- Fixed - Artist biographies (and reviews) from LMS's Music & Artist Information plugin broke mid-sentence at every line of the source text, in both apps; their lines are joined back into paragraphs
 - Added - Away from home, built in: Tailscale is part of the server's Docker image. Settings → Away from home (web app and Mallard) signs it in once (or set `TS_AUTHKEY`), and the server is on your tailnet by itself — nothing to install on the machine, no ports opened, ordinary bridge networking. Only your own devices on the tailnet are let in. `TS_HOSTNAME` names it, `TAILSCALE=off` leaves it out
 - Changed - The Shelf's switch has its own row, Settings → Shelf, in both the web app and Mallard (as Mandarin's), instead of sitting inside Wall display, and Mallard can now switch it on
 - Fixed - Mallard's Server settings showed Material's "Basic Settings" with nothing under it: Material's pages only lay out inside Material's own app, so Mallard now opens Material's settings the way Material does (its app with the server-settings dialog open)
