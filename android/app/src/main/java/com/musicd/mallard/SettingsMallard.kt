@@ -401,12 +401,9 @@ private fun LmsPane(client: () -> ServerClient?, onBack: () -> Unit, info: (Stri
         SettingsDivider()
         Block {
             SetupRow("Server settings", Modifier, Modifier.clickable { info("The full Lyrion server settings (library, plugins, players, advanced…), in the phone's browser. Uses Material Skin's pages when that plugin is installed.") }) {
-                SetupButton("Open", false, Modifier.clickable {
-                    val base = client()?.address?.baseUrl ?: return@clickable
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("$base/"))) }
-                })
+                SetupButton("Open", false, Modifier.clickable { openLmsSettings(context, client, scope) })
             }
-            SetupNote("Opens MusicD LMS Remote's page, whose Settings → LMS server has them all.", Modifier)
+            SetupNote("Opens Lyrion's own settings pages in the browser.", Modifier)
         }
         SettingsDivider()
         Block {
