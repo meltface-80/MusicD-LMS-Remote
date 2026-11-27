@@ -7,6 +7,8 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - The web app's Settings is drawn as Mallard's: full screen, the brass close or back disc before the title, a flat list with Mallard's own icons and words, compact buttons in the panes, and "MusicD LMS Remote v…" with View on GitHub at the foot
+- Fixed - The web app's side menu head is solid, as Mallard's is, so the rows no longer show through it when the menu scrolls
 - Added - Mallard installs LMS plugins too: Settings → LMS server → Plugins, the same list, buttons, warning and Restart LMS as the web app
 - Added - Install LMS plugins from the web app: Settings → LMS server → Plugins lists what is installed and what LMS's plugin repositories offer, with Install, Update, Remove, Enable / Disable, each plugin's own settings, and Restart LMS to apply. It works through LMS's own plugin page, so LMS downloads and checks every plugin itself, and asks once (as LMS does) that you accept plugins are third-party software
 - Changed - The LMS settings-page lookup (`/api/lms/settings-info`) moved into `lib/lms-settings-routes.js`, and now sends LMS's login when it checks for Material

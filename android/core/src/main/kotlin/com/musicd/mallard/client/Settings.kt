@@ -20,7 +20,7 @@ object SettingsLists {
         SettingsRow("metadata", "Artwork & metadata", "Discogs & FanArt.tv keys"),
         SettingsRow("homescreen", "Home Screen", "Which rows show, and in what order"),
         SettingsRow("smartpicks", "Smart Picks", "Daily discoveries & schedule"),
-        SettingsRow("lms", "LMS server", "Connection & rescan"),
+        SettingsRow("lms", "LMS server", "Server settings, plugins & rescan"),
         SettingsRow("display", "Wall display", "Always-on screen & video"),
         SettingsRow("appearance", "Appearance", "Mallard's colours"),
         SettingsRow("system", "System", "Updates & version"),
