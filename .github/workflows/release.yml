@@ -1,0 +1,135 @@
+name: Release
+
+# The version bump on main IS the release (CLAUDE.md §5). On every push to
+# main this workflow runs the tests, then — for a version not released yet —
+#   1. tags the commit v<version> and publishes a GitHub release (marked
+#      Latest) whose notes are the body of the "Release v<version>" commit;
+#   2. builds the container image and publishes it to the GitHub Container
+#      Registry as ghcr.io/meltface-80/musicd-lms-remote:<version> + :latest.
+# A merge that leaves the version alone (docs, CI) finds both already there
+# and does nothing, so neither the release nor :latest moves to an unbumped
+# commit.
+#
+# The in-app updater (lib/updater.js) resolves the newest version from
+# releases/latest FIRST and only falls back to tags and then package.json on
+# main when there is no release at all. Once one release exists, every later
+# version MUST get one too or installs stop seeing updates — which is why the
+# release is cut here, automatically, rather than by hand.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag and publish the release (once per version)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V=$(jq -r .version package.json)
+          TAG="v$V"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            exit 0
+          fi
+          # Notes: the body of the most recent "Release v<version>" commit,
+          # matched on the exact version so v1.0.8 never picks up v1.0.85.
+          SHA=$(git log --format='%H %s' | awk -v t="Release $TAG" '
+            { s = substr($0, 42) }
+            index(s, t) == 1 && (length(s) == length(t) || substr(s, length(t) + 1, 1) ~ /[ :—-]/) { print $1; exit }')
+          if [ -n "$SHA" ]; then
+            git log -1 --format='%b' "$SHA" | sed '/^Co-Authored-By:/d;/^Claude-Session:/d' > /tmp/notes.md
+          fi
+          if [ ! -s /tmp/notes.md ] || ! grep -q '[^[:space:]]' /tmp/notes.md; then
+            echo "MusicD LMS Remote $TAG." > /tmp/notes.md
+          fi
+          # Notes go through a FILE: commit bodies carry backticks, which a
+          # double-quoted --notes argument would run as command substitution.
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "MusicD LMS Remote $TAG" \
+            --notes-file /tmp/notes.md \
+            --latest
+
+  image:
+    needs: [test, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and image name
+        id: v
+        run: |
+          echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+          # NAMED, not derived from the repository name: every install command
+          # pulls this exact string, and a repo rename must not move it.
+          echo "image=ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/musicd-lms-remote" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Is this version already published?
+        id: have
+        run: |
+          if docker buildx imagetools inspect "${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+        if: steps.have.outputs.exists == 'false'
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.have.outputs.exists == 'false'
+
+      # x86 servers, 64-bit ARM (NAS boxes, Pi 4/5, Apple silicon) and 32-bit
+      # Raspberry Pi OS. The dependencies are pure JS, so the emulated builds
+      # are quick.
+      - name: Build and push
+        if: steps.have.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=MusicD LMS Remote
+            org.opencontainers.image.description=Music-discovery PWA and wall display for Lyrion Music Server
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true

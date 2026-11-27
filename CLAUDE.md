@@ -57,10 +57,15 @@ Layout section of README.md.
    body. **Keep v1.0.x numbering for now** — the owner will advise
    explicitly when to move to v1.1.x or beyond.
 
-5. **The version bump IS the release.** This repo has no tags or GitHub
-   releases; the in-app updater resolves the latest version from
-   `package.json` on `main` and downloads the `main` tarball. Merging the
-   bump publishes the update to every install.
+5. **The version bump IS the release.** Merging the bump to `main` runs
+   `.github/workflows/release.yml`, which (after `npm test`) tags the commit
+   `v<version>`, publishes a GitHub release marked Latest (notes = the body of
+   the `Release v1.0.x` commit) and pushes the Docker image
+   `ghcr.io/meltface-80/musicd-lms-remote:<version>` + `:latest`. Never tag or
+   release by hand. The in-app updater reads `releases/latest` FIRST (falling
+   back to tags, then `package.json` on `main`, only when no release exists),
+   so a version that reached `main` without its release would be invisible to
+   every install — if that workflow fails, fix it and re-run it.
 
 6. **Keep the GitHub Pages site in step with every release.** The docs /
    configurator page (`docs/index.html`, served at
