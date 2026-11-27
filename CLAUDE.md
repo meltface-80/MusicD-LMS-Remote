@@ -128,6 +128,37 @@ Layout section of README.md.
   `android/app/build.gradle.kts`, separate from the server's
   `package.json`. Bump `versionCode` with every published build.
 
+## Plugins ("apps"), the generic engine
+
+- `lib/apps.js` with `/api/apps`, `/api/apps/browse`, `/api/apps/act` and
+  `/api/apps/search` browses EVERY LMS plugin's XMLBrowser menus, with no
+  per-plugin code. Owner decision: Mallard supports all plugins.
+- The CLIENT HOLDS ONLY OPAQUE TOKENS. Each row's actions are built
+  server-side with Material's merge rule (`browseBuildCommand`):
+  - action params first, then `commonParams`, then `item[itemsParams]`;
+  - first writer wins, empty values and touchToPlay are dropped, then
+    `base.parentParams`;
+  - row params are used ONLY when the action names them via `itemsParams`.
+
+  The older `lms.js menuAction()` differs on both counts and is left alone
+  for Qobuz.
+- **Tokens:**
+  - They expire after 30 minutes, under LMS's own 3600 s menu-session cache.
+    Item ids are positions in a cached feed tree, so nothing is a durable
+    bookmark except `presetParams.favorites_url`, passed through as `url`.
+  - The engine is rebuilt (dropping every token) when `state.lms` changes,
+    NOT on `refreshConnection()`, which runs every 2.5 s.
+- **Allowlist** (`allowedCommand`): only app tags LMS advertised, which may
+  use any verb of their own, or STANDARD info/favourites menus with a known
+  verb. An undispatchable verb makes LMS CLOSE THE SOCKET; the engine never
+  guesses, and maps that close to 503 `{unavailable:true}`.
+- `myapps items` is asked WITH a player, so each plugin's `condition()`
+  applies. Without a player it falls back to `apps 0 200 menu:1`. Radio comes
+  from `radios 0 200 menu:radio`.
+- **Material-only hooks** (Home Extras, `material-skin` notifications,
+  custom actions) are NOT used by the engine. If added later they must be
+  gated on detecting MusicD meets Material and hidden when it is absent.
+
 ## Gotchas worth remembering
 
 - Artist strings split into separate clickable artists on ALL of " / ",

@@ -41,6 +41,7 @@ const makeFavourites = require("./lib/favourites");
 const { makeFeatures } = require("./lib/features");
 const makeAlbumMerges = require("./lib/albummerges");
 const makeRadio       = require("./lib/radio");
+const makeApps        = require("./lib/apps");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -4083,6 +4084,62 @@ async function requireService(tag, res) {
   });
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Plugins ("apps"): generic browsing of EVERY LMS plugin's menus (lib/apps.js).
+//
+// The native app (Mallard) draws any plugin's menus from these four routes; the
+// client only ever holds opaque tokens, never an LMS command (this server has
+// no sign-in). The engine is bound to the CURRENT LMS adapter and rebuilt when
+// that changes (a new server or settings), which also drops every token —
+// tokens name item ids in that server's menu sessions.
+let appsEngine = null, appsFor = null;
+function apps() {
+  if (!state.lms) return null;
+  if (appsFor !== state.lms) {
+    appsEngine = makeApps({ request: (pid, words) => state.lms.request(pid, words), log: log.child("apps") });
+    appsFor = state.lms;
+  }
+  return appsEngine;
+}
+/** The player a plugin call runs for: the one named, if LMS has it, else the first. */
+function appsPlayer(zone) {
+  const z = String(zone || "");
+  if (z && state.players.some(p => p.id === z)) return z;
+  return (state.players[0] && state.players[0].id) || "";
+}
+/** An engine error as an answer: its own status (403 refused, 410 expired, 400),
+ *  or 503 for LMS closing the socket (a plugin gone, signed out, or busy). */
+function appsError(res, e) {
+  if (e && e.status) return res.status(e.status).json({ error: e.message, expired: !!e.expired });
+  log.debug("apps:", e && e.message);
+  res.status(503).json({ error: "The plugin didn\u2019t answer: " + ((e && e.message) || "no answer"), unavailable: true });
+}
+app.get("/api/apps", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try { res.json(await apps().list(appsPlayer(req.query.zone), req.query.refresh === "1")); }
+  catch (e) { appsError(res, e); }
+});
+app.get("/api/apps/browse", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const start = parseInt(req.query.start, 10) || 0, count = parseInt(req.query.count, 10) || 100;
+  try { res.json(await apps().browse(req.query.token, appsPlayer(req.query.zone), start, count)); }
+  catch (e) { appsError(res, e); }
+});
+app.post("/api/apps/act", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const b = req.body || {};
+  try { res.json(await apps().act(b.token, appsPlayer(b.zone_or_output_id || b.zone))); }
+  catch (e) { appsError(res, e); }
+});
+app.post("/api/apps/search", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const b = req.body || {};
+  const term = String(b.term || "").trim();
+  if (!term) return res.status(400).json({ error: "term required" });
+  try { res.json(await apps().search(b.token, term, appsPlayer(b.zone_or_output_id || b.zone), parseInt(b.start, 10) || 0, parseInt(b.count, 10) || 100)); }
+  catch (e) { appsError(res, e); }
+});
 
 app.get("/api/services", async (req, res) => {
   try {
