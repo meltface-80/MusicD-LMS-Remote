@@ -4,7 +4,7 @@
 # run on the same machine as LMS or a completely separate one — just point it
 # at the LMS host:port below.
 #
-#   docker compose up -d --build  # build (straight from GitHub) + start
+#   docker compose up -d      # pull the published image + start
 #   docker compose logs -f    # follow logs
 #   docker compose down       # stop
 #
@@ -12,10 +12,12 @@
 
 services:
   musicd-lms-remote:
-    build: https://github.com/meltface-80/MusicD-LMS-Remote.git#main
-    # Or, if you have cloned the repo, build from the local checkout instead:
+    # Published to the GitHub Container Registry with every release.
+    image: ghcr.io/meltface-80/musicd-lms-remote:latest
+    pull_policy: always   # every `up` fetches the current release
+    # Or, to build from a local clone of the repo instead, replace the two
+    # lines above with:
     # build: .
-    image: musicd-lms-remote
     container_name: musicd-lms-remote
     restart: unless-stopped
     ports:
