@@ -283,7 +283,7 @@ tags, no automatic releases, no cluttered history.
   `shelf-off.html`), the whole library sent once by `/api/shelf/albums` (`lib/shelf.js`, `lib/shelf-routes.js`) and
   filtered in the browser. OFF BY DEFAULT (`features` id `shelf`): off, `/shelf` serves `shelf-off.html` and the list
   answers 403 WITHOUT reading the index — test that by counting reads, not by a hidden row. The switch is
-  `/api/settings/shelf`, which the web app (`shelf-entry.js`: menu row + Settings → Wall display) and Mallard both
+  `/api/settings/shelf`, which the web app (`shelf-entry.js`: menu row + Settings → Shelf) and Mallard (Settings → Shelf) both
   read. No `/api/live` here: the page re-asks the list every 30 s with its signature and is told `same`. Its player
   bar polls ADAPTIVELY (2 s playing / 6 s not), never the Roon build's fixed 4 s. LMS has no catalogue numbers or
   release kinds (sent null); formats come from the album's first track (`fmtType/fmtRate/fmtBits` → `factsOf`, the

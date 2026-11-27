@@ -22,6 +22,7 @@ object SettingsLists {
         SettingsRow("smartpicks", "Smart Picks", "Daily discoveries & schedule"),
         SettingsRow("lms", "LMS server", "Server settings, plugins & rescan"),
         SettingsRow("display", "Wall display", "Always-on screen & video"),
+        SettingsRow("shelf", "Shelf", "The record-shop browser, on or off"),
         SettingsRow("appearance", "Appearance", "Mallard's colours"),
         SettingsRow("system", "System", "Updates & version"),
         SettingsRow("connection", "Mallard", "This phone's server & about"))

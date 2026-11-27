@@ -1,6 +1,6 @@
 /*
  * shelf-entry.js — the way into the Shelf (/shelf) from the remote: its side-menu row and its switch in Settings →
- * Wall display. A file of its own because app.js only shrinks (tools/quality). The switch is the server's
+ * Shelf (its own Settings pane, as Mandarin's). A file of its own because app.js only shrinks (tools/quality). The switch is the server's
  * (/api/settings/shelf, lib/shelf-routes.js) and Mallard reads the same one, so the two apps show Shelf together.
  *
  * Copyright (c) 2026 Lewis Menzies (Music Duck / MusicD)

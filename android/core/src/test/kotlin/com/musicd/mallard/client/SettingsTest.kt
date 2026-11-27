@@ -13,7 +13,7 @@ class SettingsTest {
     }
 
     @Test fun `the sections in the server page's order`() {
-        assertEquals(listOf("playback", "player", "labels", "metadata", "homescreen", "smartpicks", "lms", "display", "appearance", "system", "connection"),
+        assertEquals(listOf("playback", "player", "labels", "metadata", "homescreen", "smartpicks", "lms", "display", "shelf", "appearance", "system", "connection"),
             SettingsLists.HOME.map { it.pane })
         assertEquals("", SettingsLists.RESCAN_MODES[0].first)
     }

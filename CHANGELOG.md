@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - The Shelf's switch has its own row, Settings → Shelf, in both the web app and Mallard (as Mandarin's), instead of sitting inside Wall display, and Mallard can now switch it on
 - Fixed - Mallard's Server settings showed Material's "Basic Settings" with nothing under it: Material's pages only lay out inside Material's own app, so Mallard now opens Material's settings the way Material does (its app with the server-settings dialog open)
 - Fixed - The LMS proxy dropped the body of JSON requests (Material's live updates and JSON-RPC calls arrived empty), because the server had already read them
 - Changed - Mallard opens LMS's settings pages inside the app (Settings → LMS server → Server settings, and a plugin's Settings), with Back stepping back through the pages, instead of in the phone's browser. The web app is unchanged
