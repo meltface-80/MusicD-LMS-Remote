@@ -1,0 +1,47 @@
+name: CI
+
+# Every push, on every branch, and every pull request: the quality gates
+# (file-length ratchet, @ts-check + tsc, ESLint against its suppressions —
+# tools/quality, tools/lint) and the test suite. Red blocks the merge. The
+# release and the dev image wait for this workflow to pass on the same commit
+# (.github/wait-for-ci.sh), so nothing reaches an install untested.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The app's own dependencies first: tsc reads their shapes. (No lockfile is
+      # committed for the app, so install, not ci.)
+      - run: npm install --no-audit --no-fund
+      - name: The development tools (tools/lint only, never the app's dependencies)
+        run: npm run tools
+      - name: File length, @ts-check and tsc, ESLint against its suppressions
+        run: npm run gates
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Syntax check of the pages
+        run: node --check public/app.js && node --check public/display.js
+      - run: npm test

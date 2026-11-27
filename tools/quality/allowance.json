@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "allowance": {
+    "android/app/src/main/java/com/musicd/mallard/NowPlayingService.kt": {
+      "lines": 431
+    },
+    "android/app/src/main/java/com/musicd/mallard/SettingsMallard.kt": {
+      "lines": 593
+    },
+    "index.js": {
+      "lines": 5275
+    },
+    "lib/labels.js": {
+      "lines": 1129
+    },
+    "lib/lms.js": {
+      "lines": 1464
+    },
+    "public/app.js": {
+      "lines": 9760
+    },
+    "public/display.js": {
+      "lines": 570
+    }
+  }
+}

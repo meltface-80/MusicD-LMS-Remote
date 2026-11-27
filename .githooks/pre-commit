@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# The pre-commit gate (docs/quality-plan.md): the fast half, about fifteen
+# seconds — the file-length ratchet, @ts-check and tsc, ESLint against its
+# suppressions. The whole suite runs in CI, which the image waits for.
+#
+# Turned on per clone with:  git config core.hooksPath .githooks
+# (the Claude Code session hook in .claude/settings.json does it.)
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+if [ ! -x tools/lint/node_modules/.bin/eslint ]; then
+  echo "pre-commit: the development tools are missing; running 'npm run tools' once"
+  npm run tools --silent
+fi
+
+npm run --silent gates
+echo "pre-commit: the gates pass"

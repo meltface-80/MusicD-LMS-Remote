@@ -1,0 +1,30 @@
+{
+  "_comment": "Type checking without a rewrite (docs/quality-plan.md): plain JavaScript, checked only in the files that open with // @ts-check; tools/quality/tscheck.js decides which files must. checkJs is off, so the rest is read for what the checked files import, not judged. strict is off to start (Rouen's choice too) and tightens as the baseline empties. Run from the repository root: npm run typecheck.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": false,
+    "target": "es2022",
+    "module": "node20",
+    "lib": [
+      "es2022"
+    ],
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
+    "skipLibCheck": true
+  },
+  "include": [
+    "../../tools/**/*.js",
+    "../../lib/**/*.js",
+    "../../index.js",
+    "../../launcher.js"
+  ],
+  "exclude": [
+    "../../**/node_modules/**"
+  ]
+}

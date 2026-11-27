@@ -284,6 +284,14 @@ ghcr.io/meltface-80/musicd-lms-remote:latest
 It is built for x86-64, 64-bit ARM and 32-bit ARM (Raspberry Pi OS). Needs
 Docker 20.10 or later (the first whose `docker run` takes `--pull`).
 
+**Test builds.** Every change merged into the `dev` branch is also published,
+once its tests pass, as `ghcr.io/meltface-80/musicd-lms-remote:dev` (and under
+its test version, e.g. `:1.0.87-t3`). Use `:dev` in place of `:latest` in any
+command below to test what is coming; Settings → System then says it is a test
+build, and you update it by pulling `:dev` again rather than from the app. The
+matching Android build is
+[mallard-test.apk](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk).
+
 ### Option A — same machine as LMS
 
 Host networking lets the app auto-discover LMS on the local network, so

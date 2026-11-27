@@ -2,24 +2,125 @@
 
 MusicD LMS Remote: a music-discovery PWA + wall display for Lyrion Music
 Server (LMS). Node/Express backend (`index.js`) talks to LMS over JSON-RPC
-(`lib/lms.js`); the frontend is a no-build vanilla PWA (`public/`). See the
-Layout section of README.md.
+(`lib/lms.js`); the frontend is a no-build vanilla PWA (`public/`). Mallard
+(`android/`) is the native Android remote for it; the web page is the remote
+for iOS devices, installed as a PWA. See the Layout section of README.md.
 
-## Process — applies to every task
+The rules below are Mandarin's (meltface-80/Mandarin `CLAUDE.md`, owner
+decision), adapted to this repo. Keep the habits, avoid bloat: no accidental
+tags, no automatic releases, no cluttered history.
 
-1. **Use agent workers for all tasks.** Fan out background subagents to
-   research/map the codebase (and the web, where sources need verifying)
-   before implementing. Implement in the main session on their findings —
-   don't have multiple agents edit the same files.
+## 1. Branches: `main` is production, `dev` is integration
 
-2. **Verify before committing.** `npm test` must pass. For anything touching
-   the server or frontend behaviour, run an end-to-end check against a fake
-   LMS JSON-RPC server (spawn `index.js` with `LMS_HOST`/`LMS_PORT` pointed
-   at a mock; drive the UI with Playwright — Chromium is at
-   `/opt/pw-browsers/chromium`). Never leave a `data/` directory behind in
-   the repo (it's gitignored, but clean up after test runs).
+- **`main`** is what installs run. Nothing is committed to it directly; it
+  moves only when the OWNER merges `dev` into it (protected by a ruleset, as
+  is `dev`).
+- **`dev`** is where finished work lands for the owner to test. Every change
+  reaches it through a pull request.
+- A work branch is cut from `dev` and targets `dev`. In a Claude Code cloud
+  session that is the session's designated branch: restart it from
+  `origin/dev` after each merge (`git checkout -B <branch> origin/dev`) —
+  never stack onto merged history. One `bug-list.md` item per pull request.
+- After a release, `main` is merged back into `dev` with a MERGE commit (not
+  a squash) so dev's history carries the release tag — `tools/test-version.js`
+  counts from it.
 
-3. **Never let the iOS display geometry regress.** `lib/safearea.test.js`
+## 2. Tags and releases: only when asked
+
+- **Never auto-tag.** No workflow, hook or script creates a tag or GitHub
+  release on an ordinary commit or merge. `release.yml` runs only on a pushed
+  `v*.*.*` tag or Run workflow, refuses a tag that isn't the commit's own
+  `package.json` version, and waits for CI to pass on that commit
+  (`.github/wait-for-ci.sh`).
+- The release publishes the GitHub release (marked Latest; notes = that
+  version's CHANGELOG.md section) and the Docker image
+  `ghcr.io/meltface-80/musicd-lms-remote:<version>` + `:latest`. The in-app
+  updater reads `releases/latest` FIRST, so a version on `main` without its
+  release is invisible to every install — if the workflow fails, fix it and
+  re-run it.
+- **Test builds are not releases.** Every push to `dev` (after CI passes)
+  publishes the server image `:dev` + `:<test version>` (`server-dev.yml`;
+  `tools/test-version.js` gives e.g. `1.0.87-t3`) and Mallard's
+  `mallard-test.apk` on the rolling `mallard-test` PRE-release (`mallard.yml`,
+  `0.2.0-tN`). Neither is ever "latest". A `:dev` server knows it is one
+  (`APP_CHANNEL=dev`, `lib/build.js`) and its updater says "pull :dev again"
+  instead of offering a release.
+
+## 3. Commits and pull requests
+
+- **Squash and merge** into `dev`: one cohesive commit per item, not the
+  "fix typo" trail. (The merge-back of `main` is the one exception, above.)
+- Commit messages and PR descriptions say *what* and *why*, no chatter.
+- Open the PR into `dev` and merge it yourself once it is green; don't wait
+  to be asked. Never push straight to `main` or `dev`.
+
+## 4. Work goes to `dev`; a version bump only when the owner says
+
+1. Each bug or feature is an item in `bug-list.md`, worked on its own branch.
+2. Tested (`npm run check` green, each new test seen failing once, and the
+   end-to-end check below), it goes into `dev` by a pull request you open and
+   merge yourself. **No version change on these merges**: what each changes
+   goes in CHANGELOG.md under `## Unreleased`.
+3. The owner updates from `dev`. After every merge, tell them how, with both
+   links:
+   - server: `docker pull ghcr.io/meltface-80/musicd-lms-remote:dev`, then
+     recreate the container (`docker compose up -d`, or `docker rm -f` and the
+     same `docker run` with `:dev`), and say which test version it is;
+   - Mallard: https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk
+     (page: https://github.com/meltface-80/MusicD-LMS-Remote/releases/tag/mallard-test).
+   Check that both workflows actually published before saying so.
+4. When the owner says to bump: on one branch into `dev`, the version
+   everywhere it is shown (`package.json`; Mallard `versionName` and
+   `mallardBase` in `android/app/build.gradle.kts`), `## Unreleased` renamed
+   to the version, and README + the Pages site (`docs/index.html`, including
+   the `#version-badge` fallback text) brought fully up to date, so a single
+   merge of `dev` to `main` brings everything up to date. The owner merges
+   `dev` to `main`; then you run the Release workflow for that version.
+   **Keep v1.0.x numbering** until the owner says otherwise.
+5. Mark a `bug-list.md` item Fixed only when the owner says so.
+
+## 5. Quality gates (machine-enforced)
+
+- **`npm run check` is green before every push**: the gates (`npm run
+  gates`: file length, `@ts-check` + `tsc`, ESLint) and the whole suite. The
+  pre-commit hook (`.githooks/`, enabled by the SessionStart hook in
+  `.claude/settings.json`) runs the gates; CI (`ci.yml`) runs all of it on
+  every push and PR, and the release and the `:dev` image wait for it. Never
+  `--no-verify`, never a hook or workflow edit that skips a gate. First run in
+  a fresh checkout: `npm install && npm run tools`.
+- **Baselines only shrink.** A file in `tools/quality/allowance.json`, or
+  under `exempt` in `tools/quality/policy.json`, is never grown: what a change
+  needs goes in a new module under 400 lines (500 is the cap, 800 for tests),
+  or the file is split first. `index.js` is the main offender — move routes
+  out into `lib/` modules (as `lib/onlinelib.js` does) rather than adding to
+  it. Never raise a length entry, add a lint suppression or `eslint-disable`,
+  or add a module to `tools/quality/ts-baseline.json` to get green; if it
+  seems necessary, ask first. Baselines are written by their tools (`node
+  tools/quality/file-length.js accept <file>`, `npm run lint:prune`), never
+  by hand.
+- **Never loosen a rule to get green.** A lint rule a file breaks on purpose
+  is turned off for that file in `tools/lint/eslint.config.js`, with the
+  reason beside it. A test is never skipped, disabled or loosened; find the
+  cause.
+- **Every new server module opens with `// @ts-check`** and carries JSDoc on
+  what it exports. A listed module touched for a change gains the pragma and
+  leaves the list.
+- **A test proves something:** break the code once and watch it fail before
+  trusting it. New `lib/*.test.js` files are added to `npm test`.
+- **End to end:** anything touching server or frontend behaviour is run
+  against a fake LMS JSON-RPC server (spawn `index.js` with
+  `LMS_HOST`/`LMS_PORT` pointed at a mock; drive the UI with Playwright —
+  Chromium is at `/opt/pw-browsers/chromium`). Never leave a `data/`
+  directory behind.
+- **Use agent workers** to research/map the codebase (and the web, where
+  sources need verifying) before implementing; implement in the main session
+  — don't have several agents edit the same files.
+- **This file shrinks as the tools take over.** A rule a tool can check moves
+  out of here and into a gate.
+
+## 6. iOS display geometry
+
+**Never let the iOS display geometry regress.** `lib/safearea.test.js`
    runs in `npm test` and must stay green: the modal family
    (`.modal-close`, `.modal-share`, `.modal-edit`, `.modal-fav`,
    `.modal.np-mode .modal-home`, `.modal.np-mode .modal-body`,
@@ -50,45 +151,6 @@ Layout section of README.md.
      `e2e-v69-safearea.js`, which substitutes real iPhone insets so geometry
      can be measured — but it can only catch a rule that moves, never one that
      shouldn't have.
-
-4. **Bump the version once a new build is ready.** When a feature set /
-   fix set is complete and verified, bump `version` in `package.json` and
-   commit it as `Release v1.0.x` with short release notes in the commit
-   body. **Keep v1.0.x numbering for now** — the owner will advise
-   explicitly when to move to v1.1.x or beyond.
-
-5. **The version bump IS the release.** Merging the bump to `main` runs
-   `.github/workflows/release.yml`, which (after `npm test`) tags the commit
-   `v<version>`, publishes a GitHub release marked Latest (notes = the body of
-   the `Release v1.0.x` commit) and pushes the Docker image
-   `ghcr.io/meltface-80/musicd-lms-remote:<version>` + `:latest`. Never tag or
-   release by hand. The in-app updater reads `releases/latest` FIRST (falling
-   back to tags, then `package.json` on `main`, only when no release exists),
-   so a version that reached `main` without its release would be invisible to
-   every install — if that workflow fails, fix it and re-run it.
-
-6. **Keep the GitHub Pages site in step with every release.** The docs /
-   configurator page (`docs/index.html`, served at
-   https://meltface-80.github.io/MusicD-LMS-Remote/) shows the current
-   version and must be updated in the same release commit: bump the
-   `#version-badge` fallback text to match `package.json` (the badge also
-   self-updates from `package.json` on `main` via fetch, but the static
-   fallback must not drift), and reflect any new user-facing features or
-   changed setup/config steps in the page's content.
-
-## Git
-
-- Develop on the designated `claude/…` branch; after a PR merges, restart
-  the same branch from `origin/main` (`git checkout -B <branch>
-  origin/main`) — never stack onto merged history.
-- **Land every finished build yourself** (owner decision, v1.0.38). Once
-  `npm test` and the end-to-end checks are green and the version is bumped:
-  push the branch, open the PR, and merge it. Don't wait to be asked, and
-  don't leave `main` sitting behind a finished build — the merge IS the
-  release (§5 above), so an unmerged bump means no install gets the update.
-- Never push straight to `main`; changes reach it only through a merged PR,
-  so the history keeps a reviewable record of each release.
-- Report the merged version back to the owner so they know what's live.
 
 ## Mallard (android/)
 
@@ -126,7 +188,10 @@ Layout section of README.md.
   - Change one copy, change all three.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
-  `package.json`. Bump `versionCode` with every published build.
+  `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N
+  (`MALLARD_TEST_BUILD`, stamped by CI on dev) and `+999` for a release, so
+  every published build installs over the last; raise `mallardBase` and
+  `versionName` together with each Mallard release.
 
 ## Plugins ("apps"), the generic engine
 
