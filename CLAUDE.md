@@ -1422,15 +1422,17 @@ tags, no automatic releases, no cluttered history.
   `showLibraryWall` must set `libraryWallActive` AFTER calling it, because
   `enterFullWall` calls `exitLibraryWall()`.
 - The app is an INSTALLABLE PWA wearing MALLARD'S MARK (owner decision, replacing the plain MusicD duck of v1.0.64):
-  Rouen's artwork — the duck mirrored and cut down the middle at a brass line — with the right half redrawn as the
-  right half of LYRION'S WAVEFORM in Lyrion's pale green (half a waveform for half a duck; the full ten bars turned to
+  the MusicD duck beside LYRION'S WAVEFORM, as Rouen pairs it with Roon's bars — but the REVERSE of Rouen's layout and
+  in MANDARIN'S BRASS, because a first cut (Rouen's artwork as it is) read as Rouen's (owner: "too similar"). Rouen's
+  duck mirrored to the right half and recoloured brass, at a brass line, with half of Lyrion's waveform on the left in
+  Lyrion's pale green, on the dark ground (half a waveform for half a duck; the full ten bars turned to
   hatching at launcher size). ONE master, `tools/brand/mallard-mark.png`, and ONE generator, `tools/make-icons.py`,
   write every icon: the PWA set in `public/icons` (`any` and `maskable` are SEPARATE artwork — Android guarantees only
   a maskable icon's centre, so that pair is the mark at 80%; iOS reads none of the manifest's icons, so
   `apple-touch-icon` + the apple-mobile-web-app metas are what make an iPhone install it), Mallard's launcher mipmaps
-  (the adaptive foreground is the mark at 72/108 on `icon_background`, the same #17191c ground), the side menu's
-  badge, and the share card's corner tile (`duck-tile.png` / `duck_tile.png`, a brass-rimmed rounded square as
-  Rouen's). Never hand-resize: run the generator so every size frames the mark identically.
+  (the adaptive foreground is the mark at 72/108 on `icon_background`, the same dark ground; every full icon draws
+  the mark at 88% so a launcher's mask never cuts the headphone cup), the side menu's
+  badge, and the share card's corner tile (`duck-tile.png` / `duck_tile.png`, a brass-rimmed rounded square). Never hand-resize: run the generator so every size frames the mark identically.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It
