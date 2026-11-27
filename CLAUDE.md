@@ -210,9 +210,15 @@ tags, no automatic releases, no cluttered history.
   - every Mallard release is a PRE-release, never "latest", and no Mallard tag
     starts with `v` — `releases/latest` and `v*` tags are the SERVER's, and
     `lib/updater.js` would offer a Mallard release to every server install;
-  - test and release builds must be signed with ONE key (today the committed
-    test key while `MALLARD_KEYSTORE_BASE64` is unset); a different key makes
-    Android refuse the update;
+  - NOTHING PUBLISHED IS EVER SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's
+    rule). It is public, so an app signed with it that asks to install
+    updates is indistinguishable from malware: Play Protect blocked 0.2.0-t32
+    as "harmful". `mallard.yml` signs with the owner's private key —
+    `MALLARD_KEYSTORE_*` secrets, else Mandarin's `MUSICD_KEYSTORE_*` (alias
+    `musicd`), one key for all the owner's apps — and FAILS rather than
+    publish without one. Only a pull request's build may use the debug key;
+    test and release builds share the one private key, or Android refuses
+    the update;
   - a Mallard release is cut BY HAND: Run workflow on `mallard.yml` from main
     with "stable" ticked (it publishes `mallard-v<version>` and refreshes
     `mallard-latest`). Straight after, the next PR raises `mallardBase` and

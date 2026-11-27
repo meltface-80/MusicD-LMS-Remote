@@ -35,11 +35,11 @@ android {
     }
 
     /*
-     * Builds without the release secrets are signed with THIS key, committed beside this file, so every test build
-     * installs over the one before (a fresh debug key per CI run makes Android refuse the update). It is a debug key
-     * and public by design — it only lets sideloaded builds update in place. For a key nobody else holds, set the
-     * MALLARD_KEYSTORE secrets (see .github/workflows/mallard.yml); an APK signed with one will not install over one
-     * signed with the other.
+     * THIS KEY IS PUBLIC (committed beside this file, password "android") and is for a pull request's build only, which
+     * is never published. Every build that may be published is signed with the owner's private key
+     * (.github/workflows/mallard.yml refuses otherwise): Play Protect blocked 0.2.0-t32, signed with this key and asking
+     * to install updates, as harmful — anyone can sign with a public key, so an app signed with one that installs APKs
+     * is indistinguishable from malware. An APK signed with one key will not install over one signed with the other.
      */
     signingConfigs.getByName("debug") {
         storeFile = file("mallard-debug.keystore")

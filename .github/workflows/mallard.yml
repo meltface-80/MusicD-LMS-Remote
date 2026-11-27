@@ -16,10 +16,10 @@ name: Mallard (Android)
 # the SERVER's (lib/updater.js reads it), and a Mallard release there would be
 # offered to every server install. Tags never start with "v" for the same reason.
 #
-# Signing: with the MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD
-# secrets set, the APK is signed with that key; without them, with the public
-# test key committed at android/app/mallard-debug.keystore, so each test build
-# still installs over the last.
+# Signing: with the owner's private key from the repository's secrets, ALWAYS,
+# for anything that may be published (see "Restore the signing key"). Only a
+# pull request's build, never published, falls back to the public debug key
+# committed at android/app/mallard-debug.keystore.
 
 on:
   push:
@@ -67,17 +67,31 @@ jobs:
       - name: Core tests (plain JVM)
         run: ./gradlew :core:test --no-daemon --stacktrace
 
-      - name: Release signing key (when the secrets are set)
-        if: ${{ github.event_name != 'pull_request' }}
+      # NEVER PUBLISHED SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's rule, its item 364). That key is public —
+      # anyone can sign with it — so an APK signed with it, asking to install updates (REQUEST_INSTALL_PACKAGES), is
+      # what Google Play Protect blocks as harmful: 0.2.0-t32 was. A build that may be published is signed with the
+      # owner's private key or not at all; only a pull request's build, which is never published, may use the debug
+      # key. The key: MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD, or else the owner's existing Android key
+      # under the names Mandarin and Android Random Remote give it (MUSICD_KEYSTORE_BASE64 / MUSICD_KEYSTORE_PASSWORD,
+      # alias "musicd") — one key for all of the owner's apps.
+      - name: Restore the signing key
         env:
-          KEY_B64: ${{ secrets.MALLARD_KEYSTORE_BASE64 }}
+          MALLARD_B64: ${{ secrets.MALLARD_KEYSTORE_BASE64 }}
+          MUSICD_B64: ${{ secrets.MUSICD_KEYSTORE_BASE64 }}
+          MALLARD_ALIAS: ${{ secrets.MALLARD_KEY_ALIAS }}
         run: |
-          if [ -n "$KEY_B64" ]; then
-            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/mallard.keystore"
-            echo "MALLARD_KEYSTORE=$RUNNER_TEMP/mallard.keystore" >> "$GITHUB_ENV"
+          if [ -n "$MALLARD_B64" ]; then KEY="$MALLARD_B64"; ALIAS="${MALLARD_ALIAS:-mallard}"; FROM=MALLARD
+          elif [ -n "$MUSICD_B64" ]; then KEY="$MUSICD_B64"; ALIAS="${MALLARD_ALIAS:-musicd}"; FROM=MUSICD
           else
-            echo "No release key set: signing with the committed test key."
+            if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+              echo "::error::No signing key: add MUSICD_KEYSTORE_BASE64 and MUSICD_KEYSTORE_PASSWORD (Mandarin's) to this repository's secrets. A build that may be published is never signed with the committed debug key — Play Protect blocks it as harmful."
+              exit 1
+            fi
+            echo "::notice::No signing key: a pull request's build, signed with the committed debug key and never published."
+            exit 0
           fi
+          printf '%s' "$KEY" | base64 -d > "$RUNNER_TEMP/mallard.keystore"
+          { echo "MALLARD_KEYSTORE=$RUNNER_TEMP/mallard.keystore"; echo "MALLARD_KEY_ALIAS=$ALIAS"; echo "SIGNING_FROM=$FROM"; } >> "$GITHUB_ENV"
 
       # The run number, which rises with every run of this workflow: each test
       # build's versionCode is above the last, as Android requires before it
@@ -91,8 +105,12 @@ jobs:
 
       - name: Build the APK
         env:
-          MALLARD_KEYSTORE_PASSWORD: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          MALLARD_PW: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
+          MUSICD_PW: ${{ secrets.MUSICD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ "${SIGNING_FROM:-}" = MALLARD ]; then export MALLARD_KEYSTORE_PASSWORD="$MALLARD_PW"
+          elif [ "${SIGNING_FROM:-}" = MUSICD ]; then export MALLARD_KEYSTORE_PASSWORD="$MUSICD_PW"; fi
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
       # The name and code as the APK itself carries them (what Android and the
       # updater will compare), not as the build script spells them.

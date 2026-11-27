@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Fixed - Google Play Protect blocked Mallard 0.2.0-t32 as harmful: it was signed with the public test key while asking to install its own updates. Every published Mallard is now signed with the owner's private key, as Mandarin is (one-time: uninstall the old Mallard, then install the new one)
 - Added - Mallard updates itself, as Mandarin's app does: Home offers a newer build (Update / Later) and Settings → System has a Mallard row beside the server's. Test builds are offered each new test build; the download is checked against its SHA-256 before Android installs it over the top
 - Changed - Mallard has its own mark, on the Android app, the web app (installed or not), the share card and the Pages site: half the MusicD duck in Mandarin's brass beside half of Lyrion's waveform in its green
 - Added - Mallard has the Share card: Share on the album screen and on Now playing, with Copy image and Download (to Pictures/Mallard)
