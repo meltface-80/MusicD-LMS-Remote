@@ -4,6 +4,6 @@
          colour behind it while it loads. -->
     <color name="app_background">#FF17191C</color>
     <!-- The launcher icon's brass, behind the black duck (v0.6.9). -->
-    <color name="icon_background">#FFC9A45C</color>
+    <color name="icon_background">#FF17191C</color>
     <color name="accent">#FFC9A45C</color>
 </resources>
