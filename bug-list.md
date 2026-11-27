@@ -43,3 +43,6 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     The owner chose the flipped brass duck with the green waveform. — *On dev (testing).*
 16. **Mallard updates itself** (owner request, as Mandarin): `mallard.json` beside every APK, Home's banner with
     Mandarin's update symbol, a Mallard row in Settings → System, a by-hand Mallard release channel. — *On dev (testing).*
+17. **Play Protect blocked Mallard as harmful** (owner report, 0.2.0-t32). Cause: published APKs were signed with the
+    public debug key, and t32 added REQUEST_INSTALL_PACKAGES for the self-updater. Fix: Mandarin's rule — publish only
+    with the owner's private key (secrets), fail otherwise. — *On dev; needs the signing secrets in this repository.*
