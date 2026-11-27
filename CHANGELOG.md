@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - The web app looks as the Mallard app does: a new default theme, Mallard — graphite and brass, Manrope with titles in Young Serif, brass buttons and icons, Home's rows titled in small brass capitals, the mini player's progress as a level meter, and Mallard's mark and name at the head of the menu. The other four themes stay in Settings → Appearance
 - Added - Mallard has the Shelf too: Shelf in its side menu while the Shelf is switched on in Settings, the same racks, choices and orders as the web page, turning a case over into Mallard's own album screen
 - Fixed - Mallard's Settings → LMS server → Server settings opens Lyrion's own settings pages (Material's when installed), not the web app's Home
 - Fixed - Google Play Protect still blocked Mallard as harmful once signed with the private key. Mallard no longer installs its updates itself: Update opens the new APK in your browser, which downloads and installs it, so Mallard needs no permission to install apps
