@@ -39,7 +39,7 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
     the server and the Android app) plus its OWN phone player — not Slimproto. Phases: (0) document remote control over
     an ordinary Tailscale install; (1) Mallard as an LMS Slimproto player on the LAN (Mandarin Bridge's `Slim.kt`,
     adapted to real LMS — new ground, never run against LMS); (2) Tailscale built into the server image, relaying
-    LMS's 3483/9000; (3) Tailscale built into Mallard.
+    LMS's 3483/9000; (3) Tailscale built into Mallard. Phase 0 (the how-to): *On dev (testing).*
 15. **Mallard's own logo** (owner request): as Rouen's is the MusicD duck blended with Roon's mark, Mallard's is the duck
     blended with Lyrion's waveform. Launcher icon, the PWA's icons, the share card's corner tile, the Pages site.
     The owner chose the flipped brass duck with the green waveform. — *On dev (testing).*
