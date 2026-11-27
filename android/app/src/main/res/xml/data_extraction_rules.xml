@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What Android's backup (Android 12 and later) leaves out (v0.5.57): the
+  sign-in and the Tailscale identity belong to this phone alone — restored to
+  another, two phones would share them — and caches are rebuilt.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <!-- This phone's own sign-in, server and device identity: a new phone signs in afresh. -->
+        <exclude domain="sharedpref" path="musicd.xml" />
+        <!-- The built-in Tailscale's identity: two phones can't share one. -->
+        <exclude domain="file" path="tailscale/" />
+        <!-- Caches, rebuilt on the phone (the track cache alone can be gigabytes). -->
+        <exclude domain="file" path="stream-cache/" />
+        <exclude domain="file" path="site/" />
+        <exclude domain="file" path="local-art/" />
+        <exclude domain="file" path="local-music.json" />
+        <exclude domain="file" path="last-crash.txt" />
+    </cloud-backup>
+    <device-transfer>
+        <!-- This phone's own sign-in, server and device identity: a new phone signs in afresh. -->
+        <exclude domain="sharedpref" path="musicd.xml" />
+        <!-- The built-in Tailscale's identity: two phones can't share one. -->
+        <exclude domain="file" path="tailscale/" />
+        <!-- Caches, rebuilt on the phone (the track cache alone can be gigabytes). -->
+        <exclude domain="file" path="stream-cache/" />
+        <exclude domain="file" path="site/" />
+        <exclude domain="file" path="local-art/" />
+        <exclude domain="file" path="local-music.json" />
+        <exclude domain="file" path="last-crash.txt" />
+    </device-transfer>
+</data-extraction-rules>

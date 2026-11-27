@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same, for Android 11 and earlier (see data_extraction_rules.xml). -->
+<full-backup-content>
+    <!-- This phone's own sign-in, server and device identity: a new phone signs in afresh. -->
+    <exclude domain="sharedpref" path="musicd.xml" />
+    <!-- The built-in Tailscale's identity: two phones can't share one. -->
+    <exclude domain="file" path="tailscale/" />
+    <!-- Caches, rebuilt on the phone (the track cache alone can be gigabytes). -->
+    <exclude domain="file" path="stream-cache/" />
+    <exclude domain="file" path="site/" />
+    <exclude domain="file" path="local-art/" />
+    <exclude domain="file" path="local-music.json" />
+    <exclude domain="file" path="last-crash.txt" />
+</full-backup-content>

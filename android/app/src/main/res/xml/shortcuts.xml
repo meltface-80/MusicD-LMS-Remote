@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the launcher icon: pick a different server. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="change_server"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_change_server">
+        <intent
+            android:action="com.musicd.mallard.action.CHANGE_SERVER"
+            android:targetPackage="com.musicd.mallard"
+            android:targetClass="com.musicd.mallard.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's own Shelf icon (public/index.html, the touch layout's row; item 210), for the native row: the side menu's, at the row's weight. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M4,5v13M7.5,5v13M15,5v13M18.5,5v13M10.3,4h2.4a0.8,0.8 0,0 1,0.8 0.8v13.4a0.8,0.8 0,0 1,-0.8 0.8h-2.4a0.8,0.8 0,0 1,-0.8 -0.8v-13.4a0.8,0.8 0,0 1,0.8 -0.8zM2,21h20"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="2" android:strokeLineCap="round" android:fillColor="#00000000" />
+</vector>

@@ -996,6 +996,10 @@ const notConnected = (res) => res.status(503).json({
 
 app.get("/api/status", (req, res) => {
   res.json({
+    // Names the server, so a native client finding it on the network (Mallard's
+    // address sweep) can tell it from anything else answering on the port.
+    app:        "musicd-lms-remote",
+    version:    pkg.version,
     paired:     state.connected,
     core_id:    state.server ? state.server.uuid : null,
     core_name:  state.server ? ("Lyrion Music Server " + (state.server.version || "")) : null,
@@ -1251,10 +1255,19 @@ app.get("/api/album", async (req, res) => {
   try {
     const tracks = await tracksForRecord(rec);
     res.json({
-      album:  { title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
+      album:  { offset: rec.offset, title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
                 merge_id: rec.mergeId || null, part_count: rec.partCount || null,
                 quality: rec.quality || null, hires: !!rec.hires },
-      tracks: tracks.map(t => ({ title: t.title, subtitle: t.artist || "" })),
+      // track_id is the track's PLACE in this list (identity is offset + place;
+      // no LMS id ever leaves the server). length/tracknum/disc are for the
+      // native app (Mallard) and are omitted when LMS doesn't know them.
+      tracks: tracks.map((t, i) => {
+        const o = { track_id: i, title: t.title, subtitle: t.artist || "" };
+        if (Number.isFinite(t.duration) && t.duration > 0) o.length = t.duration;
+        if (Number.isFinite(t.trackNum)) o.tracknum = t.trackNum;
+        if (Number.isFinite(t.disc)) o.disc = t.disc;
+        return o;
+      }),
       actions: [
         { kind: "play_now",  title: "Play Now" },
         { kind: "queue",     title: "Queue" },

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's own background, so the window never flashes a different
+         colour behind it while it loads. -->
+    <color name="app_background">#FF17191C</color>
+    <!-- The launcher icon's brass, behind the black duck (v0.6.9). -->
+    <color name="icon_background">#FFC9A45C</color>
+    <color name="accent">#FFC9A45C</color>
+</resources>

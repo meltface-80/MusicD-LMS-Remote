@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's own Settings icon for "display" (public/index.html), for the native Settings list (item 76). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M4,3 h16 a2,2,0,0,1,2,2 v10 a2,2,0,0,1,-2,2 h-16 a2,2,0,0,1,-2,-2 v-10 a2,2,0,0,1,2,-2 Z M8,21 L16,21 M12,17 L12,21" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8"
+        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
+</vector>

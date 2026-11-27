@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mallard</string>
+    <string name="connect_title">Connect to MusicD LMS Remote</string>
+    <string name="tile_random_album">Random album</string>
+    <string name="widget_bar_description">Now playing on your Lyrion player, with transport. Tap the cover for a random album.</string>
+    <string name="shortcut_change_server">Change server</string>
+    <string name="channel_name">Now playing</string>
+</resources>
