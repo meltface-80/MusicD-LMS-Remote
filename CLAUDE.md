@@ -352,6 +352,23 @@ Layout section of README.md.
   to `INDEX_MAX_AGE_MS` (12h). `indexScanStamp` records the lastScan each index
   was built from; `refreshConnection` rebuilds when it moves, and
   `ensureIndex()` treats a changed stamp as stale.
+- STREAMING ALBUMS IN THE LIBRARY come ONLY from LMS's Online Music Library
+  integration (v1.0.86, verified against slimserver and plugin-Qobuz source).
+  It imports each service's FAVOURITE albums into the `albums` table
+  (`extid qobuz:album:<id>`). The client-less `albums` query includes them,
+  with no library_id and no remote filter, so never add a filter there.
+  - **Why they can be missing:** the integration is off; its per-service
+    switch `plugin.onlinelibrary:enable_PLUGIN_QOBUZ` is 0, which LMS sets
+    PERMANENTLY if it ever polled with no account signed in; or they were
+    never favourited (only browsed in the plugin, as Material shows them).
+  - **Why the app could miss them:** imports run from LMS's POLLER without a
+    rescan, so `lastScan` isn't known to move. `refreshConnection`
+    therefore also compares the album count (`albums 0 1`) every
+    `ALBUM_COUNT_CHECK_MS` (5 min, env-overridable for tests) and rebuilds
+    when it moves.
+  - **Saying why:** `/api/library/online` composes the explanation SERVER-SIDE,
+    so the web app and Mallard (Settings → LMS server) say the same thing.
+    Owner rule: the two apps MIRROR each other.
 - Streaming services are GATED ON THE SERVER'S ACTUAL STATE (v1.0.51). Three
   states, and no single LMS command reports all three: plugin absent (the
   `<tag> items` verb was never registered, so LMS logs "not dispatchable" and
