@@ -382,6 +382,25 @@ To build from source instead (e.g. to test a branch), clone the repo and run
 `docker build -t musicd-lms-remote .`, then use `musicd-lms-remote` as the
 image name.
 
+## Away from home
+
+Mallard and the web app can reach your server from anywhere — over mobile data, at work, on holiday — with
+[Tailscale](https://tailscale.com), a free private network between your own devices. Nothing is opened to the
+internet, and no router ports are forwarded.
+
+1. **On the machine that runs this server**, install Tailscale and sign in
+   ([download](https://tailscale.com/download)). With the usual `--network host` Docker command, the server is then
+   reachable at that machine's Tailscale name, e.g. `http://my-nas:3390` (or its `100.x.y.z` address).
+2. **On your phone**, install the Tailscale app and sign in to the **same** account.
+3. **In Mallard:** Settings → Mallard → Server → Change, and enter that name (or address) and port `3390`.
+   **In the web app:** open `http://my-nas:3390` in the phone's browser and add it to the home screen again.
+
+Away, Mallard is a full remote for your players at home: browse, search, play, queue, the Shelf, Settings. What it
+can't do yet is play music **on the phone itself** — that is the next stage of Away from home (Mallard as a Lyrion
+player, then Tailscale built into the server and the app so step 1 and 2 aren't needed). If the server runs in a
+container *without* host networking, give the container its own Tailscale node instead (Tailscale's own
+`tailscale/tailscale` image, as a sidecar) or install Tailscale on the host and use `--network host`.
+
 ## Environment variables
 
 | Var | Default | Purpose |
