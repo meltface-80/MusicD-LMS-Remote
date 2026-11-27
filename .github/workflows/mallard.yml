@@ -72,25 +72,34 @@ jobs:
       # what Google Play Protect blocks as harmful: 0.2.0-t32 was. A build that may be published is signed with the
       # owner's private key or not at all; only a pull request's build, which is never published, may use the debug
       # key. The key: MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD, or else the owner's existing Android key
-      # under the names Mandarin and Android Random Remote give it (MUSICD_KEYSTORE_BASE64 / MUSICD_KEYSTORE_PASSWORD,
-      # alias "musicd") — one key for all of the owner's apps.
+      # under the names Mandarin and Android Random Remote give it (MUSICD_KEYSTORE_BASE64 / MUSICD_KEYSTORE_PASSWORD).
+      # The key's alias is read from the keystore, so either set of names works for any key.
       - name: Restore the signing key
         env:
           MALLARD_B64: ${{ secrets.MALLARD_KEYSTORE_BASE64 }}
           MUSICD_B64: ${{ secrets.MUSICD_KEYSTORE_BASE64 }}
+          MALLARD_PW: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
+          MUSICD_PW: ${{ secrets.MUSICD_KEYSTORE_PASSWORD }}
           MALLARD_ALIAS: ${{ secrets.MALLARD_KEY_ALIAS }}
         run: |
-          if [ -n "$MALLARD_B64" ]; then KEY="$MALLARD_B64"; ALIAS="${MALLARD_ALIAS:-mallard}"; FROM=MALLARD
-          elif [ -n "$MUSICD_B64" ]; then KEY="$MUSICD_B64"; ALIAS="${MALLARD_ALIAS:-musicd}"; FROM=MUSICD
+          if [ -n "$MALLARD_B64" ]; then KEY="$MALLARD_B64"; PW="$MALLARD_PW"; FROM=MALLARD
+          elif [ -n "$MUSICD_B64" ]; then KEY="$MUSICD_B64"; PW="$MUSICD_PW"; FROM=MUSICD
           else
             if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
-              echo "::error::No signing key: add MUSICD_KEYSTORE_BASE64 and MUSICD_KEYSTORE_PASSWORD (Mandarin's) to this repository's secrets. A build that may be published is never signed with the committed debug key — Play Protect blocks it as harmful."
+              echo "::error::No signing key: add MALLARD_KEYSTORE_BASE64 and MALLARD_KEYSTORE_PASSWORD (or Mandarin's MUSICD_KEYSTORE_*) to this repository's secrets. A build that may be published is never signed with the committed debug key — Play Protect blocks it as harmful."
               exit 1
             fi
             echo "::notice::No signing key: a pull request's build, signed with the committed debug key and never published."
             exit 0
           fi
-          printf '%s' "$KEY" | base64 -d > "$RUNNER_TEMP/mallard.keystore"
+          printf '%s' "$KEY" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/mallard.keystore"
+          # The key's own name, read from the keystore rather than guessed from which secret held it (a Mallard key saved
+          # under Mandarin's names is still named "mallard"); MALLARD_KEY_ALIAS only to choose among several.
+          ALIASES=$(keytool -list -v -keystore "$RUNNER_TEMP/mallard.keystore" -storepass "$PW" 2>/dev/null | sed -n 's/^Alias name: //p') \
+            || { echo "::error::The keystore in ${FROM}_KEYSTORE_BASE64 can't be opened with ${FROM}_KEYSTORE_PASSWORD: check both secrets."; exit 1; }
+          [ -n "$ALIASES" ] || { echo "::error::The keystore in ${FROM}_KEYSTORE_BASE64 can't be opened with ${FROM}_KEYSTORE_PASSWORD, or holds no key: check both secrets."; exit 1; }
+          ALIAS="${MALLARD_ALIAS:-$(head -n 1 <<<"$ALIASES")}"
+          echo "Signing with the key \"$ALIAS\" from the ${FROM}_KEYSTORE_* secrets."
           { echo "MALLARD_KEYSTORE=$RUNNER_TEMP/mallard.keystore"; echo "MALLARD_KEY_ALIAS=$ALIAS"; echo "SIGNING_FROM=$FROM"; } >> "$GITHUB_ENV"
 
       # The run number, which rises with every run of this workflow: each test
