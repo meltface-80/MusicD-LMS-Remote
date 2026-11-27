@@ -4149,7 +4149,7 @@ function appsPlayer(zone) {
 function appsError(res, e) {
   if (e && e.status) return res.status(e.status).json({ error: e.message, expired: !!e.expired });
   log.debug("apps:", e && e.message);
-  res.status(503).json({ error: "The plugin didn\u2019t answer: " + ((e && e.message) || "no answer"), unavailable: true });
+  res.status(503).json({ error: "The plugin didn\u2019t answer \u2014 it may need signing in, or may not work with this player", unavailable: true });
 }
 app.get("/api/apps", async (req, res) => {
   if (!state.connected) return notConnected(res);

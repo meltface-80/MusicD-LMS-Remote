@@ -255,6 +255,11 @@ tags, no automatic releases, no cluttered history.
   use any verb of their own, or STANDARD info/favourites menus with a known
   verb. An undispatchable verb makes LMS CLOSE THE SOCKET; the engine never
   guesses, and maps that close to 503 `{unavailable:true}`.
+- Both apps draw it: Mallard's Apps and Radio screens, and the web app's
+  `public/apps-browser.js` ("Apps & radio" — ONE side-menu row with Apps |
+  Radio tabs, because the menu's height budget on a small phone has no room
+  for two). The page holds only tokens; ▶ plays, ⋯ is the app's one dropdown
+  (`window.__openOptionsMenu`) with Play next / Add to queue / More.
 - `myapps items` is asked WITH a player, so each plugin's `condition()`
   applies. Without a player it falls back to `apps 0 200 menu:1`. Radio comes
   from `radios 0 200 menu:radio`.
