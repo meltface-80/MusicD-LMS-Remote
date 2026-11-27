@@ -83,7 +83,6 @@ internal fun HomeScreenPane(client: () -> ServerClient?, onBack: () -> Unit) {
         HomeKept.readLayout(LibraryClient { c.getJson(it) })?.let(::show)
     }
     LaunchedEffect(Unit) {
-        launch { downloaded = withContext(Dispatchers.IO) { runCatching { DownloadTiles.list(context).size }.getOrDefault(0) } }
         reload()
     }
     // Saved at once (the page's saveHomeRows), and Home laid out from it before the answer comes; the server's answer drawn

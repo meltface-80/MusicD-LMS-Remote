@@ -40,8 +40,7 @@ import com.musicd.mallard.client.ServerClient
  * track the first pick; then each row's circle, or the row itself, picks or
  * unpicks. The ⋯ with the count, top right in place of previous and next,
  * opens what to do with them: play now, play next, add to the end of the
- * queue (each in the album's order, as the page sends them), Listen later
- * (the album), or clear.
+ * queue (each in the album's order, as the page sends them), or clear.
  */
 
 /** The ⋯ with the count, and its menu; [picks] are the tracks' places in order of picking. */
@@ -67,8 +66,6 @@ internal fun SelectMenu(picks: List<Int>, onAct: (String) -> Unit, modifier: Mod
                 modifier = Modifier.parity("album.select-play-next", Contract.label("album.select-play-next")))
             DropdownMenuItem(text = { Text(Contract.label("album.select-queue"), fontSize = 15.sp) }, onClick = { open = false; onAct("queue") },
                 modifier = Modifier.parity("album.select-queue", Contract.label("album.select-queue")))
-            DropdownMenuItem(text = { Text(Contract.label("album.select-later"), fontSize = 15.sp) }, onClick = { open = false; onAct("later") },
-                modifier = Modifier.parity("album.select-later", Contract.label("album.select-later")))
             DropdownMenuItem(text = { Text(Contract.label("album.select-clear"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp) }, onClick = { open = false; onAct("clear") },
                 modifier = Modifier.parity("album.select-clear", Contract.label("album.select-clear")))
         }
@@ -82,14 +79,13 @@ internal fun SelectMenu(picks: List<Int>, onAct: (String) -> Unit, modifier: Mod
  * playing, so they end in order. What came of it, as the page says it.
  */
 internal fun playPicks(c: ServerClient, a: Album, picks: List<Int>, zoneId: String, kind: String): String {
+    // One request (/api/play-tracks): the server plays them in the order given, skipping any whose place has moved.
     var order = picks.sorted()
     if (kind == "play_next") order = order.reversed()
-    var queued = 0; var failed = 0; var firstError = ""
-    order.forEachIndexed { i, t ->
-        val r = runCatching { c.playTrack(a.album.offset, t, a.tracks[t].title, a.album.title, a.album.subtitle, zoneId, if (kind == "play_next" || i == 0) kind else "queue") }
-        if (r.isSuccess) queued++ else { failed++; if (firstError.isEmpty()) firstError = r.exceptionOrNull()?.message ?: "Couldn't reach the server" }
-    }
-    if (queued == 0) return firstError.ifEmpty { "Sonos refused those tracks" }
+    val r = runCatching { c.playTracks(a.album.offset, order, zoneId, kind) }
+    r.exceptionOrNull()?.let { return it.message ?: "Couldn't reach the server" }
+    val j = r.getOrThrow()
+    val played = j.optInt("played", order.size); val missing = j.optInt("missing", 0)
     val verb = when (kind) { "queue" -> "Queued"; "play_next" -> "Playing next:"; else -> "Playing" }
-    return "$verb $queued track" + (if (queued == 1) "" else "s") + (if (failed > 0) " ($failed failed: $firstError)" else "")
+    return "$verb $played track" + (if (played == 1) "" else "s") + (if (missing > 0) " ($missing no longer there)" else "")
 }

@@ -179,21 +179,9 @@ internal fun SearchScreen(prefs: WallPrefs, zoneId: String, client: () -> Server
 
     fun openAlbum(albums: List<com.musicd.mallard.client.AlbumSummary>, i: Int) =
         onAlbum(albums[i].offset, zone, NavList(albums.map { NavItem(it.offset, it.title) }, i))
-    // A service's album: made the library's (transient until a favourite), then its page as any album's.
-    fun openService(service: String, id: String) {
-        val c = client() ?: return
-        scope.launch {
-            withContext(Dispatchers.IO) { runCatching { c.serviceOpen(service, id) } }
-                .onSuccess { onAlbum(it, zone, NavList(listOf(NavItem(it, "")), 0)) }.onFailure { toast(com.musicd.mallard.client.Failure.said(it, "Couldn't open that album")) }
-        }
-    }
-    fun toggleFav(service: String, id: String, now: Boolean) {
-        val c = client() ?: return
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { c.serviceFavourite(service, id, !now).optBoolean("ok", true) }.getOrDefault(false) }
-            if (ok) SearchKept.favs[id] = !now else toast("Couldn't change the favourite")
-        }
-    }
+    // A streaming service's album: MusicD LMS plays those through its own Qobuz plugin, which Mallard doesn't browse yet.
+    fun openService(service: String, id: String) { toast("Open it from the MusicD LMS Remote page for now") }
+    fun toggleFav(service: String, id: String, now: Boolean) { toast("Open it from the MusicD LMS Remote page for now") }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val lib = SearchKept.lib

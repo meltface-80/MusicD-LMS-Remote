@@ -28,4 +28,11 @@ object Net {
         }
         return out.sortedBy { it.first }.map { it.second }.distinct()
     }
+
+    /** Whether the phone has any network at all (Wi-Fi, Ethernet, mobile data). */
+    fun hasNetwork(context: android.content.Context): Boolean = runCatching {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }.getOrDefault(true)
 }

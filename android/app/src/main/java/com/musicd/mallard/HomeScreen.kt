@@ -82,10 +82,9 @@ internal fun HomeScreen(prefs: WallPrefs, zoneId: String, client: () -> ServerCl
     LaunchedEffect(spin) { spin.run() }
     // Each time Home comes on screen, its rows as the page loads them on a visit; today's album asked for every minute while it stays.
     // Read again when the app goes offline or comes back (item 109): the phone's answers, or the server's.
-    val offline by OfflineNow.kind
+    val offline: String? = null
     LaunchedEffect(offline) { HomeKept.refresh(scope, context, client(), NativeShell.libraryView) }
     // Whether the row along the foot offers Shelf (item 210), as the server says it now.
-    LaunchedEffect(offline) { if (offline == null) readSetting(client, "shelf")?.let { NavShelf.on.value = it.optBoolean("enabled") } }
     // A row that failed asked again: at once when the server answers again, else in a while (item 157).
     AskAgain(HomeKept.failed) { HomeKept.refresh(scope, context, client(), NativeShell.libraryView) }
     // Today's album while the app is on screen (item 120: every minute all night too).

@@ -81,9 +81,6 @@ internal fun AlbumTile(a: AlbumSummary, prefs: WallPrefs, coverPx: Int, client: 
                     fontSize = title, lineHeight = titleLine, fontWeight = FontWeight.W600, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (a.subtitle.isNotEmpty()) Text(a.subtitle, Modifier.parity("library.album-artist wall.album-artist artist.album-artist home.album-artist search.album-artist").padding(top = 1.dp).lineBox(artist, artistLine), color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = artist, lineHeight = artistLine, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                // One of several versions of its album (item 345): how many, faint under the artist.
-                com.musicd.mallard.client.AlbumVersion.mark(a)?.let { Text(it, Modifier.parity("library.album-versions wall.album-versions artist.album-versions home.album-versions search.album-versions").padding(top = 1.dp).lineBox(artist, artistLine),
-                    color = paletteColor(Palette.TEXT_FAINT), fontSize = artist, lineHeight = artistLine, maxLines = 1) }
             }
         }
     }

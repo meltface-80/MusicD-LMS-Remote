@@ -53,7 +53,6 @@ import com.musicd.mallard.client.AlbumSummary
 import com.musicd.mallard.client.ArtistAbout
 import com.musicd.mallard.client.ArtistAct
 import com.musicd.mallard.client.ArtistBio
-import com.musicd.mallard.client.ArtistDiscography
 import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.Failure
 import com.musicd.mallard.client.Palette
@@ -141,39 +140,7 @@ internal fun OverviewAlbums(albums: List<AlbumSummary>, prefs: WallPrefs, coverP
  * offset), as the search's does. Under "More on {service}", ahead of block [before].
  */
 @Composable
-internal fun serviceShelf(asked: String, ready: Boolean, before: Int, prefs: WallPrefs, client: () -> ServerClient?, onAlbum: (Long) -> Unit): GridExtra? {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var found by remember(asked) { mutableStateOf<ArtistDiscography?>(null) }
-    val favs = remember(asked) { mutableStateMapOf<String, Boolean>() }
-    LaunchedEffect(asked, ready) {
-        if (!ready || found != null) return@LaunchedEffect
-        val c = client() ?: return@LaunchedEffect
-        val (name, act) = ArtistAct.parse(asked)
-        withContext(Dispatchers.IO) { runCatching { c.artistDiscography(name, act) }.getOrNull() }?.let { found = it }
-    }
-    val d = found?.takeIf { it.albums.isNotEmpty() } ?: return null
-    fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
-    fun open(id: String) {
-        val c = client() ?: return
-        scope.launch {
-            withContext(Dispatchers.IO) { runCatching { c.serviceOpen(d.service, id) } }
-                .onSuccess(onAlbum).onFailure { toast(Failure.said(it, "Couldn't open that album")) }
-        }
-    }
-    fun favourite(id: String, now: Boolean) {
-        val c = client() ?: return
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) { runCatching { c.serviceFavourite(d.service, id, !now).optBoolean("ok", true) }.getOrDefault(false) }
-            if (ok) favs[id] = !now else toast("Couldn't change the favourite")
-        }
-    }
-    return GridExtra(before, d.heading, d.albums.size, key = { i -> "s" + d.albums[i].id + "/" + i }) { i ->
-        val a = d.albums[i]
-        val fav = favs[a.id] ?: a.favourited
-        ServiceAlbumTile(a, fav, prefs, onFav = { favourite(a.id, fav) }, onOpen = { open(a.id) })
-    }
-}
+internal fun serviceShelf(asked: String, ready: Boolean, before: Int, prefs: WallPrefs, client: () -> ServerClient?, onAlbum: (Long) -> Unit): GridExtra? = null
 
 /**
  * About: the biography ([bio]; [bioDone] once it has answered), then a band's members or a person's bands from [about],

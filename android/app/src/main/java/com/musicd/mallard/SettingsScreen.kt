@@ -48,50 +48,28 @@ import com.musicd.mallard.client.SettingsLists
 import com.musicd.mallard.client.SettingsRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.graphicsLayer
 
 /**
- * Settings, natively (the group T of old/plan-android-native.md, T1; bug list item 76), as the page draws it
- * over the whole screen (docs/specs/screens.json, settings and settings-setup; style.css #settings-overlay): ✕ and
- * Settings at the head, a row a section (its brass icon, its name), the server's version and View on GitHub at the
- * foot; Setup's list under its Back. [pane]: "home", "setup", or a page the app draws ("account", in
- * SettingsPanes.kt); every page of it the app's own.
+ * Settings, natively: the layout is MusicD LMS Remote's own Settings (the server page's list and panes, section for
+ * section, the owner's choice), drawn in Mandarin's colours and type. ✕ and Settings at the head, a row a section (its
+ * brass icon, its name and the line under it), the server's version and View on GitHub at the foot; each pane under its
+ * Back. [pane]: "home", or a pane of SettingsMallard.kt.
  */
 @Composable
 internal fun SettingsScreen(pane: String, client: () -> ServerClient?, onBack: () -> Unit, onOpen: (String) -> Unit) {
     BackHandler(onBack = onBack)
-    val open = onOpen
-    when (pane) {
-        "account" -> SettingsAccount(client, onBack)
-        "playback" -> SettingsAudio(client, onBack)
-        "backup" -> SettingsBackup(client, onBack)
-        "system" -> SettingsUpdates(client, onBack)
-        "streaming" -> SettingsServices(client, onBack, open)
-        "qobuz", "tidal" -> SettingsService(pane, client, onBack)
-        "downloads" -> SettingsDownloads(client, onBack)
-        "downloads-albums" -> SettingsDownloads(client, onBack, albums = true)   // its albums at once (item 110)
-        "folders" -> SettingsFolders(client, onBack)
-        "identify" -> SettingsScanner(client, onBack)
-        in SETUP_PANES -> SettingsSetupPane(pane, client, onBack)
-        "setup" -> SettingsFrame {
-            SettingsHead(Modifier.parity("settings-setup.back", Contract.label("settings-setup.back")).clip(CircleShape).clickable(onClick = onBack), R.drawable.np_back,
-                "Setup", Modifier.parity("settings-setup.heading"))
-            Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                for (row in SettingsLists.SETUP) SettingsNavRow(row, Modifier.parity("settings-setup.item", Contract.label("settings-setup.item", 0, row.title)).clip(RoundedCornerShape(10.dp)).clickable { open(row.pane) })
-            }
-        }
-        else -> SettingsHome(client, onBack, open)
-    }
+    if (pane.isEmpty() || pane == "home") SettingsHome(client, onBack, onOpen)
+    else SettingsPane(pane, client, onBack)
 }
 
-/** The pages the app draws itself (Setup's small ones in SettingsSetup.kt, item 78; Services, item 87); Setup is its list. */
-
-/** Settings' foot as last read (item 122). */
-private var lastVersion = com.musicd.mallard.client.SettingsKept.last("/api/update/status") { SettingsLists.version(it) } ?: "Mandarin"
+/** Settings' foot as last read. */
+private var lastVersion = com.musicd.mallard.client.SettingsKept.last("/api/update/status") { SettingsLists.version(it) } ?: "MusicD LMS Remote"
 
 @Composable
 private fun SettingsHome(client: () -> ServerClient?, onClose: () -> Unit, open: (String) -> Unit) {
     val context = LocalContext.current
-    // The version as last read, so the foot doesn't change as Settings opens (item 122); then the server's.
+    // The version as last read, so the foot doesn't change as Settings opens; then the server's.
     var version by rememberSaveable { mutableStateOf(lastVersion) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
@@ -101,12 +79,7 @@ private fun SettingsHome(client: () -> ServerClient?, onClose: () -> Unit, open:
         SettingsHead(Modifier.parity("settings.close", Contract.label("settings.close")).clip(CircleShape).clickable(onClick = onClose), R.drawable.np_close,
             "Settings", Modifier.parity("settings.heading"), below = 14)
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            for (row in SettingsLists.HOME) SettingsNavRow(row, Modifier.parity("settings.item", Contract.label("settings.item", 0, row.title)).clip(RoundedCornerShape(10.dp)).clickable {
-                // SQ-tool (item 288): its own page on the server, in the browser, as the page opens it beside Mandarin.
-                val base = client()?.address?.baseUrl
-                if (row.pane == "sqtool") { if (base != null) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(base + SettingsLists.SQ_TOOL))) } }
-                else open(row.pane)
-            })
+            for (row in SettingsLists.HOME) SettingsNavRow(row, Modifier.parity("settings.item", Contract.label("settings.item", 0, row.title)).clip(RoundedCornerShape(10.dp)).clickable { open(row.pane) })
         }
         // The foot: the version on the left, View on GitHub on the right, 14 over them.
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -123,20 +96,22 @@ private fun SettingsHome(client: () -> ServerClient?, onClose: () -> Unit, open:
     }
 }
 
-/** A row of a Settings list (#settings-overlay .settings-nav-item): 13 and 12 in, its 22 brass icon, 14 on, its name in 15/500. */
+/** A row of the Settings list (.settings-nav-item): its 22 brass icon, 14 on, its name in 15/500 and the line under it in 12 dim. */
 @Composable
 internal fun SettingsNavRow(row: SettingsRow, modifier: Modifier) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Icon(painterResource(ICONS[row.pane] ?: R.drawable.st_setup), contentDescription = null, tint = paletteColor(Palette.ACCENT), modifier = Modifier.size(22.dp))
-        Text(row.title, Modifier.weight(1f), color = paletteColor(Palette.TEXT), fontSize = 15.sp, lineHeight = 18.75.sp, fontWeight = FontWeight.W500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(row.title, color = paletteColor(Palette.TEXT), fontSize = 15.sp, lineHeight = 18.75.sp, fontWeight = FontWeight.W500, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (row.desc.isNotEmpty()) Text(row.desc, color = paletteColor(Palette.TEXT_DIM), fontSize = 12.sp, lineHeight = 15.6.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(painterResource(R.drawable.st_caret), contentDescription = null, tint = paletteColor(Palette.TEXT_FAINT), modifier = Modifier.size(16.dp).graphicsLayer { rotationZ = -90f })
     }
 }
 
-private val ICONS = mapOf("account" to R.drawable.st_account, "folders" to R.drawable.st_folders, "streaming" to R.drawable.st_services, "playback" to R.drawable.st_audio,
-    "identify" to R.drawable.st_scanner, "setup" to R.drawable.st_setup, "backup" to R.drawable.st_backup, "sqtool" to R.drawable.st_audio, "system" to R.drawable.st_updates,
-    "smartpicks" to R.drawable.st_smartpicks, "homescreen" to R.drawable.st_homescreen, "ui" to R.drawable.st_ui,
-    "display" to R.drawable.st_display, "shelfset" to R.drawable.st_shelf, "downloads" to R.drawable.st_downloads,
-    "away" to R.drawable.st_away, "qobuz" to R.drawable.st_services, "tidal" to R.drawable.st_services)
+private val ICONS = mapOf("playback" to R.drawable.st_audio, "player" to R.drawable.np_device, "labels" to R.drawable.st_scanner, "metadata" to R.drawable.st_services,
+    "homescreen" to R.drawable.st_homescreen, "smartpicks" to R.drawable.st_smartpicks, "lms" to R.drawable.st_setup, "display" to R.drawable.st_display,
+    "appearance" to R.drawable.st_ui, "system" to R.drawable.st_updates, "connection" to R.drawable.st_account)
 
 /**
  * A Settings screen's ground (#settings-overlay > .settings-sheet): the raised colour over the whole screen, 20 in at

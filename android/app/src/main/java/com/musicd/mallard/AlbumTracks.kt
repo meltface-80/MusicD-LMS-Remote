@@ -126,12 +126,6 @@ internal fun TrackRow(i: Int, t: Track, title: String, movement: Boolean, noDisc
             Column(Modifier.weight(1f)) {
                 Text(title, color = white, fontSize = 14.sp, lineHeight = 19.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (sub.isNotEmpty()) Text(sub, Modifier.padding(top = 1.dp), color = dim, fontSize = 12.sp, lineHeight = 17.sp)
-                // MQA, as its samples say (item 418): the page's .mqa-badge, MQA Studio's in the accent.
-                t.mqa?.let { m ->
-                    val c = if (m.studio) MaterialTheme.colorScheme.primary else dim
-                    Text(m.label, Modifier.parity("album.track-mqa").padding(top = 3.dp).border(1.dp, if (m.studio) c else paletteColor(Palette.BORDER), RoundedCornerShape(5.dp))
-                        .padding(horizontal = 7.dp, vertical = 1.dp), color = c, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.W600)
-                }
             }
             if (t.lengthText.isNotEmpty()) Text(t.lengthText, color = dim, fontSize = 13.sp, lineHeight = 20.sp)
             // The circle, selecting: hollow means it can be picked, a tick that it is (the page's .t-mark).

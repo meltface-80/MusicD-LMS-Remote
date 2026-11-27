@@ -49,7 +49,6 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.Credit
-import com.musicd.mallard.client.Mqa
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.ServerClient
 import kotlinx.coroutines.launch
@@ -107,15 +106,9 @@ internal fun NowPlayingScreen(zoneId: String, client: () -> ServerClient?, onBac
                         NpTab(Contract.label("now-playing.tab-now-playing"), !queueTab, Modifier.parity("now-playing.tab-now-playing queue.tab-now-playing", Contract.label("now-playing.tab-now-playing")).clickable(role = Role.Tab) { queueTab = false })
                         NpTab(Contract.label("now-playing.tab-queue"), queueTab, Modifier.parity("now-playing.tab-queue queue.tab-queue", Contract.label("now-playing.tab-queue")).clickable(role = Role.Tab) { queueTab = true })
                     }
-                    FilledIconButton(onClick = { sharing = true }, enabled = view != null, colors = disc,
-                        modifier = Modifier.parity("now-playing.share queue.share", Contract.label("now-playing.share")).size(40.dp).align(Alignment.TopEnd)) {
-                        Icon(painterResource(R.drawable.np_share), contentDescription = null, modifier = Modifier.size(20.dp))
-                    }
                 }
                 // The volume sheet, at the foot of the screen as the page's is (24px up), over whichever tab is on.
                 VolumeSheet(volumeOpen, { volumeOpen = false }, zoneId, view?.volume, ::act, above = false, inset = 24.dp)
-                // The Share card of what plays, natively (item 75): the mini player is hidden here, so no room is kept for it.
-                if (sharing) view?.let { ShareSheet(it.album, it.artist, it.imageKey, 0.dp, client) { sharing = false } }
                 if (queueTab) {
                     QueueScreen(zoneId, client, changed = view?.answeredAtMs, modifier = Modifier.weight(1f).padding(horizontal = 18.dp))
                     return@Column
@@ -140,7 +133,8 @@ internal fun NowPlayingScreen(zoneId: String, client: () -> ServerClient?, onBac
                         color = white, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                     // The artists as the page links them, in the page's quiet white: each with a page of their own a tap away, the rest plain.
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
-                        val credits = v.artists.ifEmpty { listOf(Credit(v.artist, false)) }
+                        // MusicD LMS sends the artist line only: split as the server splits it, each one a link to their page.
+                        val credits = v.artists.ifEmpty { com.musicd.mallard.client.Artists.split(v.artist).map { Credit(it, true) }.ifEmpty { listOf(Credit(v.artist, false)) } }
                         credits.forEachIndexed { i, c ->
                             if (i > 0) Text(" · ", Modifier.parity("now-playing.artist"), fontSize = 18.sp, lineHeight = 24.sp, color = dim, maxLines = 1)
                             if (c.linkable) Text(c.name, Modifier.parity("now-playing.artist", Contract.label("now-playing.artist", 0, c.name)).clickable { onPage("artist", c.name) },
@@ -149,21 +143,11 @@ internal fun NowPlayingScreen(zoneId: String, client: () -> ServerClient?, onBac
                         }
                     }
                     Text(v.album, Modifier.parity("now-playing.album", Contract.label("now-playing.album", 0, v.album)).padding(top = 3.dp).clickable {
-                        // The phone's own album, playing on the phone, is the phone's page (item 197): the library has never seen it.
-                        v.phoneAlbum?.let { onPage("phone-album", it); return@clickable }
                         // Its album found as the page finds it (item 111): by the playing track, else the library searched by its name.
                         scope.launch { findNowAlbum(client, zoneId, v.album, v.artist)?.let { onPage("album", it.toString()) } ?: Toast.makeText(context, NowAlbum.NOT_INDEXED, Toast.LENGTH_SHORT).show() } },
                         fontSize = 14.sp, lineHeight = 19.sp, color = dim, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    // What the room is hearing, every step of the way (item 247): the lines centred, a tap for the signal path.
-                    if (v.infoLines.isNotEmpty()) SignalLines(v.infoLines, v.signal?.let { { signalOpen = true } }, v.signal?.alert)
-                    v.signal?.takeIf { signalOpen }?.let { SignalPathSheet(it, { signalOpen = false }) }
-                    // MQA (item 418): its badge, and where this room sends it untouched to a DAC that decodes it, that it does.
-                    v.mqa?.let { m ->
-                        val c = if (m.studio) MaterialTheme.colorScheme.primary else dim
-                        Text(m.label, Modifier.parity("now-playing.mqa").padding(top = 8.dp).border(1.dp, if (m.studio) c else paletteColor(Palette.BORDER), RoundedCornerShape(5.dp))
-                            .padding(horizontal = 7.dp, vertical = 1.dp), color = c, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.W600)
-                        if (m.untouched) Text(Mqa.UNTOUCHED, Modifier.parity("now-playing.mqa-untouched").padding(top = 4.dp), color = dim, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.W500)
-                    }
+                    // What the room is hearing: the format, centred under the album.
+                    v.infoLines.forEach { line -> Text(line, Modifier.parity("now-playing.format").padding(top = 8.dp), color = dim, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.W500) }
                     RoomSeekBar(room, v, client) { to -> act { it.seek(zoneId, to) } }
                     // The transport: shuffle and repeat smaller and dimmer until on, previous and next in brass, play/pause a brass disc.
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {

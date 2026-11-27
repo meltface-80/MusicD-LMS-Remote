@@ -13,11 +13,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
 import android.widget.Toast
-import com.musicd.mallard.client.AwayRooms
 import com.musicd.mallard.client.NowPlayingView
-import com.musicd.mallard.client.PhoneRoom
 import com.musicd.mallard.client.Retry
-import com.musicd.mallard.client.RoomFollowed
 import com.musicd.mallard.client.ServerClient
 import com.musicd.mallard.client.VolumeScale
 import kotlinx.coroutines.CoroutineScope
@@ -28,11 +25,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /*
- * A room followed, for the native screens that show it (Now playing, the
- * mini player): as the notification follows it, each answer waits on the
- * room's next change (the server holds it up to 20 s), and between answers
- * the clock moves the track on. Nothing is drawn here (the screens contract's
- * shell, docs/specs/screens.json).
+ * A room followed, for the native screens that show it (Now playing, the mini player): MusicD LMS Remote answers
+ * /api/zone-state at once (it can't hold a request until something changes), so it is asked ADAPTIVELY, as the server's
+ * own page asks: every 2 s while the room plays, every 6 s when it doesn't; between answers the clock moves the track
+ * on. A tap asks again a moment later ([poke]) rather than waiting out the pause. Never a fixed fast poll: every ask
+ * reaches LMS live.
  */
 
 /** What the room [id] is doing, as last answered. */
@@ -57,45 +54,38 @@ internal class RoomState(val id: String = "") {
  */
 private val kept = HashMap<String, RoomState>()
 
+/** Asked again soon: a tap's change shows in a moment, not at the next turn of the poll. */
+internal object RoomPoke {
+    val count = mutableStateOf(0)
+    fun poke() { count.value++ }
+}
+
 /**
- * The room of the screen opened in [zoneId], followed while this is on screen; its state the one kept for it, so a new
- * screen starts as the last left it. Offline that room is the phone's, the one room there, kept as the phone's own; and
- * while the server is still looked for as the app comes back on screen, the screen's own, as the server last told it and
- * not asked for ([RoomFollowed], item 485: the phone's own queue was shown, and kept, as the server's room's). Away from
- * home it is the phone's too, the one room the server offers there (item 487: a screen opened at home went on asking
- * for the room left there, and was refused). [RoomState.id] says which.
+ * The room of the screen opened in [zoneId], followed while the app is on screen; its state the one kept for it, so a
+ * new screen starts as the last left it.
  */
 @Composable
 internal fun followRoom(zoneId: String, client: () -> ServerClient?): RoomState {
-    val offline = OfflineNow.kind.value != null
-    val away = NativeShell.away.value
-    val context = LocalContext.current
-    // This phone's room: offline as the phone's own answers name it, away as the server does.
-    val phone = if (offline) OfflineNow.phone else if (away) Store.awayRoom(context).orEmpty() else ""
-    val followed = RoomFollowed.of(zoneId, offline, OfflineNow.looking.value, away, phone)
-    val id = followed.id
+    val id = zoneId
     val room = remember(id) { kept.getOrPut(id) { RoomState(id) } }
-    // Followed while the app is on screen (item 120: it was all night too, beside the notification's own following);
-    // back on screen, asked for at once. Asked afresh too when the phone's answers give way to the server's or the
-    // server's to the phone's (item 485: a room waited on the phone's answer, held 20 s, after the server was back).
     val onScreen by NativeShell.onScreen
-    LaunchedEffect(followed, offline, onScreen) {
-        if (!followed.ask || !onScreen) return@LaunchedEffect
-        var revision: Long? = null
+    val poked by RoomPoke.count
+    LaunchedEffect(id, onScreen, poked) {
+        if (id.isEmpty() || !onScreen) return@LaunchedEffect
+        if (poked > 0) delay(200)   // a tap: its change asked for a moment later
         var missed = 0
         while (isActive) {
             val c = client()
-            val st = if (c == null) null else withContext(Dispatchers.IO) { runCatching { c.zoneState(id, revision) }.getOrNull() }
-            // Not answered (the server away, or a room it won't offer: a Sonos room away from home): asked again less
-            // and less often, 2 s up to half a minute (item 119: it was every 2 s for as long as the screen was up).
+            val st = if (c == null) null else withContext(Dispatchers.IO) { runCatching { c.zoneState(id) }.getOrNull() }
+            // Not answered (the server away): asked again less and less often, 2 s up to half a minute.
             if (st == null) { delay(Retry.ms(++missed)); continue }
             missed = 0
-            revision = st.revision
             room.zoneName = st.zone?.name
             room.volume = st.zone?.outputs?.firstNotNullOfOrNull { it.scale }
             room.muted = st.zone?.outputs?.any { it.muted } ?: false
             room.view = NowPlayingView.of(st, System.currentTimeMillis())
             room.answered = true
+            delay(if (st.zone?.isPlaying == true) 2_000 else 6_000)
         }
     }
     LaunchedEffect(room.view) {
@@ -106,15 +96,16 @@ internal fun followRoom(zoneId: String, client: () -> ServerClient?): RoomState 
 }
 
 /**
- * A tap's request ([block]) sent to [c] off the main thread; what it does shows in the room's next answer. Refused
- * because the server is still looked for ([PhoneRoom.LOOKING], item 485), or by the server for a room left at home in
- * the moment before away counts ([AwayRooms.REFUSED]), that is said: the tap did nothing to see (item 487).
+ * A tap's request ([block]) sent to [c] off the main thread; what it does shows in the room's next answer, asked for a
+ * moment later. Refused, what the server said is shown: the tap did nothing to see.
  */
 internal fun CoroutineScope.sendTap(context: Context, c: ServerClient, block: (ServerClient) -> Unit) {
     launch(Dispatchers.IO) {
         val refused = runCatching { block(c) }.exceptionOrNull()
-        val said = (refused as? ServerClient.ServerException)?.message?.takeIf { it == PhoneRoom.LOOKING || it == AwayRooms.REFUSED }
-        if (said != null) withContext(Dispatchers.Main) { Toast.makeText(context, said, Toast.LENGTH_SHORT).show() }
+        withContext(Dispatchers.Main) {
+            RoomPoke.poke()
+            if (refused != null) Toast.makeText(context, refused.message ?: "Couldn't reach the server", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

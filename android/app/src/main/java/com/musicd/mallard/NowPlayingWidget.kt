@@ -33,8 +33,8 @@ class NowPlayingWidget : AppWidgetProvider() {
             val v = RemoteViews(context.packageName, R.layout.widget_now_playing)
             val np = zone?.nowPlaying
             v.setTextViewText(R.id.widget_title, when {
-                Store.server(context) == null -> "Open Mandarin to connect"
-                !reachable -> "Can't reach Mandarin"
+                Store.server(context) == null -> "Open Mallard to connect"
+                !reachable -> "Can't reach MusicD LMS Remote"
                 np != null -> np.title
                 else -> "Nothing playing"
             })

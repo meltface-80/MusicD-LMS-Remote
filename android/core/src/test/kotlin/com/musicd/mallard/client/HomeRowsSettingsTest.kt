@@ -10,25 +10,22 @@ import org.junit.Test
 class HomeRowsSettingsTest {
     private fun ids(rows: List<HomeRow>) = rows.joinToString(",") { it.id }
 
-    @Test fun `the layout made whole, the phone's rows at the top where the server doesn't know them`() {
+    @Test fun `the layout made whole, a row the saved layout lacks at the top`() {
         assertEquals(HomeRowsSettings.TITLES.keys.joinToString(","), ids(HomeRowsSettings.complete(emptyList())))
         val saved = listOf(HomeRow("library", false, null), HomeRow("history", true, null))
-        val whole = HomeRowsSettings.complete(saved, listOf("phone", "downloads", "history", "library"))
-        assertEquals("phone,downloads,library,history", ids(whole))
+        val whole = HomeRowsSettings.complete(saved, listOf("unplayed", "picks", "history", "library"))
+        assertEquals("unplayed,picks,library,history", ids(whole))
         assertFalse(whole[2].on)
     }
 
-    @Test fun `each row listed with its name, a setting off or albums on the phone saying why it can't be switched`() {
-        // Label of the week gone with the labels (item 492): an older server's row of it is passed over, as one not known.
-        val rows = listOf(HomeRow("downloads", false, null), HomeRow("picks", true, "Smart Picks is off in Settings"), HomeRow("lotw", true, null), HomeRow("history", false, null))
-        val none = HomeRowsSettings.listed(rows, 0)
-        assertEquals("downloads,picks,history", none.joinToString(",") { it.id })
-        assertEquals(ListedRow("downloads", "Downloaded albums", null, false), none[0])
-        assertEquals(ListedRow("picks", "Smart Picks", "Smart Picks is off in Settings", false), none[1])
-        assertFalse(none[1].switchable)
-        assertTrue(none[2].switchable)
-        val some = HomeRowsSettings.listed(rows, 2)
-        assertEquals(ListedRow("downloads", "Downloaded albums", "On while albums are downloaded to this phone", true), some[0])
+    @Test fun `each row listed with its name, a setting off saying why it can't be switched`() {
+        val rows = listOf(HomeRow("picks", true, "Smart Picks is off in Settings"), HomeRow("lotw", true, null), HomeRow("downloads", true, null), HomeRow("history", false, null))
+        val listed = HomeRowsSettings.listed(rows, 0)
+        assertEquals("a row this server doesn't know is passed over", "picks,lotw,history", listed.joinToString(",") { it.id })
+        assertEquals(ListedRow("picks", "Smart Picks", "Smart Picks is off in Settings", false), listed[0])
+        assertFalse(listed[0].switchable)
+        assertEquals(ListedRow("lotw", "Label of the week", null, true), listed[1])
+        assertTrue(listed[2].switchable)
     }
 
     @Test fun `a row moved past its neighbour, one the list doesn't show staying put, and switched`() {

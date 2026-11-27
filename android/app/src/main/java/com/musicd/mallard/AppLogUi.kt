@@ -62,9 +62,8 @@ internal fun LogTrace(nav: NavHostController) {
     }
     val entry by nav.currentBackStackEntryAsState()
     val menu by NativeShell.menuOpen
-    val power by PowerKept.asking
     val ask by RoomAsk.drawn
-    val shown = logName(entry) + (if (menu) "+menu" else "") + (if (power != null) "+power" else "") + (if (ask) "+move-question" else "")
+    val shown = logName(entry) + (if (menu) "+menu" else "") + (if (ask) "+move-question" else "")
     SideEffect {
         val now = SystemClock.uptimeMillis()
         val found = AppLog.trace.shown(shown, now)

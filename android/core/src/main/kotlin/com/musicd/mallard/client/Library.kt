@@ -235,7 +235,8 @@ data class Album(
                 genres = a.optJSONArray("genres").strings(),
                 tracks = if (ts == null) emptyList() else (0 until ts.length()).mapNotNull { i -> ts.optJSONObject(i)?.let { Track.parse(it, i) } },
                 actions = j.optJSONArray("actions").items { AlbumAction(it.getString("kind"), it.optString("title", "")) },
-                artists = j.optJSONArray("artists").strings(),
+                // MusicD LMS sends the artist line only: split as the server and its page split it.
+                artists = j.optJSONArray("artists").strings().ifEmpty { Artists.split(a.optString("subtitle", "")) },
                 boxAlbums = j.optJSONArray("box_albums").items(AlbumSummary::parse),
                 partial = j.optBoolean("partial", false),
                 namesFromFolders = j.optBoolean("names_from_folders", false),

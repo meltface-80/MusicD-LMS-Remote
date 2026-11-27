@@ -145,11 +145,12 @@ class ServerClient(
     fun playUnheard(zoneId: String): JSONObject = post("/api/play-unheard", JSONObject().put("zone", zoneId), 20_000)
 
     /**
-     * A random album in the room called [zoneName] (or the server's own choice of room), played now. The server's
-     * shortcut names the room by its NAME, as a home-automation request would. Returns the album title.
+     * A random album played now in the player [zoneId] (or, with none, the server's own choice). The server's shortcut
+     * names the room by its NAME, as a home-automation request would, so the id is looked up first. Its title.
      */
-    fun playRandom(zoneName: String?): String {
-        val path = "/api/shortcut/play-random" + (zoneName?.let { "?zone=" + enc(it) } ?: "")
+    fun playRandom(zoneId: String?): String {
+        val name = zoneId?.takeIf { it.isNotEmpty() }?.let { id -> rooms().firstOrNull { it.id == id }?.name }
+        val path = "/api/shortcut/play-random" + (name?.let { "?zone=" + enc(it) } ?: "")
         val j = getJson(path, 20_000)
         return j.optJSONObject("album")?.optString("title", "") ?: ""
     }

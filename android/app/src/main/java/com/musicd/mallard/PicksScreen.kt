@@ -101,7 +101,7 @@ internal fun PicksScreen(prefs: WallPrefs, zoneId: String, client: () -> ServerC
             // The heading, with the page's 14 under it (its list's), then the cards 14 apart.
             item { WallHead("Smart Picks", prefs.copy(layout = "list"), if (loaded) banner else null) }
             items(picks.size, key = { picks[it].artist + "|" + picks[it].album }) { i ->
-                PickCardFull(picks[i], client, onOpen = { offset -> onAlbum(offset, zone) }, onBlock = { block(picks[i]) }, onSaid = ::toast)
+                PickCardFull(picks[i], zone, client, onOpen = { offset -> onAlbum(offset, zone) }, onBlock = { block(picks[i]) }, onSaid = ::toast)
             }
         }
         WallBack(onBack)
@@ -114,7 +114,7 @@ internal fun PicksScreen(prefs: WallPrefs, zoneId: String, client: () -> ServerC
 
 /** One pick as a card (style.css .pick-card-full): the cover 96 beside the words, the two buttons under them. */
 @Composable
-private fun PickCardFull(p: Pick, client: () -> ServerClient?, onOpen: (Long) -> Unit, onBlock: () -> Unit, onSaid: (String) -> Unit) {
+private fun PickCardFull(p: Pick, zone: String, client: () -> ServerClient?, onOpen: (Long) -> Unit, onBlock: () -> Unit, onSaid: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     // The pick's cover: the library's own where it has it, else the service's picture.
     val cover = if (p.imageKey != null) rememberTileCover(p.imageKey, 400, client) else rememberImage(p.image, client)
@@ -141,27 +141,42 @@ private fun PickCardFull(p: Pick, client: () -> ServerClient?, onOpen: (Long) ->
                 Box(Modifier.parity("picks.open", Contract.label("picks.open")).weight(1f).height(36.dp).clip(pill).background(MaterialTheme.colorScheme.primary).clickable { onOpen(offset) }, contentAlignment = Alignment.Center) {
                     Text(Contract.label("picks.open"), color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.W600, letterSpacing = 0.01.em)
                 }
-            } else if (p.added || adding == 2) {
+            } else {
+                // Not in the library: played straight from the streaming service, found again by search at the tap
+                // (LMS's Qobuz plugin hands out no lasting album ids). Nothing is added to play it.
+                Box(Modifier.parity("picks.play").weight(1f).height(36.dp).clip(pill).background(MaterialTheme.colorScheme.primary).clickable {
+                    val c = client() ?: return@clickable
+                    if (zone.isEmpty()) { onSaid("Pick a player first"); return@clickable }
+                    scope.launch {
+                        val r = withContext(Dispatchers.IO) { runCatching { c.playSmartPick(p.artist, p.album, zone, "play_now") } }
+                        r.exceptionOrNull()?.let { onSaid(it.message ?: "Couldn't play that album") }
+                    }
+                }, contentAlignment = Alignment.Center) {
+                    Text("Play", color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.W600, letterSpacing = 0.01.em)
+                }
+            if (p.added || adding == 2) {
                 // In your streaming favourites, not imported yet: nothing to press.
                 Box(Modifier.parity("picks.added", Contract.label("picks.added")).weight(1f).height(36.dp).alpha(0.6f).clip(pill).background(MaterialTheme.colorScheme.background)
                     .border(1.dp, MaterialTheme.colorScheme.outline, pill).clickable(enabled = false) {}, contentAlignment = Alignment.Center) {
                     Text(Contract.label("picks.added"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.W600)
                 }
             } else {
-                Box(Modifier.parity("picks.add", Contract.label("picks.add", adding)).weight(1f).height(36.dp).alpha(if (adding == 1) 0.6f else 1f).clip(pill).background(MaterialTheme.colorScheme.primary)
+                Box(Modifier.parity("picks.add", Contract.label("picks.add", adding)).weight(1f).height(36.dp).alpha(if (adding == 1) 0.6f else 1f).clip(pill).background(MaterialTheme.colorScheme.background)
+                    .border(1.dp, MaterialTheme.colorScheme.primary, pill)
                     .clickable(enabled = adding == 0) {
-                        val c = client(); val service = p.service; val albumId = p.albumId
-                        if (c == null || albumId == null || service == null) { onSaid("No streaming album to add"); return@clickable }
+                        val c = client() ?: return@clickable
                         adding = 1
                         scope.launch {
-                            val r = withContext(Dispatchers.IO) { runCatching { c.serviceFavourite(service, albumId, true) } }
+                            // Kept: favourited in the streaming account (LMS's Qobuz plugin), so a later scan brings it in.
+                            val r = withContext(Dispatchers.IO) { runCatching { c.addSmartPick(p.artist, p.album) } }
                             val ok = r.getOrNull()?.optBoolean("ok", false) == true
-                            if (ok) { adding = 2; onSaid("Added to your " + (if (service == "tidal") "Tidal" else "Qobuz") + " favourites") }
+                            if (ok) { adding = 2; onSaid("Added to your Qobuz favourites") }
                             else { adding = 0; onSaid(r.exceptionOrNull()?.message ?: r.getOrNull()?.optString("error")?.ifEmpty { null } ?: "Couldn't add that album") }
                         }
                     }, contentAlignment = Alignment.Center) {
-                    Text(Contract.label("picks.add", adding), color = MaterialTheme.colorScheme.onPrimary, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.W600)
+                    Text(Contract.label("picks.add", adding), color = MaterialTheme.colorScheme.secondary, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.W600)
                 }
+            }
             }
             Box(Modifier.parity("picks.block", Contract.label("picks.block")).weight(1f).height(36.dp).clip(pill).background(MaterialTheme.colorScheme.background)
                 .border(1.dp, MaterialTheme.colorScheme.outline, pill).clickable(onClick = onBlock), contentAlignment = Alignment.Center) {

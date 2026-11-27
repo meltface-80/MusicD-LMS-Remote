@@ -14,11 +14,10 @@ data class ListedRow(val id: String, val name: String, val why: String?, val on:
  * the owner's order, each on or off, dragged to a new place. The rows' names are the page's HOME_ROWS (home-layout.js).
  */
 object HomeRowsSettings {
-    /** Each row's name, the app's own two first, as the page's HOME_ROWS has them in the app. */
+    /** Each row's name, in MusicD LMS Remote's own order (public/app.js HOME_ROW_TITLES): the server keeps only these ids. */
     val TITLES: Map<String, String> = linkedMapOf(
-        "phone" to "Music on device", "downloads" to "Downloaded albums", "unplayed" to "Not played in 6 months", "later" to "Listen later",
-        "favourites" to "Favourites", "history" to "Recently played", "picks" to "Smart Picks",
-        "random" to "Random albums", "library" to "Library", "genres" to "Browse by genre")
+        "unplayed" to "Not played in 6 months", "history" to "Recently played", "picks" to "Smart Picks",
+        "random" to "Random albums", "library" to "Library", "lotw" to "Label of the week", "genres" to "Browse by genre")
 
     /** What Downloaded albums says while albums are on the phone: it stays on until they are removed. */
     const val HELD = "On while albums are downloaded to this phone"

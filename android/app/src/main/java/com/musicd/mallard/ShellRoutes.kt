@@ -27,9 +27,6 @@ internal fun NavGraphBuilder.moreRoutes(nav: NavHostController, client: () -> Se
             onPage = { what, arg ->
                 when {
                     what == "review" && arg != null -> nav.navigate(ShellRoute.pitchfork(arg, NativeShell.zone))
-                    // A service's artist: their albums in the app's own browser (item 73).
-                    what == "service-artist" && arg != null -> runCatching { org.json.JSONObject(arg) }.getOrNull()?.let { j ->
-                        nav.navigate(ShellRoute.serviceBrowser(j.optString("service"), NativeShell.zone, j.optString("id"), j.optString("name"))) }
                     else -> handOver(nav, what, arg)
                 }
             }
@@ -41,24 +38,7 @@ internal fun NavGraphBuilder.moreRoutes(nav: NavHostController, client: () -> Se
         PitchforkScreen(WallPrefs.parse(NativeShell.prefs), PitchforkHit.parse(entry.arguments?.getString(ShellRoute.REVIEW)), client,
             onClose = { nav.popBackStack() },
             onAlbum = { offset -> inPlace(nav, ShellRoute.album(offset, zone, "")) },
-            onQobuz = { q -> inPlace(nav, ShellRoute.serviceBrowser("qobuz", zone, q = q)) })
-    }
-    // The Qobuz and Tidal browsers (item 73), each opening kept while on the back stack (its entry's id); an album's page over it.
-    composable(ShellRoute.SERVICE_BROWSER, arguments = listOf(navArgument(ShellRoute.SERVICE) { type = NavType.StringType }, navArgument(ShellRoute.ARTIST_ID) { type = NavType.StringType; defaultValue = "" },
-        navArgument("name") { type = NavType.StringType; defaultValue = "" }, navArgument("q") { type = NavType.StringType; defaultValue = "" }, navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
-        val a = entry.arguments
-        val zone = a?.getString(ShellRoute.ZONE).orEmpty()
-        val kept = ServiceBrowsers.kept(entry.id, a?.getString(ShellRoute.SERVICE).orEmpty())
-        ServiceBrowserScreen(kept, (a?.getString(ShellRoute.ARTIST_ID).orEmpty() to a?.getString("name").orEmpty()).takeIf { it.first.isNotEmpty() }, a?.getString("q").orEmpty(),
-            WallPrefs.parse(NativeShell.prefs), client, onClose = { nav.popBackStack() }, onAlbum = { offset -> nav.navigate(ShellRoute.album(offset, zone, "")) })
-    }
-    // The Shelf (item 207): the side menu's Shelf, natively; Back (or its pill) returns to the screen under it.
-    composable(ShellRoute.SHELF, arguments = listOf(navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
-        // An album opened on it is the library's album page (item 218), over the shelf; what that asks for past an album, as the page's.
-        ShelfScreen(entry.arguments?.getString(ShellRoute.ZONE).orEmpty(), client, onBack = { nav.popBackStack() },
-            onPage = { what, arg -> handOver(nav, what, arg) },
-            onBooklet = { offset, b -> nav.navigate(ShellRoute.booklet(offset, b.id, b.name, b.pages)) },
-            onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } })
+            onQobuz = { q -> inPlace(nav, ShellRoute.search(q, zone)) })
     }
     // Settings (item 76): its list, Setup's, and every page of it.
     composable(ShellRoute.SETTINGS, arguments = listOf(navArgument(ShellRoute.PANE) { type = NavType.StringType; defaultValue = "home" })) { entry ->
@@ -66,26 +46,6 @@ internal fun NavGraphBuilder.moreRoutes(nav: NavHostController, client: () -> Se
             onBack = { nav.popBackStack() },
             onOpen = { pane -> nav.navigate(ShellRoute.settings(pane)) }
         )
-    }
-    // The Artists wall (item 130), the row's Artists; an artist's page over it.
-    composable(ShellRoute.ARTISTS, arguments = listOf(navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
-        val zone = entry.arguments?.getString(ShellRoute.ZONE).orEmpty()
-        ArtistsScreen(WallPrefs.parse(NativeShell.prefs), zone, client,
-            onBack = { nav.popBackStack() },
-            onArtist = { name -> nav.navigate(ShellRoute.artist(name, zone)) },
-            onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } },
-            onRoom = NativeShell::roomChosen,
-            onNav = { what -> navTap(nav, what) },
-            onPage = { what, arg -> handOver(nav, what, arg) }
-        )
-    }
-    // One of the phone's own albums (item 108): the album page, read from the phone and played on it.
-    composable(ShellRoute.PHONE_ALBUM, arguments = listOf(navArgument(ShellRoute.KEY) { type = NavType.StringType }, navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
-        AlbumScreen(-1L, entry.arguments?.getString(ShellRoute.ZONE).orEmpty(), "", client, list = null, onStepTo = { _, _, _ -> },
-            onBack = { nav.popBackStack() }, onPage = { what, arg -> handOver(nav, what, arg) }, onBooklet = { _, _ -> },
-            onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } }, onRoom = NativeShell::roomChosen,
-            onNav = { what -> navTap(nav, what) }, onAlbum = { id, z -> nav.navigate(ShellRoute.album(id, z, "")) },
-            phone = entry.arguments?.getString(ShellRoute.KEY).orEmpty())
     }
 }
 
@@ -99,7 +59,6 @@ internal fun handOver(nav: NavHostController, what: String, arg: String?) {
     when {
         what == "artist" && !arg.isNullOrEmpty() -> nav.navigate(ShellRoute.artist(arg, NativeShell.zone))
         what == "genre" && !arg.isNullOrEmpty() -> nav.navigate(ShellRoute.wall("genre", NativeShell.zone, com.musicd.mallard.client.WallFilter.routeQuery(com.musicd.mallard.client.WallFilter("genre", arg))))   // a genre's albums (item 139)
-        what == "phone-album" && !arg.isNullOrEmpty() -> nav.navigate(ShellRoute.phoneAlbum(arg, NativeShell.zone))   // the phone's own album (item 108)
         what == "album" && arg != null && arg.toLongOrNull() != null -> inPlace(nav, ShellRoute.album(arg.toLong(), NativeShell.zone, ""))
         what == "library-changed" && arg != null -> nav.popBackStack()   // a streamed album taken out of the favourites: its page closes
         else -> handOn(what, arg)
@@ -128,9 +87,7 @@ internal fun navTap(nav: NavHostController, what: String) {
         "home" -> { toHome(nav); NativeShell.landHome() }
         // Opened over Home in one step (item 199): Home was drawn for a moment between the screen left and this one.
         "library" -> overHome(nav, ShellRoute.library(NativeShell.libraryView, NativeShell.prefs.orEmpty(), NativeShell.zone))
-        "artists" -> overHome(nav, ShellRoute.artists(NativeShell.zone))
         "search" -> { SearchKept.reset(""); overHome(nav, ShellRoute.search("", NativeShell.zone)) }
-        "shelf" -> overHome(nav, ShellRoute.shelf(NativeShell.zone))   // item 210: the row's own, as the side menu's
         "menu" -> NativeShell.menuOpen.value = true   // over the screen showing (item 296); an item chosen closes the screens over Home (menuTap)
     }
 }

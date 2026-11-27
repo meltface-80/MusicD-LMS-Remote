@@ -57,14 +57,14 @@ internal fun WallScreen(kind: String, filterQuery: String, prefs: WallPrefs, zon
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val filter = remember(filterQuery) { WallFilter.parse(filterQuery) }
-    val offline = OfflineNow.on
+    val offline = false
     val wall = remember(kind, filterQuery, offline) { Walls.state(if (kind == "genre") "$kind:$filterQuery" else kind, kind, offline) }
     var zone by remember { mutableStateOf(zoneId) }
     val room = followRoom(zone, client)
     var selecting by remember { mutableStateOf(false) }
     var picks by remember { mutableStateOf<List<AlbumSummary>>(emptyList()) }
     // Music on device's view (its Focus and Sort), kept on this phone as the page keeps its own.
-    var local by remember { mutableStateOf(LocalView.parse(Store.localView(context))) }
+    var local by remember { mutableStateOf(LocalView.parse(null)) }
     var focusOpen by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     // The app's own walls: their albums aren't the server's to play as a batch, so nothing is selected on them.
@@ -79,7 +79,7 @@ internal fun WallScreen(kind: String, filterQuery: String, prefs: WallPrefs, zon
     // (item 537); a genre's wall keeps its own until reshuffled.
     LaunchedEffect(wall) { if (!wall.loaded || kind != "genre") load() }
     AskAgain(wall.failed) { load() }
-    fun changeLocal(v: LocalView) { local = v; Store.setLocalView(context, v.toJson()) }
+    fun changeLocal(v: LocalView) { local = v }
     // The phone's albums as its view has them; every other wall as the server gave it.
     val shown = if (kind == "phone") local.sorted(wall.albums.filter(local::passes)) else wall.albums.toList()
     val grid = rememberLazyGridState()
@@ -155,24 +155,21 @@ internal class WallKept(val kind: String, val offline: Boolean = false) {
 
     /** The wall's albums: the phone's own from the phone, the rest from [client] ([randomCount] of them for the random wall, narrowed by [filter] for a genre's), and the banner as the page says it. */
     suspend fun load(context: Context, client: ServerClient?, randomCount: Int, filter: WallFilter?, refresh: Boolean = false) {
-        if (kind == "phone") { HomeKept.loadPhone(context); albums.clear(); albums.addAll(HomeKept.rows["phone"]!!.albums); banner = null; loaded = true; return }
         val c = client ?: return
-        if (kind == "downloads") {
-            HomeKept.loadDownloads(context, c)
-            val row = HomeKept.rows["downloads"]!!
-            albums.clear(); albums.addAll(row.albums); banner = if (row.albums.isEmpty()) "Nothing downloaded yet — on an album, ⋯ → Download to this phone." to false else null; loaded = true
-            return
-        }
         val lib = LibraryClient { c.getJson(it) }
         val r = withContext(Dispatchers.IO) { runCatching {
             when (kind) {
-                "later" -> lib.listenLater().albums to "Nothing put aside — on an album, ⋯ → Listen later. An album comes off here once you’ve played it through."
+                "lotw" -> {
+                    val j = c.getJson("/api/home/label-of-the-week")
+                    val a = j.optJSONArray("albums")
+                    (if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> runCatching { AlbumSummary.parse(o) }.getOrNull() } }) to "No label this week."
+                }
                 "favourites" -> lib.favourites().albums to "No favourites yet — tap the heart on an album."
                 "history" -> lib.history(60).albums to "Nothing played in the last 30 days."
                 "unplayed" -> lib.unplayed(6, 96).let { u ->
                     // Six months of listening first: before that, every album is "not played".
                     val from = u.readyAt?.let { " — from " + DateFormat.getDateInstance(DateFormat.LONG).format(Date(it)) } ?: ""
-                    u.albums to (if (u.noHistory) "Albums show here once Mandarin has six months of listening behind it$from." else "Nothing here yet — play some music and check back.")
+                    u.albums to (if (u.noHistory) "Albums show here once there are six months of listening behind them$from." else "Nothing here yet — play some music and check back.")
                 }
                 "genre" -> (if (filter != null) lib.randomAlbums(randomCount, filter) else lib.randomAlbums(randomCount)).albums to "No albums were returned. Is your library indexed?"
                 else -> lib.randomAlbums(randomCount, refresh).albums to "No albums were returned. Is your library indexed?"

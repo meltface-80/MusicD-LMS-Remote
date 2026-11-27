@@ -72,10 +72,10 @@ internal fun RandomPickDialog(album: AlbumSummary, zoneId: String, client: () ->
     // To the room (the page's sendPick): what came of it said as the page says it, but for Play now, which the mini player shows (bug list item 58).
     fun send(kind: String) {
         val c = client() ?: return
-        if (zoneId.isEmpty()) { toast("Select a zone first"); return }
+        if (zoneId.isEmpty()) { toast("Pick a player first"); return }
         sending = true
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { c.playAlbum(album.offset, album.title, album.subtitle, zoneId, kind) } }
+            val r = withContext(Dispatchers.IO) { runCatching { c.playAlbum(album.offset, zoneId, kind) } }
             r.onSuccess { if (kind != "play_now") toast((if (kind == "play_next") "Playing next: " else "Queued: ") + album.title.ifEmpty { "random album" }); onClose() }
                 .onFailure { toast(com.musicd.mallard.client.Failure.said(it, "Could not start playback")); sending = false }
         }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -245,6 +246,11 @@ private fun Shell(client: () -> ServerClient?) {
         }
     }
     MenuOver(nav, client)   // the side menu over whichever screen is on (item 67)
+    // Out of reach: said over every screen, with Try again and Change server.
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+        ReachBanner(onTryAgain = { (ctx as? MainActivity)?.lookForServer() }, onChangeServer = { (ctx as? MainActivity)?.openConnect() })
+    }
     RoomAskOver(client)   // the question whether to move what's playing to the room chosen (item 68)
     }
 }

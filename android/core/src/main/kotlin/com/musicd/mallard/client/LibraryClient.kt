@@ -34,7 +34,11 @@ class LibraryClient(private val get: (String) -> JSONObject) {
     fun search(query: String): SearchResults = SearchResults.parse(get("/api/search?q=" + enc(query) + "&limit=60"))
 
     /** The search beyond the library: Pitchfork's reviews (the server's Qobuz catalogue search is left to the page). */
-    fun searchExternal(query: String, part: String): ExternalSearch = ExternalSearch.parse(get("/api/search/external?q=" + enc(query)))
+    fun searchExternal(query: String, part: String): ExternalSearch {
+        // The server's Qobuz results are replayable menu tokens, not albums with ids: only the reviews are taken.
+        val j = get("/api/search/external?q=" + enc(query))
+        return ExternalSearch.parse(JSONObject().put("query", j.optString("query", query)).put("pitchfork", j.optJSONArray("pitchfork") ?: org.json.JSONArray()))
+    }
 
     /** Home's rows in the owner's order, each on or off. */
     fun homeRows(): List<HomeRow> = HomeRows.parse(get("/api/settings/home-rows"))

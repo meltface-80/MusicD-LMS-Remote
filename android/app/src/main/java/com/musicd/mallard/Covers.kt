@@ -58,18 +58,6 @@ internal object Covers {
         }
     }
 
-    /** One of the phone's own albums' covers ("phone-…"), read at no more than [size] (item 158: a 3000-pixel scan was 36 MB a tile). Blocking. */
-    fun phone(context: Context, key: String, size: Int): ImageBitmap? = runCatching {
-        val id = "$key@$size"
-        get(id)?.let { return it }
-        val f = LocalMusic.art(context, key.removePrefix("phone-")) ?: return null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(f.path, bounds)
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= size && bounds.outHeight / (sample * 2) >= size) sample *= 2
-        BitmapFactory.decodeFile(f.path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()?.also { put(id, it) }
-    }.getOrNull()
-
     private fun decode(b: ByteArray): ImageBitmap? = BitmapFactory.decodeByteArray(b, 0, b.size)?.asImageBitmap()
 
     private fun dir(context: Context) = File(context.cacheDir, "covers")
@@ -93,15 +81,14 @@ internal object Covers {
     }
 }
 
-/** The cover [key] at [size] pixels for a tile, kept or fetched and kept; null until then, or with no key. A "phone-" key is one of the phone's own albums (item 57), read from its index, never asked of the server. */
+/** The cover [key] at [size] pixels for a tile, kept or fetched and kept; null until then, or with no key. */
 @Composable
 internal fun rememberTileCover(key: String?, size: Int, client: () -> ServerClient?): ImageBitmap? {
     val context = LocalContext.current
     var image by remember(key, size) { mutableStateOf(key?.let { Covers.get("$it@$size") }) }
     LaunchedEffect(key, size) {
         if (key == null || image != null) return@LaunchedEffect
-        image = if (key.startsWith("phone-")) withContext(Dispatchers.IO) { Covers.phone(context, key, size) }
-        else Covers.server(context, client() ?: return@LaunchedEffect, key, size)
+        image = Covers.server(context, client() ?: return@LaunchedEffect, key, size)
     }
     return image
 }

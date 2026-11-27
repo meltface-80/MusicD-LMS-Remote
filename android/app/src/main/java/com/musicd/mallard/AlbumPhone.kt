@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.musicd.mallard.client.Album
 import com.musicd.mallard.client.AlbumExtras
-import com.musicd.mallard.client.AlbumVersion
 import com.musicd.mallard.client.ArtistAct
 import com.musicd.mallard.client.NavList
 import com.musicd.mallard.client.Contract
@@ -74,7 +73,7 @@ import com.musicd.mallard.client.albumLength
  * only its tracks, length and rate changing (AlbumScreen.kt): what is the album's own stays as it is.
  */
 
-/** The tabs: Tracks, Credits, About, and Versions where it has some. */
+/** The tabs, by the place their labels have in the contract: Mallard shows Tracks and About. */
 internal val ALBUM_TABS = listOf("tracks", "credits", "about", "versions")
 
 /** The date, the rate (its chip, hi-res in brass) and the length, centred under the cover. */
@@ -190,7 +189,8 @@ internal fun AlbumTabRow(tab: String, versions: Int, scroll: ScrollState, onTab:
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 44.dp).horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally)) {
             ALBUM_TABS.forEachIndexed { i, t ->
-                if (t == "versions" && versions < 2) return@forEachIndexed
+                // MusicD LMS has no credits or versions to list: Tracks and About.
+                if (t == "credits" || t == "versions") return@forEachIndexed
                 val on = t == tab
                 // As wide as its words, its bar under them as wide (item 355: a bar filling the row took the row, the tabs after it squeezed into a letter a line).
                 Column(Modifier.parity("album.tab", Contract.label("album.tab", i)).width(IntrinsicSize.Max).clickable { onTab(t) }.padding(top = 12.dp)) {
@@ -220,74 +220,5 @@ internal fun LazyListScope.aboutHead(a: Album, extras: AlbumExtras?, onPage: (St
                 e.scoreText?.let { Text(it + if (e.bestNewMusic) " BNM" else "", color = dim, fontSize = 14.sp, lineHeight = 19.sp) }
             }
         }
-    }
-}
-
-/**
- * The Versions tab (item 349, as the page's): how many, then a row each, the main first: its cover, its edition, its
- * rate, its tracks, length and year, the main one's and the one open's tags; a tap shows it in this page's place
- * ([onOpen]); its ⋯ plays it ([onPlay]) or makes it the main version ([onMain]).
- */
-internal fun LazyListScope.albumVersions(a: Album, client: () -> ServerClient?, onOpen: (AlbumVersion) -> Unit, onPlay: (AlbumVersion) -> Unit, onMain: (AlbumVersion) -> Unit) {
-    val list = a.versions
-    item {
-        Row(Modifier.parity("album.versions").fillMaxWidth().padding(top = 16.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
-            Text(AlbumVersion.head(list.size), Modifier.weight(1f), color = paletteColor(Palette.MODAL_TEXT), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(AlbumVersion.HEAD_NOTE, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-        }
-    }
-    itemsIndexed(list, key = { _, v -> "v" + v.album.offset }) { _, v -> VersionRow(v, client, onOpen, onPlay, onMain) }
-}
-
-@Composable
-private fun VersionRow(v: AlbumVersion, client: () -> ServerClient?, onOpen: (AlbumVersion) -> Unit, onPlay: (AlbumVersion) -> Unit, onMain: (AlbumVersion) -> Unit) {
-    val brass = MaterialTheme.colorScheme.primary
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
-    var menu by remember { mutableStateOf(false) }
-    Row(Modifier.parity("album.version", Contract.label("album.version", 0, v.words)).fillMaxWidth()
-        .let { if (v.current) it.background(paletteColor(Palette.ACCENT_SOFT)) else it }
-        .clickable(enabled = !v.current) { onOpen(v) }.padding(vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        val art = rememberTileCover(v.album.imageKey, 240, client)
-        Box(Modifier.size(88.dp).clip(RoundedCornerShape(7.dp)).background(paletteColor(Palette.BG_ELEV_2))) {
-            art?.let { Image(it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
-        }
-        Column(Modifier.weight(1f)) {
-            Text(v.name, color = paletteColor(Palette.MODAL_TEXT), fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-            if (v.format.isNotEmpty()) Text(v.format, Modifier.padding(top = 4.dp), color = paletteColor(Palette.MODAL_TEXT), fontSize = 14.sp, fontWeight = FontWeight.W600)
-            if (v.facts.isNotEmpty()) Text(v.facts, Modifier.padding(top = 3.dp), color = dim, fontSize = 13.sp)
-            if (v.main || v.current) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (v.main) Text(AlbumVersion.MAIN_TAG.uppercase(), Modifier.clip(RoundedCornerShape(999.dp)).background(brass).padding(horizontal = 8.dp, vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.onPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                if (v.current) Text(AlbumVersion.VIEWING_TAG.uppercase(), Modifier.border(1.dp, brass, RoundedCornerShape(999.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
-                    color = brass, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        Box {
-            Icon(painterResource(R.drawable.np_more), contentDescription = Contract.label("album.version-more"),
-                modifier = Modifier.parity("album.version-more", Contract.label("album.version-more")).clickable { menu = true }.padding(4.dp).size(24.dp), tint = dim)
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = paletteColor(Palette.BG_ELEV_2)) {
-                DropdownMenuItem(text = { Text(Contract.label("album.version-play")) }, modifier = Modifier.parity("album.version-play", Contract.label("album.version-play")),
-                    onClick = { menu = false; onPlay(v) })
-                if (!v.main) DropdownMenuItem(text = { Text(Contract.label("album.version-make-main")) }, modifier = Modifier.parity("album.version-make-main", Contract.label("album.version-make-main")),
-                    onClick = { menu = false; onMain(v) })
-            }
-        }
-    }
-    HorizontalDivider(color = paletteColor(Palette.PANEL_HAIRLINE))
-}
-
-/**
- * Another version chosen to be shown ([shown]), or its versions changed ([refresh]): it alone read and handed over
- * ([onShown]), the rest of the page as it was, nothing else asked again; where it can't be read, what to say and the one
- * shown before ([onFailed]). Not a phone's own album, which has no versions.
- */
-@Composable
-internal fun VersionSwitch(album: Album?, shown: Long, refresh: Int, phone: Boolean, client: () -> ServerClient?, onShown: (Album) -> Unit, onFailed: (String, Long) -> Unit) {
-    LaunchedEffect(shown, refresh) {
-        val cur = album ?: return@LaunchedEffect
-        if (phone || cur.album.offset == shown && refresh == 0) return@LaunchedEffect
-        val c = client() ?: return@LaunchedEffect
-        withContext(Dispatchers.IO) { runCatching { LibraryClient { c.getJson(it) }.album(shown) } }
-            .onSuccess(onShown).onFailure { onFailed(Failure.said(it, "Couldn't load that version"), cur.album.offset) }
     }
 }

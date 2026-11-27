@@ -26,7 +26,7 @@ import com.musicd.mallard.client.Zone
 import java.util.concurrent.Executors
 
 /**
- * Follows one Sonos room and puts it where Android shows media: the lock
+ * Follows one Lyrion player and puts it where Android shows media: the lock
  * screen, the notification shade, headset and Bluetooth buttons, and the
  * home-screen widget.
  *
@@ -65,12 +65,8 @@ class NowPlayingService : Service() {
 
         fun start(context: Context, action: String? = null) {
             if (Store.server(context) == null) return
-            // Away from home there are no Sonos rooms to follow; "This phone" has its own controls.
-            if (Store.isAway(context)) return
-            // No network: no rooms to follow either — and no "Can't reach Mandarin" notification sitting there.
-            if (!Away.hasNetwork(context)) return
-            // Offline mode: the server's rooms aren't followed.
-            if (Store.offlineMode(context)) return
+            // No network: no players to follow — and no "Can't reach the server" notification sitting there.
+            if (!Net.hasNetwork(context)) return
             val i = Intent(context, NowPlayingService::class.java)
             if (action != null) i.action = action
             try { context.startForegroundService(i) } catch (e: Exception) { Log.w(TAG, "could not start the service", e) }
@@ -174,15 +170,13 @@ class NowPlayingService : Service() {
     // ---------------------------------------------------------------- loop
 
     private fun loop() {
-        var revision: Long? = null
         var failures = 0
         var zonesAt = 0L   // the rooms last looked at: at the start, woken (the app open, a room chosen), after a miss, every few minutes
         while (running) {
             val client = Store.client(this)
             if (client == null) { stopSelf(); return }
-            if (Store.offlineMode(this) || Store.isAway(this)) { main.post { stopSelf() }; return }   // away: the phone's own (item 158)
             // No Wi-Fi, no mobile data: nothing to ask (and nothing to draw again and again).
-            if (!Away.hasNetwork(this)) {
+            if (!Net.hasNetwork(this)) {
                 if (reachable) { reachable = false; showSoon(latest) }
                 sleep(5_000)
                 if (SystemClock.elapsedRealtime() - idleSince > IDLE_STOP_MS) { main.post { stopSelf() }; return }
@@ -191,10 +185,10 @@ class NowPlayingService : Service() {
             try {
                 if (zoneId == null || wake || failures > 0 || SystemClock.elapsedRealtime() - zonesAt > ZONES_MS) {
                     val zones = client.zones().also { zonesAt = SystemClock.elapsedRealtime() }
-                    val chosen = zones.lastZone ?: Store.zone(this) ?: zones.zones.firstOrNull()?.id
-                    // "This phone" has its own notification and lock screen (PhonePlayerService).
-                    if (chosen?.startsWith("PHONE_") == true) { main.post { stopSelf() }; return }
-                    if (chosen != zoneId) { zoneId = chosen; revision = null; Store.setZone(this, chosen) }
+                    // The player the app has chosen, if the server still has it; else the first.
+                    val kept = Store.zone(this)
+                    val chosen = kept?.takeIf { k -> zones.zones.any { it.id == k } } ?: zones.zones.firstOrNull()?.id
+                    if (chosen != zoneId) { zoneId = chosen; if (chosen != null && chosen != kept) Store.setZone(this, chosen) }
                 }
                 val id = zoneId
                 if (id == null) {
@@ -202,9 +196,8 @@ class NowPlayingService : Service() {
                     sleep(15_000)
                     continue
                 }
-                val waitFor = if (wake) { wake = false; null } else revision
-                val st = client.zoneState(id, waitFor)
-                revision = st.revision
+                wake = false
+                val st = client.zoneState(id)
                 failures = 0
                 reachable = true
                 publish(client, st.zone)
@@ -213,11 +206,12 @@ class NowPlayingService : Service() {
                     main.post { stopSelf() }
                     return
                 }
+                // The server answers at once (no long-poll): asked again in 2 s while it plays, 6 s while it doesn't, as
+                // its own page asks. A tap on the notification wakes this early.
+                sleep(if (st.zone?.isPlaying == true) 2_000L else 6_000L)
             } catch (e: InterruptedException) {
                 return
             } catch (e: Exception) {
-                // Signed out: nothing to follow until the app signs in again.
-                if (e is ServerClient.ServerException && e.signedOut) { main.post { stopSelf() }; return }
                 failures++
                 reachable = false
                 if (failures == 1) Log.i(TAG, "server unreachable: ${e.message}")
@@ -398,16 +392,16 @@ class NowPlayingService : Service() {
         )
         val playing = zone?.isPlaying == true
         val title = when {
-            !reachable -> "Can't reach Mandarin"
+            !reachable -> "Can't reach MusicD LMS Remote"
             np != null -> np.title
             zone != null -> zone.name
-            else -> "Mandarin"
+            else -> "Mallard"
         }
         val text = when {
             !reachable -> Store.server(this)?.toString() ?: ""
             np != null -> listOf(np.artist, zone?.name ?: "").filter { it.isNotBlank() }.joinToString(" · ")
             zone != null -> "Nothing playing"
-            else -> "No Sonos room chosen yet"
+            else -> "No player chosen yet"
         }
         val b = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_media_play)

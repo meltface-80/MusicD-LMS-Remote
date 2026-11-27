@@ -29,7 +29,6 @@ import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.NowPlayingView
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.ServerClient
-import com.musicd.mallard.client.Waveform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -53,17 +52,8 @@ internal fun RoomSeekBar(room: RoomState, v: NowPlayingView, client: () -> Serve
 internal fun SeekBar(v: NowPlayingView, now: Long, client: () -> ServerClient?, onSeek: (Double) -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val length = v.lengthSeconds
-    // The track's levels, asked for once a track (the page's key: its title and album); again while the server is busy.
-    var levels by remember(v.title, v.album) { mutableStateOf<ByteArray?>(null) }
-    LaunchedEffect(v.title, v.album) {
-        val c = client() ?: return@LaunchedEffect
-        if (!withContext(Dispatchers.IO) { runCatching { c.waveformOn() }.getOrDefault(false) }) return@LaunchedEffect
-        for (attempt in 0 until 10) {
-            val r = withContext(Dispatchers.IO) { runCatching { c.waveform(v.title, v.album, v.artist, length) } }
-            if (r.exceptionOrNull() !is ServerClient.Busy) { levels = r.getOrNull(); break }
-            delay(3000)
-        }
-    }
+    // MusicD LMS draws no waveforms: the level meter alone.
+    val levels: ByteArray? = null
     val fraction = dragging ?: v.fraction(now)
     val played = MaterialTheme.colorScheme.primary
     val rest = paletteColor(Palette.METER_OFF)
@@ -74,23 +64,6 @@ internal fun SeekBar(v: NowPlayingView, now: Long, client: () -> ServerClient?, 
     fun at(x: Float, width: Float, thumbW: Float): Float = if (width <= thumbW) 0f else ((x - thumbW / 2) / (width - thumbW)).coerceIn(0f, 1f)
     Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
         Box(Modifier.fillMaxWidth().height(if (wave != null) 64.dp else 14.dp)) {
-            if (wave != null) {
-                // The waveform under the bar, inset by half the thumb, so a peak is under the thumb as it is heard (the page's drawWave).
-                Canvas(Modifier.parity("now-playing.wave").fillMaxSize()) {
-                    val thumbW = 14.dp.toPx()
-                    val head = thumbW / 2 + fraction * (size.width - thumbW)
-                    val pitch = 3.dp.toPx() / 2
-                    val span = size.width - thumbW
-                    val bars = Waveform.bars(wave, maxOf(1, (span / pitch).toInt()))
-                    val step = span / bars.size
-                    bars.forEachIndexed { i, h ->
-                        val x = thumbW / 2 + i * step
-                        val barH = maxOf(1f, h * (size.height - 2))
-                        val done = x + step / 2 <= head
-                        drawRect(if (done) played else ahead.copy(alpha = 0.72f), Offset(x, (size.height - barH) / 2), Size(step * 2 / 3, barH))
-                    }
-                }
-            }
             // The bar itself: the meter (none over a waveform) and the thumb, dragged or tapped.
             Canvas(Modifier.parity("now-playing.seek", Contract.label("now-playing.seek")).fillMaxSize()
                 .pointerInput(length) {

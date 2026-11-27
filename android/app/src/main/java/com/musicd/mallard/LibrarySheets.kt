@@ -119,7 +119,7 @@ private val COVERAGE_NOTE = mapOf(
     "decade" to "Release years come from your file tags (ORIGINALDATE, then DATE) and from MusicBrainz. Undated albums aren't in any decade.",
     "genre" to "Genres are read from your files' GENRE tags. An album with no genre tag won't appear here.",
     "format" to "Read from your own files.",
-    "added" to "Date added is when the files arrived in your music folder, as Mandarin could work out for itself — file timestamps, and albums appearing between scans."
+    "added" to "Date added is when the files arrived in your music folder, as LMS records it: the earliest time any of its tracks was added to the library."
 )
 private val COVERAGE_OF = mapOf("rate" to "format", "bits" to "format", "chan" to "format")
 
@@ -148,7 +148,7 @@ internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryVi
         // Listening first: the one facet always there, from this server's own play history.
         Section("played", "Listening", if (view.played != "any") 1 else 0, chips = {
             for (p in LibraryView.PLAYED) Chip(p.label, if (view.played == p.id) "on" else "off") { onChange(view.copy(played = p.id)) }
-        }, notes = if (facets != null && !facets.hasPlays) listOf("Mandarin hasn't seen anything play yet, so these use an empty history — everything counts as never played.") else emptyList())
+        }, notes = if (facets != null && !facets.hasPlays) listOf("MusicD LMS Remote hasn't seen anything play yet, so these use an empty history — everything counts as never played.") else emptyList())
         for (f in facets?.facets ?: emptyList()) {
             if (f.id !in LibraryView.FACET_IDS) continue
             val sel = view.facets[f.id] ?: emptyList()

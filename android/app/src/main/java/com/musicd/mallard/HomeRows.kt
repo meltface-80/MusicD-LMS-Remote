@@ -41,14 +41,6 @@ internal class RowKept {
     var at = 0L
 }
 
-/** An album on the phone, or on its way ([state] as DownloadStore has it), with the server's own album where it still has it. */
-internal class DownloadTile(val id: Int, val state: String, val done: Int, val total: Int, val title: String, val artist: String, val imageKey: String?, val album: AlbumSummary?) {
-    /** The badge on a tile not yet whole, as the page words it (home.js downloadBadge); none once downloaded. */
-    val badge: String? get() = when (state) { "done" -> null; "away" -> "Card out"; "downloading" -> "↓ $done/$total"; "failed" -> "Failed"; "waiting" -> "Waiting"; else -> "Queued" }
-    /** The tile's album: the server's, or the phone's own words for it, under an offset of its own (below any of the library's). */
-    val tile: AlbumSummary get() = album ?: AlbumSummary(-1_000_000L - id, title.ifEmpty { "Album" }, artist, imageKey, null, null, null, null)
-}
-
 internal object HomeKept {
     /** Home's Random albums row: as many as a phone's random wall shows ([randomWallCount]), so the row is the wall's head (item 537). */
     const val RANDOM_ROW = 24
@@ -59,7 +51,9 @@ internal object HomeKept {
 
     /** The rows in the owner's order, each on or off (/api/settings/home-rows), the app's own at the top where the server doesn't know them. */
     val layout = mutableStateListOf<HomeRow>()
-    val rows: Map<String, RowKept> = listOf("unplayed", "later", "favourites", "history", "random", "library", "downloads", "phone").associateWith { RowKept() }
+    val rows: Map<String, RowKept> = listOf("unplayed", "favourites", "history", "random", "library", "lotw").associateWith { RowKept() }
+    /** Label of the week's label, for its row's title. */
+    var lotwLabel by mutableStateOf<String?>(null)
     val picks = mutableStateListOf<Pick>()
     val genres = mutableStateListOf<GenreCard>()
     var genresNote by mutableStateOf<String?>(null)
@@ -67,15 +61,6 @@ internal object HomeKept {
     var failed by mutableStateOf(false)
     /** Today's album, under the greeting, all day (item 236: it was gone once played, the space beside Random Album left empty). */
     var aotd by mutableStateOf<AlbumSummary?>(null)
-    /**
-     * The phone's own albums by the offset their tiles carry here: Music on device's key; a download by its tile's offset
-     * (the server's own where it still has the album, which then opens as any album: only one it hasn't plays from the phone).
-     */
-    val phoneKeys = HashMap<Long, String>()
-    val downloads = HashMap<Long, DownloadTile>()
-
-    /** The download a tile tapped plays from the phone: one the library no longer has (or on a card that is out). */
-    fun phoneDownload(offset: Long): DownloadTile? = downloads[offset]?.takeIf { it.album == null }
     /** Where Home is scrolled to, kept for Back; [toTop] asks for its top (Home tapped on the row from another screen). */
     val list = LazyListState()
     var toTop by mutableStateOf(false)
@@ -83,25 +68,23 @@ internal object HomeKept {
     /** Whether Not played has answered since the clock was last started (an empty answer counts; a failure doesn't). */
     private var unplayedLoaded = false
     private var genresLoaded = false
-    private val serverAlbums = HashMap<Int, AlbumSummary>()
 
     /** Everything kept forgotten, for the rows to be read afresh: the app gone offline, or back online (item 109). */
     fun reset() {
         rows.values.forEach { it.albums.clear(); it.note = null; it.at = 0 }
         picks.clear(); genres.clear(); genresNote = null; aotd = null
-        phoneKeys.clear(); downloads.clear(); serverAlbums.clear()
+        lotwLabel = null
         rowsAt = 0; unplayedLoaded = false; genresLoaded = false
     }
 
     /** Whether a row hides itself when it has nothing to show (the page's rowHidesWhenEmpty). */
-    fun hidesWhenEmpty(id: String) = id in setOf("unplayed", "history", "picks", "favourites", "later", "phone")
+    fun hidesWhenEmpty(id: String) = id in setOf("unplayed", "history", "picks", "favourites", "lotw")
 
-    /** Whether [row] is on: the Downloads row is on while anything is downloaded, whatever the switch said. */
-    fun on(row: HomeRow): Boolean = row.unavailable == null && (row.on || (row.id == "downloads" && rows["downloads"]!!.albums.isNotEmpty()))
+    /** Whether [row] is on. */
+    fun on(row: HomeRow): Boolean = row.unavailable == null && row.on
 
     /** Every row loaded as the page loads it on a visit: at once from what is kept, the rest behind. */
     fun refresh(scope: CoroutineScope, context: Context, client: ServerClient?, libraryView: String) {
-        loadPhone(context)
         if (client == null) return
         failed = false
         val lib = LibraryClient { client.getJson(it) }
@@ -122,7 +105,6 @@ internal object HomeKept {
             // Random albums read on every visit: the server's one set (item 537), the first of the random wall's in its order,
             // as many as a phone's wall shows; new only on the wall's Refresh (or Android Auto's), or after a day.
             scope.launch { plainRow("random", lib) { it.randomAlbums(RANDOM_ROW).albums } }
-            scope.launch { hidingRow("later", lib) { it.listenLater(30).albums } }
             scope.launch { hidingRow("favourites", lib) { it.favourites(30).albums } }
             scope.launch { hidingRow("history", lib) { it.history(30).albums } }
             // The Library row in the Library's order alone: its Focus and name filter narrow the wall, never the row (the page's libSortKey).
@@ -132,7 +114,15 @@ internal object HomeKept {
             // Read again when the other rows are (not only once an app's run, as they were): what the server says of them
             // changes, its genres in English since it said them in French; the cards shown stay until the answer comes.
             if (!genresLoaded || !ttlFresh) scope.launch { genres(lib) }
-            scope.launch { loadDownloads(context, client) }
+            scope.launch {
+                val got = withContext(Dispatchers.IO) { runCatching { client.getJson("/api/home/label-of-the-week") }.getOrNull() }
+                if (got != null) {
+                    lotwLabel = got.optString("label", "").takeIf { it.isNotEmpty() && !got.isNull("label") }
+                    val a = got.optJSONArray("albums")
+                    val list = if (a == null || lotwLabel == null) emptyList() else (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> runCatching { AlbumSummary.parse(o) }.getOrNull() } }
+                    rows["lotw"]!!.albums.clear(); rows["lotw"]!!.albums.addAll(list)
+                }
+            }
         }
     }
 
@@ -218,52 +208,4 @@ internal object HomeKept {
         }
     }
 
-    /** Music on device (the page's loadHomeLocal): the phone's own albums, from its index. */
-    fun loadPhone(context: Context) {
-        LocalMusic.load(context)
-        val row = rows["phone"]!!
-        val list = LocalMusic.albums.mapIndexed { i, a -> AlbumSummary(-1L - i, a.title, a.artist, if (a.art != null) "phone-${a.key}" else null, LocalMusic.quality(a), a.year, null, "local", hires = LocalMusic.hires(a)) }
-        phoneKeys.clear()
-        LocalMusic.albums.forEachIndexed { i, a -> phoneKeys[-1L - i] = a.key }
-        row.albums.clear(); row.albums.addAll(list)
-        row.note = if (list.isNotEmpty()) null else {
-            val folder = Store.localFolder(context)
-            if (folder == null) "Choose a folder of music on this phone in Settings → Music Folders."
-            else if (LocalMusic.scanning) "Reading the folder…" else "Nothing in “" + (LocalMusic.folderName(context) ?: "Folder") + "” yet."
-        }
-    }
-
-    /** Downloaded albums (the page's loadHomeDownloads): every album on the phone or on its way, the server's own album where it has it. */
-    suspend fun loadDownloads(context: Context, client: ServerClient) {
-        val row = rows["downloads"]!!
-        val list = withContext(Dispatchers.IO) { DownloadTiles.list(context) }
-        if (list.isEmpty()) { row.albums.clear(); downloads.clear(); row.note = "Nothing downloaded yet — on an album, ⋯ → Download to this phone."; return }
-        if (row.albums.isEmpty()) row.note = "Loading…"
-        val missing = list.map { it.id }.filter { it !in serverAlbums }
-        if (missing.isNotEmpty()) withContext(Dispatchers.IO) { runCatching { client.downloadAlbums(missing) }.getOrNull() }?.forEach { d -> d.album?.let { serverAlbums[d.id] = it } }
-        val tiles = list.map { if (it.state == "away") it else DownloadTile(it.id, it.state, it.done, it.total, it.title, it.artist, it.imageKey, serverAlbums[it.id]) }
-        downloads.clear()
-        for (t in tiles) downloads[t.tile.offset] = t
-        row.albums.clear(); row.albums.addAll(tiles.map { it.tile }); row.note = null
-    }
-}
-
-/** The phone's downloads as the page's bridge lists them (DownloadsBridge.all): each album, and those away on a card that is out. */
-internal object DownloadTiles {
-    fun list(c: Context): List<DownloadTile> {
-        val out = ArrayList<DownloadTile>()
-        for ((a, _) in DownloadAlbums.list(c)) out += DownloadTile(a.id, a.state, a.doneCount, a.tracks.size, a.title, a.artist, a.imageKey, null)
-        val away = DownloadStore.awayAlbums(c)
-        for (i in 0 until away.length()) {
-            val o = away.getJSONObject(i)
-            out += DownloadTile(o.optInt("id"), "away", o.optInt("total"), o.optInt("total"), o.optString("title"), o.optString("artist"), o.optString("image_key").ifEmpty { null }, null)
-        }
-        return out
-    }
-
-    /** A downloaded album the library no longer has: played from the phone (the page's DL.play). */
-    fun play(c: Context, albumId: Int) {
-        c.startService(Intent(c, PhonePlayerService::class.java).setAction(PhonePlayerService.ACTION_PLAY_LOCAL)
-            .putExtra(PhonePlayerService.EXTRA_ALBUM, albumId).putExtra(PhonePlayerService.EXTRA_INDEX, 0))
-    }
 }

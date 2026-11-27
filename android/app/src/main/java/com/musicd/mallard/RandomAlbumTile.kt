@@ -13,20 +13,19 @@ class RandomAlbumTile : TileService() {
     override fun onStartListening() {
         super.onStartListening()
         val tile = qsTile ?: return
-        tile.state = if (Store.server(this) != null && !Store.offlineMode(this)) Tile.STATE_INACTIVE else Tile.STATE_UNAVAILABLE
+        tile.state = if (Store.server(this) != null) Tile.STATE_INACTIVE else Tile.STATE_UNAVAILABLE
         tile.updateTile()
     }
 
     override fun onClick() {
         super.onClick()
-        if (Store.offlineMode(this)) return   // the server's rooms: not in offline mode
         val client = Store.client(this) ?: return
         val tile = qsTile
         tile?.state = Tile.STATE_ACTIVE
         tile?.updateTile()
         Thread({
             val result = runCatching {
-                val zone = client.zones().lastZone ?: Store.zone(this)
+                val zone = Store.zone(this)
                 client.playRandom(zone)
             }
             result.onFailure { Log.w("RandomAlbumTile", "could not start an album", it) }

@@ -24,7 +24,7 @@ import java.util.concurrent.Executors
  * Which MusicD Server to use.
  *
  * The port is the one thing a person reliably knows — it is in the address
- * they open Mandarin at — so that is the first box, filled in with the default. The address
+ * they open the server at — so that is the first box, filled in with the default. The address
  * is optional: leave it empty and the app looks for a server on that port
  * across this phone's network, and connects if it finds exactly one.
  */
@@ -35,7 +35,6 @@ class ConnectActivity : Activity() {
 
     private lateinit var portBox: EditText
     private lateinit var hostBox: EditText
-    private lateinit var awayBox: EditText
     private lateinit var status: TextView
     private lateinit var found: LinearLayout
     private lateinit var connect: Button
@@ -58,14 +57,14 @@ class ConnectActivity : Activity() {
         }
 
         col.addView(TextView(this).apply {
-            text = "Mandarin"
+            text = "Mallard"
             setTextColor(0xFFFFFFFF.toInt())
             textSize = 26f
             typeface = Typeface.DEFAULT_BOLD
         })
         col.addView(TextView(this).apply {
-            text = "Enter the port your server runs on. Leave the address empty and this phone " +
-                "will look for it on your Wi-Fi."
+            text = "Connect to your MusicD LMS Remote server (port 3390 unless you changed it). " +
+                "Leave the address empty and this phone will look for it on your Wi-Fi."
             setTextColor(0xFFBFC7CE.toInt())
             textSize = 15f
             setPadding(0, px(8), 0, 0)
@@ -95,23 +94,6 @@ class ConnectActivity : Activity() {
             }
         }
         col.addView(hostBox)
-
-        col.addView(label("Away from home (optional)"))
-        awayBox = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            hint = "found by itself when the server has Tailscale"
-            setHintTextColor(0xFF6B737A.toInt())
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 16f
-            Store.awayTyped(this@ConnectActivity)?.let { setText(it) }
-        }
-        col.addView(awayBox)
-        col.addView(TextView(this).apply {
-            text = "The server's Tailscale address, e.g. 100.101.102.103 or musicd.tail1234.ts.net. " +
-                "Off your Wi-Fi the app uses it, and only this phone plays."
-            setTextColor(0xFF6B737A.toInt())
-            textSize = 12f
-        })
 
         connect = Button(this).apply {
             text = "Connect"
@@ -157,17 +139,6 @@ class ConnectActivity : Activity() {
             status.text = e.message
             return
         }
-        val awayText = awayBox.text.toString().trim()
-        val awayUrl = if (awayText.isEmpty()) null else {
-            val u = if (awayText.contains("://")) awayText else {
-                val a = try { ServerAddress.parse(awayText, "") } catch (e: IllegalArgumentException) { status.text = e.message; return }
-                val typedPort = awayText.substringBefore('/').let { if (it.startsWith("[")) it.substringAfter(']').startsWith(":") else it.count { c -> c == ':' } == 1 }
-                ServerAddress(a.host, if (typedPort) a.port else port).baseUrl
-            }
-            if (ServerAddress.fromUrl(u) == null) { status.text = "That away address doesn't look right"; return }
-            u
-        }
-        Store.setAwayTyped(this, awayUrl)
         found.removeAllViews()
         val hostText = hostBox.text.toString().trim()
         if (hostText.isNotEmpty()) {
@@ -191,14 +162,14 @@ class ConnectActivity : Activity() {
                 if (isFinishing) return@post
                 result.onSuccess { h ->
                     Store.setServer(this, address)
-                    setBusy(false, "Connected — ${h.albums} albums, ${h.rooms} Sonos rooms.")
+                    setBusy(false, "Connected — ${h.rooms} players" + (if (h.lms.isNotEmpty()) " on ${h.lms}." else "."))
                     startActivity(Intent(this, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK))
                     finish()
                 }.onFailure { e ->
-                    setBusy(false, "Couldn't reach Mandarin at $address.\n\n" +
+                    setBusy(false, "Couldn't reach MusicD LMS Remote at $address.\n\n" +
                         (e.message ?: e.javaClass.simpleName) +
-                        "\n\nCheck the address and port, that Mandarin is running, and that this phone is on the same network.")
+                        "\n\nCheck the address and port, that the server is running, and that this phone is on the same network.")
                 }
             }
         }
@@ -210,7 +181,7 @@ class ConnectActivity : Activity() {
             status.text = "This phone isn't on a local network. Join your Wi-Fi, or type the server's address."
             return
         }
-        setBusy(true, "Looking for Mandarin on port $port…")
+        setBusy(true, "Looking for MusicD LMS Remote on port $port…")
         work.execute {
             val hosts = mine.take(2).flatMap { runCatching { Finder.candidates(it) }.getOrDefault(emptyList()) }.distinct()
             val hits = Finder.find(hosts, onFound = { h -> main.post { addFound(ServerAddress(h, port)) } }) { h ->
@@ -219,7 +190,7 @@ class ConnectActivity : Activity() {
             main.post {
                 if (isFinishing) return@post
                 when (hits.size) {
-                    0 -> setBusy(false, "No Mandarin server answered on port $port. Type its address instead.")
+                    0 -> setBusy(false, "No MusicD LMS Remote answered on port $port. Type its address instead.")
                     1 -> tryConnect(ServerAddress(hits[0], port))
                     else -> setBusy(false, "Found ${hits.size} servers — pick one.")
                 }

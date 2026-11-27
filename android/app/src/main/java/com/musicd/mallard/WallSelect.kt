@@ -64,7 +64,7 @@ internal fun SelectBar(onCancel: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 /** What a selection's act needs no room for: Listen later, Merge albums, Unmerge. */
-internal val NoRoomActs = setOf("later", "merge", "unmerge")
+internal val NoRoomActs = setOf("favourite", "merge")
 
 /** The ⋯ with the count, and its menu; [n] albums picked ([picks]: which); [onAct]: play_now, play_next, queue, later, merge, unmerge, clear. */
 @Composable
@@ -88,13 +88,11 @@ internal fun AlbumSelectMenu(n: Int, onAct: (String) -> Unit, modifier: Modifier
                 modifier = Modifier.parity("library.select-play-next wall.select-play-next artist.select-play-next", Contract.label("library.select-play-next")))
             DropdownMenuItem(text = { Text(Contract.label("library.select-queue"), fontSize = 15.sp) }, onClick = { open = false; onAct("queue") },
                 modifier = Modifier.parity("library.select-queue wall.select-queue artist.select-queue", Contract.label("library.select-queue")))
-            DropdownMenuItem(text = { Text(Contract.label("library.select-later"), fontSize = 15.sp) }, onClick = { open = false; onAct("later") },
+            DropdownMenuItem(text = { Text("Add to Favourites", fontSize = 15.sp) }, onClick = { open = false; onAct("favourite") },
                 modifier = Modifier.parity("library.select-later wall.select-later artist.select-later", Contract.label("library.select-later")))
             // Merge albums: two or more of the server's, your own files' alone (item 531); Unmerge: one merged (item 512, the server's AlbumMergeRoutes.cs).
             if (picks.size >= 2 && picks.all { it.offset >= 0 && (it.source == null || it.source == "local") }) DropdownMenuItem(text = { Text(Contract.label("library.select-merge"), fontSize = 15.sp) }, onClick = { open = false; onAct("merge") },
                 modifier = Modifier.parity("library.select-merge wall.select-merge artist.select-merge", Contract.label("library.select-merge")))
-            if (picks.size == 1 && picks[0].merged) DropdownMenuItem(text = { Text(Contract.label("library.select-unmerge"), fontSize = 15.sp) }, onClick = { open = false; onAct("unmerge") },
-                modifier = Modifier.parity("library.select-unmerge wall.select-unmerge artist.select-unmerge", Contract.label("library.select-unmerge")))
             DropdownMenuItem(text = { Text(Contract.label("library.select-clear"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp) }, onClick = { open = false; onAct("clear") },
                 modifier = Modifier.parity("library.select-clear wall.select-clear artist.select-clear", Contract.label("library.select-clear")))
         }
@@ -102,16 +100,15 @@ internal fun AlbumSelectMenu(n: Int, onAct: (String) -> Unit, modifier: Modifier
 }
 
 /**
- * The picks to the room ([act]: play_now, play_next, queue) or onto Listen later: what came of it, said as the page
+ * The picks to the room ([act]: play_now, play_next, queue), into Favourites, or merged into one: what came of it, said as the page
  * says it (multiOutcome); an exception's message when the server refused. Run off the main thread.
  */
 internal fun selectAct(c: ServerClient, picks: List<AlbumSummary>, zoneId: String, zoneName: String?, act: String): String {
-    if (act == "merge") { val j = c.mergeAlbums(picks.map { it.offset }); return "Merged ${picks.size} albums into “${j.optString("title")}”" }
-    if (act == "unmerge") { c.unmergeAlbum(picks[0].offset); return "“${picks[0].title}” unmerged" }
-    if (act == "later") { c.listenLater(picks.map { it.offset }, true); return if (picks.size == 1) "Put aside to listen later" else "${picks.size} albums put aside to listen later" }
+    if (act == "merge") { val j = c.mergeAlbums(picks); return "Merged ${picks.size} albums" + (j.optString("title").takeIf { it.isNotEmpty() }?.let { " into “$it”" } ?: "") }
+    if (act == "favourite") { val j = c.favouriteMany(picks, true); val n = j.optInt("added", picks.size); return if (n == 1) "Added to Favourites" else "$n albums added to Favourites" }
     val j = c.playMulti(picks, zoneId, act)
     val verb = when (act) { "play_now" -> "Playing"; "shuffle" -> "Shuffling"; "play_next" -> "Playing next:"; else -> "Queued" }
     val queued = if (j.has("queued")) j.optInt("queued") else picks.size
     val failed = j.optInt("failed", 0)
-    return "$verb $queued album" + (if (queued == 1) "" else "s") + (if (failed > 0) " (Sonos refused $failed)" else "") + " → " + (zoneName ?: "the room")
+    return "$verb $queued album" + (if (queued == 1) "" else "s") + (if (failed > 0) " ($failed no longer there)" else "") + " → " + (zoneName ?: "the room")
 }

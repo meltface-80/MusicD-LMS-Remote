@@ -83,7 +83,7 @@ internal fun LibraryScreen(viewQuery: String, prefs: WallPrefs, zoneId: String, 
     // The view, the filter and the room held through an album's page or Now playing over the wall (item 339): plain
     // remember is dropped when the screen is left, and the wall came back in the view it was opened with.
     var view by rememberSaveable(stateSaver = VIEW_SAVER) { mutableStateOf(LibraryView.parse(viewQuery)) }
-    val offline = OfflineNow.on
+    val offline = false
     val wall = remember(view, offline) { LibraryWall.state(view.query(), offline) }
     var zone by rememberSaveable { mutableStateOf(zoneId) }
     val room = followRoom(zone, client)
