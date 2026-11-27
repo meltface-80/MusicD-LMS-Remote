@@ -202,8 +202,14 @@ tags, no automatic releases, no cluttered history.
 - **Mallard updates itself** (owner request, as Mandarin's app does):
   `AppUpdate.kt` reads `mallard.json` ({version, code, url, sha256, notes})
   from `releases/download/<tag>/`, offers it on Home (Mandarin's `up_icon`
-  banner, Update / Later) and in Settings → System, checks the SHA-256 and
-  hands the APK to Android's installer. Core's `MallardRelease.kt` decides:
+  banner, Update / Later) and in Settings → System, and Update opens the
+  APK's link in the BROWSER, which downloads and installs it. MALLARD NEVER
+  INSTALLS AN APK ITSELF: no `REQUEST_INSTALL_PACKAGES`, no download-then-
+  launch-the-installer. 0.2.0-t32 to t41 did, as Mandarin does, and Play
+  Protect blocked every one as "Harmful app" — even signed with the owner's
+  private key: a new sideloaded app with no install history that fetches and
+  installs APKs is what its dropper model blocks (Mandarin's history vouches
+  for Mandarin; Mallard has none). Don't add the permission back. Core's `MallardRelease.kt` decides:
   newer means a higher versionCode; a release build follows `mallard-latest`,
   a test build that AND `mallard-test`; the APK's url must be one of this
   repository's `mallard-*` releases. RULES THAT KEEP IT SAFE:
