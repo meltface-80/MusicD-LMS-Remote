@@ -7,6 +7,9 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - Mallard opens LMS's settings pages inside the app (Settings → LMS server → Server settings, and a plugin's Settings), with Back stepping back through the pages, instead of in the phone's browser. The web app is unchanged
+- Added - Mallard's Shelf has the web Shelf's Labels: a Labels tab (each label with its covers and count) and the "By label and catalogue №" order, with the label on the case's line
+- Changed - The Shelf's Types tab shows only when something says what kind of release an album is, which LMS never does, in both apps
 - Added - Mallard's side menu has the web app's collections: Merged albums (with Unmerge), Smart Picks, Dynamic Playlists (each playlist's albums, Play now, Add to queue, Delete), Playlists (tracks with covers, Play now, Add to queue, play from a track, Delete for your own playlist files) and Import a playlist (paste a share, see what matched and what's missing, save it). The rows and their icons are the web menu's, and Shelf and Smart Picks follow the server's switches as the web menu does
 - Changed - The web app's Settings is drawn as Mallard's: full screen, the brass close or back disc before the title, a flat list with Mallard's own icons and words, compact buttons in the panes, and "MusicD LMS Remote v…" with View on GitHub at the foot
 - Fixed - The web app's side menu head is solid, as Mallard's is, so the rows no longer show through it when the menu scrolls

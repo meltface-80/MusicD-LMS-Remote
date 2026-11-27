@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 
 /*
  * Settings → LMS server → Plugins: LMS's plugins — installed, offered by its repositories, updates — with Install,
- * Update, Remove, Enable / Disable, the plugin's own settings, and Restart LMS to apply. The twin of the web app's
+ * Update, Remove, Enable / Disable, the plugin's own settings (in the app, LmsSettingsLink.kt), and Restart LMS to apply. The twin of the web app's
  * Plugins sheet (public/lms-plugins.js); both draw /api/lms/plugins, which drives LMS's own plugin page, and the server
  * says which buttons each plugin gets (core's LmsPlugin.can), so the two apps can't offer different things.
  */
@@ -70,6 +70,7 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
     var busy by remember { mutableStateOf("") }
     var restarting by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var page by remember { mutableStateOf<LmsPlugin?>(null) }   // a plugin's own settings, open in the app
     val toast = { t: String -> setupToast(context, t) }
 
     suspend fun load() {
@@ -117,6 +118,7 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
     }
     fun open(url: String) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
 
+    page?.let { p -> LmsPage(p.settings, p.title, client) { page = null }; return }
     SettingsFrame {
         PaneHead("Plugins", onBack)
         val l = list
@@ -143,7 +145,7 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
                 }, Modifier)
                 for ((title, ps) in groups) {
                     Text(title.uppercase(), Modifier.padding(top = 16.dp, bottom = 4.dp), color = paletteColor(Palette.TEXT_FAINT), fontSize = 12.sp, fontWeight = FontWeight.W700, letterSpacing = 0.7.sp)
-                    for (p in ps) PluginRow(p, client, busy, restarting, { a -> ask(p, a) }, { p.settings?.let { s -> client()?.let { c -> open(c.absoluteUrl(s)) } } }, { p.homepage?.let { open(it) } })
+                    for (p in ps) PluginRow(p, client, busy, restarting, { a -> ask(p, a) }, { if (p.settings != null) page = p }, { p.homepage?.let { open(it) } })
                 }
             }
         }

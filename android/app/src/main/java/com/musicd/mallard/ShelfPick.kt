@@ -109,7 +109,7 @@ internal fun ShelfPick(shelf: ShelfControl, rem: Dp, client: () -> ServerClient?
     }
 }
 
-/** The eight tabs (item 208: Formats and Favourites added), two even rows of four, each with how many of it are chosen. */
+/** The tabs (the page's, shelf.html), two even rows of four, each with how many of it are chosen. */
 @Composable
 private fun Tabs(shelf: ShelfControl, rem: Dp) {
     // drawn again when a tab is picked or a choice moves its badge: the choices' own fields aren't Compose state (item 209:
@@ -121,16 +121,10 @@ private fun Tabs(shelf: ShelfControl, rem: Dp) {
         verticalArrangement = Arrangement.spacedBy(2.dp)) {
         fun pick(id: String) { c.tab = id; shelf.choose { null } }
         fun state(id: String) = if (c.count(id) > 0) 1 else 0
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            TabButton(Modifier.parity("shelf-choices.tab-genre", Contract.label("shelf-choices.tab-genre", state("genre"), c.count("genre").toString())).weight(1f).clickable { pick("genre") }, "genre", c, rem)
-            TabButton(Modifier.parity("shelf-choices.tab-artist", Contract.label("shelf-choices.tab-artist", state("artist"), c.count("artist").toString())).weight(1f).clickable { pick("artist") }, "artist", c, rem)
-            TabButton(Modifier.parity("shelf-choices.tab-year", Contract.label("shelf-choices.tab-year", state("year"), c.count("year").toString())).weight(1f).clickable { pick("year") }, "year", c, rem)
-            TabButton(Modifier.parity("shelf-choices.tab-type", Contract.label("shelf-choices.tab-type", state("type"), c.count("type").toString())).weight(1f).clickable { pick("type") }, "type", c, rem)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            TabButton(Modifier.parity("shelf-choices.tab-format", Contract.label("shelf-choices.tab-format", state("format"), c.count("format").toString())).weight(1f).clickable { pick("format") }, "format", c, rem)
-            TabButton(Modifier.parity("shelf-choices.tab-favourite", Contract.label("shelf-choices.tab-favourite", state("favourite"), c.count("favourite").toString())).weight(1f).clickable { pick("favourite") }, "favourite", c, rem)
-            TabButton(Modifier.parity("shelf-choices.tab-order", Contract.label("shelf-choices.tab-order", state("order"), c.count("order").toString())).weight(1f).clickable { pick("order") }, "order", c, rem)
+        // The tabs this library has (ShelfChoices.tabs: Types only where something has a kind), in even rows of four.
+        for (row in c.tabs(shelf.lib).chunked(4)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            for ((id, _) in row) TabButton(Modifier.parity("shelf-choices.tab-$id", Contract.label("shelf-choices.tab-$id", state(id), c.count(id).toString())).weight(1f).clickable { pick(id) }, id, c, rem)
+            repeat(4 - row.size) { Box(Modifier.weight(1f)) }
         }
     }
 }

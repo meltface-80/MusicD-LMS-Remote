@@ -13,7 +13,6 @@
  */
 (() => {
   "use strict";
-
   /** @param {any} h */
   function create(h) {
     const { $, esc, rng, hash, imageUrl, jget, TICK } = h;
@@ -321,6 +320,7 @@
           facts = j.facts || null;
           albums = Array.isArray(j.albums) ? j.albums : [];
           for (const a of albums) a.fk = FMT.keyOf(a.fx);   // its Formats tile, worked out once a list (shelf-format.js)
+          { const t = $('.tab[data-tab="type"]'); if (t) t.hidden = !kinds.length && !albums.some((a) => a.ty && a.ty.length); }   // Types only if a kind is named (LMS: never), as Mallard
           libRev = j.rev || null;
           libSig = j.sig || null;
           const at = new Map(genres.map((g, i) => [g.name, i]));

@@ -89,6 +89,8 @@ internal fun ShelfTilesGrid(shelf: ShelfControl, tab: String, rem: Dp, client: (
                 "year" -> TileBox(Modifier.parity("shelf-choices.decade", Contract.label("shelf-choices.decade", if (t.id == "none") 1 else 0, t.id)).clickable { toggle(t.id) }.aspectRatio(1.6f), t, rem, rem * 0.7f) {
                     WordFace(t, rem, 1.6f, serif = t.id != "none")
                 }
+                // a record label as the page's .t-label: three of its covers fanned, its name under them
+                "label" -> TileBox(Modifier.parity("shelf-choices.label", Contract.label("shelf-choices.label", 0, t.name)).clickable { toggle(t.id) }.aspectRatio(1.15f), t, rem, fan) { FanFace(t, rem, client) }
                 "type" -> TileBox(Modifier.parity("shelf-choices.type", Contract.label("shelf-choices.type", 0, t.name)).clickable { toggle(t.id) }.aspectRatio(1.6f), t, rem, rem * 0.7f) {
                     WordFace(t, rem, 1.6f, serif = false)
                 }
