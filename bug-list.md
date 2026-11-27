@@ -19,7 +19,7 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
 4. **Rename everything to Mallard** (owner decision): server, docs, Pages, Docker image. Needs a careful transition —
    publish both image names for a while, keep the data volume, keep the MDRP1 share format, the repo rename is the
    owner's action and the Pages URL does not redirect.
-5. **Mallard parity — playlists.** Stored playlists, Add to playlist, Dynamic (Live) Playlists.
+5. **Mallard parity — playlists.** Stored playlists, Dynamic (Live) Playlists and Import: *on dev (testing)*. Still to come: Add to playlist from multi-select, saving/editing a Dynamic Playlist from the Library's Focus.
 6. **Mallard parity — Qobuz.** Qobuz in search, the Qobuz album page, tile marks.
 7. **Mallard parity — library management.** Merged albums (list, unmerge, rename), album edit and artwork rescue,
    Remove from Favourites in multi-select.

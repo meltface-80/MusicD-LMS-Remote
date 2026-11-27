@@ -160,6 +160,7 @@ private fun Shell(client: () -> ServerClient?) {
         // The search (item 61): over Home or the page; an album's page over it, and Back comes back to the same results.
         // The search (item 61) and the rest: ShellRoutes.kt.
         moreRoutes(nav, client)
+        collectionRoutes(nav, client)   // the side menu's collections: CollectionRoutes.kt
         composable(ShellRoute.NOW_PLAYING, arguments = listOf(navArgument(ShellRoute.ZONE) { type = NavType.StringType })) { entry ->
             NowPlayingScreen(
                 entry.arguments?.getString(ShellRoute.ZONE).orEmpty(), client, onBack = { nav.popBackStack() },

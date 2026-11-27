@@ -59,7 +59,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import com.musicd.mallard.client.CollectionRoute
 import com.musicd.mallard.client.Contract
+import com.musicd.mallard.client.Features
+import com.musicd.mallard.client.features
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.ServerClient
 import com.musicd.mallard.client.ShellRoute
@@ -103,6 +106,11 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
         "shelf" -> overHome(nav, ShellRoute.shelf(z))
         "radio" -> overHome(nav, ShellRoute.apps("radio", z))
         "pitchfork" -> overHome(nav, ShellRoute.pitchfork("", z))
+        "picks" -> overHome(nav, ShellRoute.picks(z))
+        "merges" -> overHome(nav, CollectionRoute.merges(z))
+        "liveplaylists" -> overHome(nav, CollectionRoute.livePlaylists(z))
+        "playlists" -> overHome(nav, CollectionRoute.playlists(z))
+        "import" -> overHome(nav, CollectionRoute.import(z))
         "settings" -> overHome(nav, ShellRoute.settings())
     }
 }
@@ -126,12 +134,13 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
     }
     // The LMS server's name under Rescan library, as the server reports it.
     var lms by remember { mutableStateOf("") }
-    // The Shelf row while the server's Shelf is switched on (/api/settings/shelf, as the page's menu reads it).
-    var shelfOn by remember { mutableStateOf(false) }
+    // The server's switches, read as the page's menu reads them (/api/settings/features): the Shelf row only while it is
+    // on; Smart Picks unless it is switched off.
+    var features by remember { mutableStateOf(Features(setOf("shelf"))) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         lms = withContext(Dispatchers.IO) { runCatching { c.health().lms }.getOrNull() }.orEmpty()
-        shelfOn = withContext(Dispatchers.IO) { runCatching { c.getJson("/api/settings/shelf").optBoolean("enabled") }.getOrNull() } == true
+        withContext(Dispatchers.IO) { runCatching { c.features() }.getOrNull() }?.let { features = it }
     }
     Box(Modifier.fillMaxSize().parity("menu.close", Contract.label("menu.close")).pointerInput(widthPx, open) {
         detectTapGestures { at -> if (!open) return@detectTapGestures; if (at.x > widthPx) onClose() }
@@ -148,7 +157,7 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
                 Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     Column {
                         MenuHead()
-                        MenuList(lms, shelfOn, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
+                        MenuList(lms, features, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
                     }
                 }
             }
@@ -168,18 +177,23 @@ private fun MenuHead() {
     }
 }
 
-/** The list: Home and Random albums, a line, Favourites and Pitchfork, a line, Rescan library, a line, Settings. */
+/** The list, as the web app's menu (public/index.html): Home, Random albums and the Shelf; the collections; Rescan; Settings. */
 @Composable
-private fun MenuList(lms: String, shelfOn: Boolean, onRescan: () -> Unit, onItem: (String) -> Unit) {
+private fun MenuList(lms: String, features: Features, onRescan: () -> Unit, onItem: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         MenuItem(Modifier.clip(ITEM).clickable { onItem("home") }, R.drawable.tn_home, "Home")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
-        if (shelfOn) MenuItem(Modifier.clip(ITEM).clickable { onItem("shelf") }, R.drawable.mn_shelf, "Shelf")
+        if (features.on("shelf")) MenuItem(Modifier.clip(ITEM).clickable { onItem("shelf") }, R.drawable.mn_shelf, "Shelf")
         MenuSep()
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
-        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.st_services, "Apps")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("merges") }, R.drawable.mn_merged, "Merged albums")
         MenuItem(Modifier.parity("menu.pitchfork", Contract.label("menu.pitchfork")).clip(ITEM).clickable { onItem("pitchfork") }, R.drawable.mn_pitchfork, Contract.label("menu.pitchfork"))
+        if (features.on("smartPicks")) MenuItem(Modifier.clip(ITEM).clickable { onItem("picks") }, R.drawable.mn_picks, "Smart Picks")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("liveplaylists") }, R.drawable.mn_live, "Dynamic Playlists")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("playlists") }, R.drawable.mn_playlists, "Playlists")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("import") }, R.drawable.mn_import, "Import a playlist")
         MenuSep()
         MenuItem(Modifier.parity("menu.rescan", Contract.label("menu.rescan")).clip(ITEM).clickable(onClick = onRescan), R.drawable.mn_rescan, Contract.label("menu.rescan"), lms)
         MenuSep()
