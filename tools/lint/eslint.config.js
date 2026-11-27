@@ -27,8 +27,10 @@ const shareCard = {
   files: ["public/sharecard.js", "public/share-sheet.js"],
   languageOptions: { globals: { ShareCardLayout: "readonly", ShareCard: "readonly" } }
 };
+// Page scripts the server (or a Node test) also requires: sharecard-layout.js (lib/sharecard.test.js) and
+// shelf-format.js (lib/shelf-routes.js, the Formats tiles Mallard is sent).
 const shareCardLayout = {
-  files: ["public/sharecard-layout.js"],
+  files: ["public/sharecard-layout.js", "public/shelf-format.js"],
   languageOptions: { globals: { module: "readonly" } }
 };
 const rules = {

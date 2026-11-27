@@ -16,6 +16,10 @@ object Store {
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /** The Shelf's own keeps, as the page keeps them in localStorage: "order" (the order last chosen), "genre-sort", "help". */
+    fun shelf(context: Context, key: String): String? = prefs(context).getString("shelf_$key", null)
+    fun setShelf(context: Context, key: String, value: String) { prefs(context).edit().putString("shelf_$key", value).apply() }
+
     fun server(context: Context): ServerAddress? {
         val p = prefs(context)
         val host = p.getString(KEY_HOST, null) ?: return null

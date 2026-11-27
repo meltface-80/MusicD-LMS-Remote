@@ -100,6 +100,7 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
         "random" -> overHome(nav, ShellRoute.wall("random", z, ""))
         "favourites" -> overHome(nav, ShellRoute.wall("favourites", z, ""))
         "apps" -> overHome(nav, ShellRoute.apps("app", z))
+        "shelf" -> overHome(nav, ShellRoute.shelf(z))
         "radio" -> overHome(nav, ShellRoute.apps("radio", z))
         "pitchfork" -> overHome(nav, ShellRoute.pitchfork("", z))
         "settings" -> overHome(nav, ShellRoute.settings())
@@ -125,9 +126,12 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
     }
     // The LMS server's name under Rescan library, as the server reports it.
     var lms by remember { mutableStateOf("") }
+    // The Shelf row while the server's Shelf is switched on (/api/settings/shelf, as the page's menu reads it).
+    var shelfOn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         lms = withContext(Dispatchers.IO) { runCatching { c.health().lms }.getOrNull() }.orEmpty()
+        shelfOn = withContext(Dispatchers.IO) { runCatching { c.getJson("/api/settings/shelf").optBoolean("enabled") }.getOrNull() } == true
     }
     Box(Modifier.fillMaxSize().parity("menu.close", Contract.label("menu.close")).pointerInput(widthPx, open) {
         detectTapGestures { at -> if (!open) return@detectTapGestures; if (at.x > widthPx) onClose() }
@@ -144,7 +148,7 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
                 Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     Column {
                         MenuHead()
-                        MenuList(lms, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
+                        MenuList(lms, shelfOn, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
                     }
                 }
             }
@@ -166,10 +170,11 @@ private fun MenuHead() {
 
 /** The list: Home and Random albums, a line, Favourites and Pitchfork, a line, Rescan library, a line, Settings. */
 @Composable
-private fun MenuList(lms: String, onRescan: () -> Unit, onItem: (String) -> Unit) {
+private fun MenuList(lms: String, shelfOn: Boolean, onRescan: () -> Unit, onItem: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         MenuItem(Modifier.clip(ITEM).clickable { onItem("home") }, R.drawable.tn_home, "Home")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
+        if (shelfOn) MenuItem(Modifier.clip(ITEM).clickable { onItem("shelf") }, R.drawable.mn_shelf, "Shelf")
         MenuSep()
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.st_services, "Apps")

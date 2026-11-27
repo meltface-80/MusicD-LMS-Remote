@@ -77,5 +77,8 @@
       || Number(a.multi) - Number(b.multi) || a.name.localeCompare(b.name, undefined, { sensitivity: "base" })).map((t) => t.name);
   }
 
-  /** @type {any} */ (window).ShelfFormat = { keyOf, ordered };
+  // The page reads it as window.ShelfFormat; the server (lib/shelf-routes.js) requires the same file, so the Formats
+  // tiles Mallard is sent (each album's `q`, the ordered `formats`) are the page's own, by construction.
+  if (typeof module !== "undefined" && module.exports) module.exports = { keyOf, ordered };
+  else /** @type {any} */ (globalThis).ShelfFormat = { keyOf, ordered };   // globalThis is window in a page
 })();

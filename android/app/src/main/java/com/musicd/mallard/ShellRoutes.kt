@@ -40,6 +40,11 @@ internal fun NavGraphBuilder.moreRoutes(nav: NavHostController, client: () -> Se
             onAlbum = { offset -> inPlace(nav, ShellRoute.album(offset, zone, "")) },
             onQobuz = { q -> inPlace(nav, ShellRoute.search(q, zone)) })
     }
+    // The Shelf: the library as a record shop's racks, played in the room chosen (the server's /shelf, natively).
+    composable(ShellRoute.SHELF, arguments = listOf(navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
+        ShelfScreen(entry.arguments?.getString(ShellRoute.ZONE).orEmpty(), client, onBack = { nav.popBackStack() },
+            onPage = { what, arg -> handOver(nav, what, arg) }, onNowPlaying = { id -> nav.navigate(ShellRoute.nowPlaying(id)) { launchSingleTop = true } })
+    }
     // The plugins (LMS apps and radio): their list, and any of their menus, each over the screen that opened it.
     composable(ShellRoute.APPS, arguments = listOf(navArgument(ShellRoute.KIND) { type = NavType.StringType; defaultValue = "app" }, navArgument(ShellRoute.ZONE) { type = NavType.StringType; defaultValue = "" })) { entry ->
         val zone = entry.arguments?.getString(ShellRoute.ZONE).orEmpty().ifEmpty { NativeShell.zone }
