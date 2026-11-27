@@ -4733,3 +4733,6 @@ body.show-quality .album-quality.hidden { display: none; }
 .plugin-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .plugin-btns .action-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 13px; }
 .plugin-link { font-size: 13px; color: var(--accent-text); text-decoration: none; padding: 6px 4px; }
+
+/* Settings → Away from home (away-settings.js): a warning in the danger colour. */
+.away-error { color: var(--danger, #e57373); }

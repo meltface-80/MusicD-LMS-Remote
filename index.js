@@ -1019,11 +1019,12 @@ const notConnected = (res) => res.status(503).json({
 
 // ---- status / zones ----
 
+const tailscale = require("./lib/tailscale-routes").mountTailscale(app, { port: PORT, dataDir: DATA_DIR, log: log.child("tailscale") });   // away from home
 app.get("/api/status", (req, res) => {
   res.json({
-    // Names the server, so a native client finding it on the network (Mallard's
-    // address sweep) can tell it from anything else answering on the port.
+    // Names the server (for Mallard's address sweep), and its tailnet address once the built-in Tailscale serves.
     app:        "musicd-lms-remote",
+    tailscale:  tailscale.address(),
     version:    build.version,
     channel:    build.channel,
     paired:     state.connected,
@@ -4151,7 +4152,6 @@ app.get("/api/services", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
 // ---------------------------------------------------------------------------
 // Smart Picks — six albums a day by artists NOT in the library.
 //
@@ -4583,7 +4583,6 @@ app.get("/api/smart-picks", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
 // "Not for me" — never suggest this artist again, and take their cards away
 // now rather than at the next rebuild.
 app.post("/api/smart-picks/block", (req, res) => {
@@ -4679,7 +4678,6 @@ app.post("/api/smart-picks/add", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 
 // ---- Smart Picks: schedule + settings --------------------------------------
 // Defaults chosen for an overnight build: it does 24 MusicBrainz lookups at

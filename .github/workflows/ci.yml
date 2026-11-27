@@ -45,3 +45,18 @@ jobs:
       - name: Syntax check of the pages
         run: node --check public/app.js && node --check public/display.js
       - run: npm test
+
+  engine:
+    name: Tailscale engine (musicdnet)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: musicdnet/go.mod
+          cache-dependency-path: musicdnet/go.sum
+      # Its tests stand up a private tailnet of their own (Tailscale's testcontrol and DERP): no secrets.
+      - name: Vet and test
+        working-directory: musicdnet
+        run: go vet ./... && go test ./...

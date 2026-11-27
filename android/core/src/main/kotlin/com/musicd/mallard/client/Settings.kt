@@ -21,6 +21,7 @@ object SettingsLists {
         SettingsRow("homescreen", "Home Screen", "Which rows show, and in what order"),
         SettingsRow("smartpicks", "Smart Picks", "Daily discoveries & schedule"),
         SettingsRow("lms", "LMS server", "Server settings, plugins & rescan"),
+        SettingsRow("away", "Away from home", "Tailscale built in: your music anywhere"),
         SettingsRow("display", "Wall display", "Always-on screen & video"),
         SettingsRow("shelf", "Shelf", "The record-shop browser, on or off"),
         SettingsRow("appearance", "Appearance", "Mallard's colours"),
