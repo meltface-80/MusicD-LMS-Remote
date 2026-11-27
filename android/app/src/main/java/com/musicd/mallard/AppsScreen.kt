@@ -99,7 +99,7 @@ private fun rememberAppImage(imageKey: String?, imagePath: String?, px: Int, cli
 }
 
 @Composable
-private fun AppPicture(imageKey: String?, imagePath: String?, size: Dp, client: () -> ServerClient?, round: Dp = 8.dp) {
+internal fun AppPicture(imageKey: String?, imagePath: String?, size: Dp, client: () -> ServerClient?, round: Dp = 8.dp) {
     val px = with(LocalDensity.current) { size.roundToPx() }.coerceIn(64, 600)
     val img = rememberAppImage(imageKey, imagePath, px, client)
     Box(Modifier.size(size).clip(RoundedCornerShape(round)).background(paletteColor(Palette.BG_ELEV_2))) {
