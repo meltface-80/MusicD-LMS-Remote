@@ -15,6 +15,7 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
 3. **The web app (PWA) becomes Mallard.** Same name, look and features as the Android app (owner decision): Mandarin's
    hifi palette, Manrope + Young Serif, then shell, Home/Library, Album/Now playing, Artist/Apps, in phases. The web app
    still has the old UI (owner report). The iOS safe-area rules in CLAUDE.md hold throughout.
+   Phase 1, the look (Mallard theme, the default): *On dev (testing).* Name and layout next.
 4. **Rename everything to Mallard** (owner decision): server, docs, Pages, Docker image. Needs a careful transition —
    publish both image names for a while, keep the data volume, keep the MDRP1 share format, the repo rename is the
    owner's action and the Pages URL does not redirect.

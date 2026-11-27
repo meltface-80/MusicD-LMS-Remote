@@ -136,6 +136,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // window.__themes so the Settings pane can render the picker without
   // duplicating the list.
   const THEMES = [
+    { id: "mallard", label: "Mallard", note: "Graphite and brass — the Mallard app's look", theme: "dark", palette: "hifi" },
     { id: "dark",         label: "Dark",         note: "The original — cool grey and cyan",
       theme: "dark",  palette: "classic" },
     { id: "light",        label: "Light",        note: "The original — bright and neutral",
@@ -145,7 +146,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     { id: "brass-light",  label: "Brass light",  note: "Warm parchment with a brass accent",
       theme: "light", palette: "copper" },
   ];
-  const THEME_KEY = "rra-theme-v2";
+  // v3: Mallard became the default (owner: the web app looks as the Mallard app does), so every install lands on it
+  // once; a theme chosen after that is kept.
+  const THEME_KEY = "rra-theme-v3";
   window.__themes = THEMES;
 
   function applyTheme(id) {
@@ -169,14 +172,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   (function initTheme() {
     let id = localStorage.getItem(THEME_KEY);
-    if (!THEMES.some(t => t.id === id)) {
-      // Migrate the v1 key, which only ever held "light" | "dark".
-      const legacy = localStorage.getItem("rra-theme");
-      if (legacy === "light" || legacy === "dark") id = legacy;
-      else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) id = "light";
-      else id = "dark";
-      localStorage.setItem(THEME_KEY, id);
-    }
+    if (!THEMES.some(t => t.id === id)) { id = "mallard"; localStorage.setItem(THEME_KEY, id); }
     applyTheme(id);
   })();
 

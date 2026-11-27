@@ -1115,8 +1115,15 @@ tags, no automatic releases, no cluttered history.
   reintroduce a tint to "group" anything. `--panel-hairline` survives only for
   genuinely RAISED surfaces (bottom sheets); flat content uses `--border`.
 - Theming is TWO axes on `<html>`: `data-theme` (dark|light) x `data-palette`
-  (classic|copper) = 4 themes (Dark, Light, Copper dark, Brass light), matching
-  the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
+  (classic|copper|hifi) = 5 themes. MALLARD (`hifi`, dark) IS THE DEFAULT
+  (owner: the web app looks as the Mallard app does): its tokens are in
+  style.css (checked by `lib/glass.test.js` like the rest), its component rules
+  in `public/hifi.css`, ported from Mandarin's page — the LOOK ONLY (fonts,
+  brass discs and glyphs, serif titles, the level-meter progress), NEVER its
+  layout: Mandarin's block also restructures the album view and puts
+  `env(safe-area-inset-top)` on the modal family, which the iOS rule forbids.
+  `THEME_KEY` moved to v3 so every install landed on Mallard once. The others
+  (Dark, Light, Copper dark, Brass light) match the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
   palette literal — a new palette should be a token block and nothing else.
   `--on-accent` is ink ON an accent fill; `--accent-text` is accent used AS text
   (they differ on light palettes, which need white on the fill). Theme list lives

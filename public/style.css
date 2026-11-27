@@ -153,6 +153,42 @@
   --shadow-modal: 0 24px 64px rgba(58,44,26,.20);
 }
 
+/* Mallard (the default): Mallard's own look, the Android app's and Mandarin's "graphite and brass" — a warm charcoal
+   ground, flat, one elevated tone for cards and panels, the brass the one accent; Manrope, titles in Young Serif.
+   The component rules that go with it are in hifi.css (from Mandarin's page; only its look, never its layout). */
+[data-theme="dark"][data-palette="hifi"] {
+  --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Young Serif", Georgia, "Times New Roman", serif;
+  --bg:           #17191c;
+  --bg-elev:      #1f2226;
+  --bg-elev-2:    #262a2f;
+  --border:       #30353b;
+  --text:         #ecebe6;
+  --text-dim:     #9a9ca1;
+  --text-faint:   #7a7d83;
+  --accent:       #c9a45c;
+  --accent-text:  #d4b06a;
+  --accent-soft:  rgba(201,164,92,.15);
+  --on-accent:    #17191c;
+  /* #17191c with alpha. */
+  --bg-veil:      rgba(23,25,28,.84);
+  --glass-edge:   rgba(201,164,92,.22);
+  --glass-fill:   rgba(236,235,230,.07);
+  --glass-fill-strong: rgba(236,235,230,.13);
+  --danger:       #e8836b;
+  --heart: #ff4d6d;
+  --panel-hairline: rgba(236,235,230,.08);
+  --shadow-card:  0 2px 6px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.4);
+  --shadow-modal: 0 24px 64px rgba(0,0,0,.65);
+  /* hifi.css's: the mini player's body, the level meter's unlit segments, the genre cards' ink, and the discs (the
+     names are Mandarin's, kept from the plum they replaced there). */
+  --mt-bg:        rgba(31,34,38,.97);
+  --meter-off:    rgba(236,235,230,.12);
+  --card-ink:     #ecebe6;
+  --plum:         #c9a45c;
+  --plum-pale:    #17191c;
+}
+
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0;
