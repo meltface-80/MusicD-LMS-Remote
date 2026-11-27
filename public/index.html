@@ -390,6 +390,10 @@
            list you reorder and the rows that render cannot drift apart.
            Reordering MOVES these nodes; it never rebuilds them from markup,
            or every tile in them loses its listeners. -->
+      <!-- Home's head, as Mallard's: the greeting (home-head.js), then the strip of Random Album and today's album
+           (app.js renderHomeUnplayed fills it). One row on every screen, so a tablet can't wrap it. -->
+      <div class="home-greeting" id="home-greeting"><div class="home-greeting-date" id="home-greeting-date"></div><h1 class="home-greeting-text" id="home-greeting-text"></h1></div>
+      <div class="home-section home-today"><div id="home-today" class="home-carousel home-carousel-1row"></div></div>
       <div id="home-sections">
         <div class="home-section home-section-unplayed" data-row="unplayed">
           <h2 class="home-section-title home-section-link" id="home-unplayed-title" role="button" tabindex="0">Not played in 6 months</h2>
@@ -1773,5 +1777,6 @@
   <script src="/apps-browser.js"></script>
   <script src="/lms-plugins.js"></script>
   <script src="/away-settings.js"></script>
+  <script src="/home-head.js"></script>
 </body>
 </html>

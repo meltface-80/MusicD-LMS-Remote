@@ -1362,11 +1362,11 @@ tags, no automatic releases, no cluttered history.
   Home unheard tile really IS in the Roon build, and the side menu really has
   NO "Filter" or "Play something unheard" row. Re-download before auditing:
   `raw.githubusercontent.com/meltface-80/MusicD-Remote/<branch>/public/<file>`.
-- "Play something unheard" is the FIRST TILE of the Not-played row plus the
-  top-bar icon — not a side-menu row (v1.0.62, matching Roon). It is built
-  AFTER `renderHomeUnplayed`'s empty check, deliberately: appending it ahead of
-  that check made `rowHasContent()` always true, so the "Loading…" placeholder
-  never showed and a failed load was never retried. Any test that clicks "the
+- HOME'S HEAD IS MALLARD'S (owner report, reversing v1.0.62's "first tile of the Not-played row"): the greeting (date in
+  brass capitals, "Good evening" in the serif; `home-head.js`), then ONE strip — Random Album (the old unheard tile,
+  Mallard's disc and words; `window.__playUnheard`) and the Album of the Day — in `#home-today`, a one-row carousel on
+  every screen, then Not played in 6 months with ALBUMS ONLY. `renderHomeUnplayed` fills both. In the Mallard theme
+  every Home row is one row (a tablet's two-row grid put the next tile under the first). Any test that clicks "the
   first .album" must exclude `.home-unheard-tile`.
 - The Focus sheet's `openSections` is THREE-VALUED (`{}` with undefined =
   untouched), never a Set (v1.0.62). A boolean Set recomputed `activeCount > 0`
