@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's Qobuz mark (style.css, .album-source.qobuz), for the native album page's source badge. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2.6a9.4,9.4 0,1 0,0 18.8a9.4,9.4 0,1 0,0 -18.8zM12,6.6a5.4,5.4 0,1 1,0 10.8a5.4,5.4 0,1 1,0 -10.8z" />
+    <group android:rotation="-42" android:pivotX="14.4" android:pivotY="17.9">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M14,13.4h0.8a1.4,1.4 0,0 1,1.4 1.4v6.2a1.4,1.4 0,0 1,-1.4 1.4h-0.8a1.4,1.4 0,0 1,-1.4 -1.4v-6.2a1.4,1.4 0,0 1,1.4 -1.4z" />
+    </group>
+</vector>

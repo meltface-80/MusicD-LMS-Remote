@@ -1389,6 +1389,19 @@
           </div>
           <div class="settings-sub" id="lms-rescan-status" style="padding-top:6px"></div>
         </div>
+
+        <div class="settings-divider"></div>
+
+        <!-- Streaming albums in the library (LMS's Online Music Library import).
+             Worded by the server (/api/library/online) so the app and Mallard say
+             the same thing. -->
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Streaming albums in your library <button class="settings-info-btn" data-info="LMS's Online Music Library integration copies the albums you've favourited in Qobuz or TIDAL into your library, where this app lists them beside your own files. Albums you only browse inside the Qobuz plugin aren't in the library. Import now asks LMS to fetch your favourites again." aria-label="Info">ⓘ</button></span>
+            <button class="action-btn" id="online-lib-import" type="button">Import now</button>
+          </div>
+          <div id="online-lib-list"></div>
+        </div>
       </div>
 
       <div class="settings-view settings-pane hidden" data-view="pane" data-pane="display">

@@ -41,6 +41,7 @@ const makeFavourites = require("./lib/favourites");
 const { makeFeatures } = require("./lib/features");
 const makeAlbumMerges = require("./lib/albummerges");
 const makeRadio       = require("./lib/radio");
+const makeApps        = require("./lib/apps");
 
 const pkg = require("./package.json");
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
@@ -594,6 +595,15 @@ async function refreshConnectionInner() {
       log.info("lms: library rescan detected (lastScan changed) — rebuilding the index");
       libraryViewCache.clear();
       ensureIndex();
+    } else if (!indexBuilding && indexAlbumTotal != null && Date.now() - albumCountCheckedAt > ALBUM_COUNT_CHECK_MS) {
+      albumCountCheckedAt = Date.now();
+      state.lms.countAlbums().then(n => {
+        if (n === indexAlbumTotal || indexBuilding) return;
+        log.info("lms: album count moved (" + indexAlbumTotal + " → " + n + ", e.g. an online-library import) — rebuilding the index");
+        indexCountMoved = true;
+        libraryViewCache.clear();
+        ensureIndex();
+      }).catch(e => log.debug("lms: album count check failed:", e.message));
     }
   } catch (e) {
     state.connected = false;
@@ -687,7 +697,9 @@ async function fetchAlbumPages(total) {
 async function buildIndex() {
   if (!state.lms) throw new Error("Not connected to LMS");
   indexProgress = 0;
+  indexCountMoved = false;
   const total = await state.lms.countAlbums();
+  indexAlbumTotal = total;
   const sig = indexCacheSig(total);
   let rows = readIndexCache(sig);
   const fromCache = !!rows;
@@ -879,6 +891,17 @@ async function applyAddedTimes(sig, albumCount) {
 // in-app rescan happened to be fine only because the client pokes /api/reindex
 // when it sees the scan finish, which needs the page to be open.
 let indexScanStamp = null;
+// LMS's album count when the index was built, and whether a later look found it
+// moved. A scan moves lastScan, but LMS's Online Music Library integration
+// imports (and removes) streaming favourites — Qobuz, Tidal — in the
+// BACKGROUND, from its poller, and nothing in that path is known to move
+// lastScan: imported albums could stay invisible here for up to
+// INDEX_MAX_AGE_MS. So refreshConnection also compares the count (one cheap
+// `albums 0 1`) every ALBUM_COUNT_CHECK_MS.
+let indexAlbumTotal = null;
+let indexCountMoved = false;
+let albumCountCheckedAt = 0;
+const ALBUM_COUNT_CHECK_MS = Number(process.env.ALBUM_COUNT_CHECK_MS) || 5 * 60 * 1000;   // env: tests only
 function scanChangedSinceIndex() {
   const scan = state.server && state.server.lastScan;
   if (scan == null || indexScanStamp == null) return false;
@@ -890,7 +913,7 @@ function ensureIndex() {
   // empty/still-scanning library has a valid built-but-empty index and must not
   // re-trigger a build (and its countAlbums RPC) on every request.
   const stale = !index.builtAt || (Date.now() - index.builtAt) > INDEX_MAX_AGE_MS
-                || scanChangedSinceIndex();
+                || scanChangedSinceIndex() || indexCountMoved;
   if (stale && !indexBuilding) {
     indexBuilding = buildIndex()
       .catch(e => { if (DEBUG) console.error("[index] build failed:", e.message); })
@@ -996,6 +1019,10 @@ const notConnected = (res) => res.status(503).json({
 
 app.get("/api/status", (req, res) => {
   res.json({
+    // Names the server, so a native client finding it on the network (Mallard's
+    // address sweep) can tell it from anything else answering on the port.
+    app:        "musicd-lms-remote",
+    version:    pkg.version,
     paired:     state.connected,
     core_id:    state.server ? state.server.uuid : null,
     core_name:  state.server ? ("Lyrion Music Server " + (state.server.version || "")) : null,
@@ -1190,6 +1217,44 @@ app.get("/api/artist-albums", async (req, res) => {
   });
 });
 
+// The streaming albums in the library, and why there may be none. LMS's Online
+// Music Library integration imports each service's FAVOURITE albums into the
+// library (albums.extid "qobuz:album:<id>"); with it off — or with its
+// per-service switch off, which LMS sets to 0 for good if it once polled with no
+// account signed in — those albums exist only inside the plugin's own menus.
+// Every pref here is read-only; nothing is changed on the server.
+app.get("/api/library/online", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const counts = { qobuz: 0, tidal: 0, local: 0 };
+  for (const r of index.records) counts[r.source === "qobuz" ? "qobuz" : r.source === "tidal" ? "tidal" : "local"]++;
+  const pref = async (name) => { try { const v = await state.lms.getPref(name); return v == null || v === "" ? null : String(v); } catch (e) { return null; } };
+  const [state_, qobuz, tidal, purchases] = await Promise.all([
+    pref("plugin.state:OnlineLibrary"), pref("plugin.onlinelibrary:enable_PLUGIN_QOBUZ"),
+    pref("plugin.onlinelibrary:enable_PLUGIN_TIDAL"), pref("plugin.qobuz:dontImportPurchases")]);
+  const list = await services(false).catch(() => []);
+  const installed = (tag) => { const s = list.find(x => x.tag === tag); return s ? !!s.installed : null; };
+  const onlineOn = state_ == null ? null : state_ === "enabled";
+  // What both apps say, worded once HERE so the web app and Mallard can't drift.
+  const service = (tag, imported, importOn) => {
+    const name = SERVICE_LABEL[tag] || tag;
+    const importEnabled = importOn == null ? null : importOn === "1";
+    let say, problem = false;
+    if (imported > 0) say = imported + " " + name + " album" + (imported === 1 ? "" : "s") + " in your library.";
+    else if (onlineOn === false) { problem = true; say = "LMS\u2019s Online Music Library integration is off, so your " + name + " favourites stay inside the " + name + " plugin and never reach the library. Turn it on in LMS\u2019s settings (Online Music Library), then Import now."; }
+    else if (importEnabled === false) { problem = true; say = "LMS has " + name + " import switched off \u2014 it does that by itself if it ever looked before your " + name + " account was signed in. Turn " + name + " back on in LMS\u2019s Online Music Library settings, then Import now."; }
+    else say = "No " + name + " albums in your library yet. LMS imports the albums you\u2019ve favourited in " + name + " (not every album you\u2019ve played) \u2014 Import now fetches them.";
+    return { tag, name, installed: installed(tag), albums: imported, import_enabled: importEnabled, problem, say };
+  };
+  res.json({
+    online_library: onlineOn,
+    // Only services the server has (or might have: installed unknown).
+    services: [service("qobuz", counts.qobuz, qobuz), service("tidal", counts.tidal, tidal)].filter(x => x.installed !== false || x.albums > 0),
+    import_purchases: purchases == null ? null : purchases !== "1",
+    local_albums: counts.local,
+    index_built_at: index.builtAt || null,
+  });
+});
+
 app.get("/api/library-stats", (req, res) => {
   if (!state.connected) return notConnected(res);
   res.json({ albums: index.records.length, building: index.records.length === 0 && !!indexBuilding });
@@ -1251,10 +1316,19 @@ app.get("/api/album", async (req, res) => {
   try {
     const tracks = await tracksForRecord(rec);
     res.json({
-      album:  { title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
+      album:  { offset: rec.offset, title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
                 merge_id: rec.mergeId || null, part_count: rec.partCount || null,
                 quality: rec.quality || null, hires: !!rec.hires },
-      tracks: tracks.map(t => ({ title: t.title, subtitle: t.artist || "" })),
+      // track_id is the track's PLACE in this list (identity is offset + place;
+      // no LMS id ever leaves the server). length/tracknum/disc are for the
+      // native app (Mallard) and are omitted when LMS doesn't know them.
+      tracks: tracks.map((t, i) => {
+        const o = { track_id: i, title: t.title, subtitle: t.artist || "" };
+        if (Number.isFinite(t.duration) && t.duration > 0) o.length = t.duration;
+        if (Number.isFinite(t.trackNum)) o.tracknum = t.trackNum;
+        if (Number.isFinite(t.disc)) o.disc = t.disc;
+        return o;
+      }),
       actions: [
         { kind: "play_now",  title: "Play Now" },
         { kind: "queue",     title: "Queue" },
@@ -2744,6 +2818,8 @@ app.post("/api/lms/rescan", async (req, res) => {
   if (!state.connected) return notConnected(res);
   const raw = (req.body || {}).mode;
   const mode = RESCAN_MODES.has(raw) ? raw : null;
+  // An import may not move lastScan: check the album count on the next turns of the poll instead.
+  if (mode === "onlinelibrary") albumCountCheckedAt = Math.min(albumCountCheckedAt, Date.now() - ALBUM_COUNT_CHECK_MS + 60 * 1000);
   try { await state.lms.rescan(mode); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -4070,6 +4146,62 @@ async function requireService(tag, res) {
   });
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Plugins ("apps"): generic browsing of EVERY LMS plugin's menus (lib/apps.js).
+//
+// The native app (Mallard) draws any plugin's menus from these four routes; the
+// client only ever holds opaque tokens, never an LMS command (this server has
+// no sign-in). The engine is bound to the CURRENT LMS adapter and rebuilt when
+// that changes (a new server or settings), which also drops every token —
+// tokens name item ids in that server's menu sessions.
+let appsEngine = null, appsFor = null;
+function apps() {
+  if (!state.lms) return null;
+  if (appsFor !== state.lms) {
+    appsEngine = makeApps({ request: (pid, words) => state.lms.request(pid, words), log: log.child("apps") });
+    appsFor = state.lms;
+  }
+  return appsEngine;
+}
+/** The player a plugin call runs for: the one named, if LMS has it, else the first. */
+function appsPlayer(zone) {
+  const z = String(zone || "");
+  if (z && state.players.some(p => p.id === z)) return z;
+  return (state.players[0] && state.players[0].id) || "";
+}
+/** An engine error as an answer: its own status (403 refused, 410 expired, 400),
+ *  or 503 for LMS closing the socket (a plugin gone, signed out, or busy). */
+function appsError(res, e) {
+  if (e && e.status) return res.status(e.status).json({ error: e.message, expired: !!e.expired });
+  log.debug("apps:", e && e.message);
+  res.status(503).json({ error: "The plugin didn\u2019t answer: " + ((e && e.message) || "no answer"), unavailable: true });
+}
+app.get("/api/apps", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  try { res.json(await apps().list(appsPlayer(req.query.zone), req.query.refresh === "1")); }
+  catch (e) { appsError(res, e); }
+});
+app.get("/api/apps/browse", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const start = parseInt(req.query.start, 10) || 0, count = parseInt(req.query.count, 10) || 100;
+  try { res.json(await apps().browse(req.query.token, appsPlayer(req.query.zone), start, count)); }
+  catch (e) { appsError(res, e); }
+});
+app.post("/api/apps/act", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const b = req.body || {};
+  try { res.json(await apps().act(b.token, appsPlayer(b.zone_or_output_id || b.zone))); }
+  catch (e) { appsError(res, e); }
+});
+app.post("/api/apps/search", async (req, res) => {
+  if (!state.connected) return notConnected(res);
+  const b = req.body || {};
+  const term = String(b.term || "").trim();
+  if (!term) return res.status(400).json({ error: "term required" });
+  try { res.json(await apps().search(b.token, term, appsPlayer(b.zone_or_output_id || b.zone), parseInt(b.start, 10) || 0, parseInt(b.count, 10) || 100)); }
+  catch (e) { appsError(res, e); }
+});
 
 app.get("/api/services", async (req, res) => {
   try {

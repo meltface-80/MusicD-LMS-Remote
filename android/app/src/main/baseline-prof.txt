@@ -1,0 +1,4 @@
+HSPLcom/musicd/server/android/**->**(**)**
+HSPLcom/musicd/server/client/**->**(**)**
+Lcom/musicd/server/android/**;
+Lcom/musicd/server/client/**;

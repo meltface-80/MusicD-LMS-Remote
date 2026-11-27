@@ -90,6 +90,75 @@ Layout section of README.md.
   so the history keeps a reviewable record of each release.
 - Report the merged version back to the owner so they know what's live.
 
+## Mallard (android/)
+
+- `android/` is **Mallard**, the native Android remote for this server. It is a
+  port of Mandarin Remote's Compose app (meltface-80/Mandarin `android/`), with
+  everything Mandarin-only removed: Tailscale, phone playback, the USB DAC,
+  downloads, shelf, editor and sign-in. Package `com.musicd.mallard`; `:core`
+  is pure Kotlin/JVM (API client, models, view logic) and `:app` is Compose.
+- **Look and Settings**: the look is Mandarin's (Palette, Manrope and Young
+  Serif). The Settings LAYOUT is this server's page (owner decision), in
+  Mandarin's colours: `SettingsLists.HOME` mirrors index.html's
+  settings-nav order.
+- **Builds in this sandbox**: `:core` builds and tests locally with plain
+  Gradle (Kotlin plugin from the plugin portal plus Maven Central). Google
+  Maven and dl.google.com are blocked here, so `:app` compiles only in CI
+  (`.github/workflows/mallard.yml`). Pushes to `dev` publish the APK on the
+  rolling `mallard-test` PRE-release, which never counts as "latest" for the
+  server's updater.
+- **API rules from this file that Mallard follows** (`ServerClient.kt`):
+  - Track identity is album offset plus place. `/api/album` now also sends
+    `offset` and each track's `track_id`, which is its place, plus
+    `length`/`tracknum`/`disc`.
+  - Transport modes are sent as concrete values to
+    `/api/lms/player/:id/mode`.
+  - Player ids are always passed explicitly.
+  - `/api/zone-state` is polled ADAPTIVELY at 2 s/6 s, never long-polled,
+    and Mandarin's `wait_for` is gone.
+  - `/api/status` now names itself (`app`, `version`) so Mallard's Wi-Fi
+    sweep can recognise it.
+- **Duplicated logic that must stay in step**:
+  - `FavouriteKey.kt` is a THIRD copy of `keyFor()` (after lib/favourites.js
+    and app.js); `FavouriteKeyTest` carries the server's cases.
+  - `Artists.kt` is a third copy of the artist split (ANY_SPLIT_RE /
+    ARTIST_SPLIT_RE).
+  - Change one copy, change all three.
+- **Versioning**: Mallard has its own `versionName`/`versionCode` in
+  `android/app/build.gradle.kts`, separate from the server's
+  `package.json`. Bump `versionCode` with every published build.
+
+## Plugins ("apps"), the generic engine
+
+- `lib/apps.js` with `/api/apps`, `/api/apps/browse`, `/api/apps/act` and
+  `/api/apps/search` browses EVERY LMS plugin's XMLBrowser menus, with no
+  per-plugin code. Owner decision: Mallard supports all plugins.
+- The CLIENT HOLDS ONLY OPAQUE TOKENS. Each row's actions are built
+  server-side with Material's merge rule (`browseBuildCommand`):
+  - action params first, then `commonParams`, then `item[itemsParams]`;
+  - first writer wins, empty values and touchToPlay are dropped, then
+    `base.parentParams`;
+  - row params are used ONLY when the action names them via `itemsParams`.
+
+  The older `lms.js menuAction()` differs on both counts and is left alone
+  for Qobuz.
+- **Tokens:**
+  - They expire after 30 minutes, under LMS's own 3600 s menu-session cache.
+    Item ids are positions in a cached feed tree, so nothing is a durable
+    bookmark except `presetParams.favorites_url`, passed through as `url`.
+  - The engine is rebuilt (dropping every token) when `state.lms` changes,
+    NOT on `refreshConnection()`, which runs every 2.5 s.
+- **Allowlist** (`allowedCommand`): only app tags LMS advertised, which may
+  use any verb of their own, or STANDARD info/favourites menus with a known
+  verb. An undispatchable verb makes LMS CLOSE THE SOCKET; the engine never
+  guesses, and maps that close to 503 `{unavailable:true}`.
+- `myapps items` is asked WITH a player, so each plugin's `condition()`
+  applies. Without a player it falls back to `apps 0 200 menu:1`. Radio comes
+  from `radios 0 200 menu:radio`.
+- **Material-only hooks** (Home Extras, `material-skin` notifications,
+  custom actions) are NOT used by the engine. If added later they must be
+  gated on detecting MusicD meets Material and hidden when it is absent.
+
 ## Gotchas worth remembering
 
 - Artist strings split into separate clickable artists on ALL of " / ",
@@ -283,6 +352,23 @@ Layout section of README.md.
   to `INDEX_MAX_AGE_MS` (12h). `indexScanStamp` records the lastScan each index
   was built from; `refreshConnection` rebuilds when it moves, and
   `ensureIndex()` treats a changed stamp as stale.
+- STREAMING ALBUMS IN THE LIBRARY come ONLY from LMS's Online Music Library
+  integration (v1.0.86, verified against slimserver and plugin-Qobuz source).
+  It imports each service's FAVOURITE albums into the `albums` table
+  (`extid qobuz:album:<id>`). The client-less `albums` query includes them,
+  with no library_id and no remote filter, so never add a filter there.
+  - **Why they can be missing:** the integration is off; its per-service
+    switch `plugin.onlinelibrary:enable_PLUGIN_QOBUZ` is 0, which LMS sets
+    PERMANENTLY if it ever polled with no account signed in; or they were
+    never favourited (only browsed in the plugin, as Material shows them).
+  - **Why the app could miss them:** imports run from LMS's POLLER without a
+    rescan, so `lastScan` isn't known to move. `refreshConnection`
+    therefore also compares the album count (`albums 0 1`) every
+    `ALBUM_COUNT_CHECK_MS` (5 min, env-overridable for tests) and rebuilds
+    when it moves.
+  - **Saying why:** `/api/library/online` composes the explanation SERVER-SIDE,
+    so the web app and Mallard (Settings → LMS server) say the same thing.
+    Owner rule: the two apps MIRROR each other.
 - Streaming services are GATED ON THE SERVER'S ACTUAL STATE (v1.0.51). Three
   states, and no single LMS command reports all three: plugin absent (the
   `<tag> items` verb was never registered, so LMS logs "not dispatchable" and

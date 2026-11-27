@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The page's Tidal mark (style.css, .album-source.tidal), for the native album page's source badge. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillType="evenOdd" android:fillColor="#FFFFFFFF"
+        android:pathData="M7.6,5.4L12,9.8L7.6,14.2L3.2,9.8ZM16.4,5.4L20.8,9.8L16.4,14.2L12,9.8ZM12,10.6L16.4,15L12,19.4L7.6,15Z" />
+</vector>
