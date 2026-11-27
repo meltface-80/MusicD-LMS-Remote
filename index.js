@@ -2997,41 +2997,8 @@ app.get("/api/artist-info", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Info for the embedded LMS server-settings frame: LMS's address, whether a
-// scan is running, and which settings page to frame — served SAME-ORIGIN via
-// the proxy above (the same approach Material Skin itself uses: it iframes
-// the server settings). When the Material plugin is installed we frame ITS
-// styled page (/material/settings/server/basic.html); otherwise Lyrion's
-// classic settings (/settings/index.html). The probe result is cached 10 min.
-let lmsSettingsProbe = null;   // { at, material }
-app.get("/api/lms/settings-info", async (req, res) => {
-  if (!state.connected) return notConnected(res);
-  const cfg = state.lms.cfg;
-  if (!lmsSettingsProbe || (Date.now() - lmsSettingsProbe.at) > 10 * 60 * 1000) {
-    let material = false;
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 4000);
-      try {
-        const r = await fetch(`http://${cfg.host}:${cfg.port}/material/settings/server/basic.html`,
-          { signal: ctl.signal, redirect: "manual" });
-        material = r.status === 200;
-      } finally { clearTimeout(timer); }
-    } catch (e) { /* Material not installed / unreachable — classic it is */ }
-    lmsSettingsProbe = { at: Date.now(), material };
-  }
-  let scanning = false;
-  try { scanning = (await state.lms.serverStatus()).scanning; } catch (e) { /* best-effort */ }
-  res.json({
-    host: cfg.host,
-    port: cfg.port,
-    material: lmsSettingsProbe.material,
-    scanning,
-    // A path on THIS app's origin — served by the LMS proxy above, so the
-    // browser never needs direct reachability to the LMS host.
-    settings_path: lmsSettingsProbe.material ? "/material/settings/server/basic.html" : "/settings/index.html"
-  });
-});
+// LMS's own settings: the page the apps frame, and its plugins (lib/lms-settings-routes.js).
+require("./lib/lms-settings-routes").mountLmsSettings(app, { lms: () => (state.connected ? state.lms : null), notConnected, log: log.child("plugins") });
 
 // ---------------------------------------------------------------------------
 // Album metadata extras: release year + record label + Pitchfork score/

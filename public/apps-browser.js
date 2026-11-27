@@ -83,7 +83,7 @@
     try { j = await call("/api/apps?zone=" + encodeURIComponent(zone())); } catch (e) { say(e.message || "Couldn’t read the apps"); return; }
     const list = (kind === "radio" ? j.radio : j.apps) || [];
     body.innerHTML = "";
-    if (!list.length) { say(kind === "radio" ? "LMS offers no radio here." : "No apps yet — install plugins in Settings → LMS server → Server settings, then come back."); return; }
+    if (!list.length) { say(kind === "radio" ? "LMS offers no radio here." : "No apps yet — install plugins in Settings → LMS server → Plugins, then come back."); return; }
     const box = document.createElement("div"); box.className = "qb-nodes";
     for (const a of list) box.appendChild(nodeRow(a.name, imgSrc(a, 96), () => push(a.name, a.go)));
     body.appendChild(box);

@@ -53,5 +53,7 @@ The owner rule behind most of this list: **the web app and Mallard mirror each o
 18. **Mallard's "Server settings" opened the web app's Home** (owner report), not the LMS settings pages. Now opens
     the page /api/lms/settings-info names, through this server's LMS proxy. — *On dev (testing).*
 19. **Plugins, more** (owner request). The web app's Apps & radio browser (every plugin's menus, as Mallard's): *On dev
-    (testing).* Still to come: adding plugins and making sure they work — install/enable LMS plugins from the
-    apps (LMS's own plugin manager), and every plugin's menus working in Mallard and the web app. Widens item 11.
+    (testing).* Adding plugins: Settings → LMS server → Plugins in the web app lists what LMS has installed and what
+    its repositories offer, and installs, updates, removes, switches on/off and restarts LMS — through LMS's own
+    plugin page (it has no command for this), so LMS checks every download itself: *on dev (testing)*. Still to
+    come: the same Plugins pane in Mallard. Widens item 11.
