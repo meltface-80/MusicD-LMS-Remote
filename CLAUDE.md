@@ -267,6 +267,16 @@ tags, no automatic releases, no cluttered history.
   custom actions) are NOT used by the engine. If added later they must be
   gated on detecting MusicD meets Material and hidden when it is absent.
 
+- **Installing plugins** (`lib/lmsplugins.js`, routes in `lib/lms-settings-routes.js`): LMS has NO command for
+  install/update/remove, so the server drives LMS's own `settings/server/plugins.html` (verified against
+  `Slim/Web/Settings/Server/Plugins.pm` + `plugins_main.html`): GET and parse it, POST `saveSettings=1`, `rand`,
+  ONLY the one plugin's fields (`install:N`+`N` / `install:N` alone / `manual:N`(+`N`) / `update:N=1`) and ECHO
+  `auto`, `useUnsupported`, `repos` — every save rewrites those three, so leaving one out switches it off or drops
+  a repository. `X-Requested-With: XMLHttpRequest` passes LMS's CSRF check. LMS's third-party-plugins warning
+  (`acceptPluginRisk`) is accepted only on the person's own tap (`accept:true`), never automatically. Plugins are
+  named, never addressed: the url and sha stay in LMS. Changes apply on `restartserver`, which drops the socket.
+  `lib/lmsplugins.fixture.js` renders the page as LMS's template does — keep it in step with the template.
+
 ## Gotchas worth remembering
 
 - THE SHELF (`/shelf`, ported from the Roon build): a page of its own (`public/shelf*.js|css`, `shelf.html`,

@@ -1407,6 +1407,16 @@
 
         <div class="settings-divider"></div>
 
+        <!-- LMS's plugins: install, update, remove (lms-plugins.js; Mallard's Plugins pane is its twin). -->
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Plugins <button class="settings-info-btn" data-info="Install, update and remove LMS plugins — Qobuz, TIDAL, Spotty, radio apps and more — from your server's own plugin list. LMS applies changes when it restarts, which you can do from here too." aria-label="Info">ⓘ</button></span>
+            <button class="action-btn" id="lms-open-plugins" type="button">Open</button>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
         <div class="settings-block">
           <div class="settings-row">
             <span class="settings-label">Rescan media library <button class="settings-info-btn" data-info="Rescan the LMS library on the server (playback keeps working while it scans). Choose what to scan, then tap Rescan. The online-music import brings in Qobuz/Tidal favourites you add through your server's plugin." aria-label="Info">ⓘ</button></span>
@@ -1681,6 +1691,28 @@
 
   <!-- Full-screen LMS server-settings frame (Material-styled when the
        Material plugin is installed, classic Lyrion settings otherwise). -->
+  <!-- LMS's plugins (lms-plugins.js), opened from Settings → LMS server; after the Settings overlay so it sits above it. -->
+  <div id="plugins-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Plugins">
+    <div class="settings-backdrop" data-plugins-close></div>
+    <div class="settings-sheet qobuz-sheet">
+      <div class="qobuz-pin">
+        <div class="settings-grip"></div>
+        <div class="settings-head qb-head">
+          <h2>Plugins</h2>
+          <button class="icon-btn" type="button" aria-label="Close" data-plugins-close>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div id="plugins-tabs" class="apps-tabs" role="group" aria-label="Installed or available" hidden>
+          <button type="button" data-tab="installed" aria-pressed="true">Installed</button>
+          <button type="button" data-tab="available" aria-pressed="false">Available</button>
+        </div>
+        <input id="plugins-filter" class="plugins-filter" type="search" placeholder="Find a plugin" aria-label="Find a plugin" autocomplete="off" hidden>
+      </div>
+      <div id="plugins-body" class="qb-body"></div>
+    </div>
+  </div>
+
   <div id="lmsset-overlay" class="lmsset-overlay hidden" role="dialog" aria-modal="true" aria-label="LMS server settings">
     <div class="lmsset-bar">
       <button id="lmsset-close" class="lmsset-close" type="button" aria-label="Back" title="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -1696,5 +1728,6 @@
   <script src="/share-sheet.js"></script>
   <script src="/shelf-entry.js"></script>
   <script src="/apps-browser.js"></script>
+  <script src="/lms-plugins.js"></script>
 </body>
 </html>
