@@ -1,0 +1,88 @@
+name: Publish Docker image
+
+# Builds the app into a container image and publishes it to the GitHub
+# Container Registry as ghcr.io/meltface-80/musicd-lms-remote, so installs can
+# `docker pull` it instead of building from source on the user's machine.
+#
+# The version bump on main IS the release (CLAUDE.md §5), so a merge that moves
+# `version` in package.json publishes :<version> and moves :latest with it. A
+# merge that leaves the version alone (docs, CI) finds :<version> already there
+# and builds nothing, so :latest never moves to an unbumped commit.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - run: npm test
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version and image name
+        id: v
+        run: |
+          echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+          # NAMED, not derived from the repository name: every install command
+          # pulls this exact string, and a repo rename must not move it.
+          echo "image=ghcr.io/$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')/musicd-lms-remote" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Is this version already published?
+        id: have
+        run: |
+          if docker buildx imagetools inspect "${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-qemu-action@v3
+        if: steps.have.outputs.exists == 'false'
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.have.outputs.exists == 'false'
+
+      # x86 servers, 64-bit ARM (NAS boxes, Pi 4/5, Apple silicon) and 32-bit
+      # Raspberry Pi OS. The dependencies are pure JS, so the emulated builds
+      # are quick.
+      - name: Build and push
+        if: steps.have.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.version }}
+            ${{ steps.v.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=MusicD LMS Remote
+            org.opencontainers.image.description=Music-discovery PWA and wall display for Lyrion Music Server
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true

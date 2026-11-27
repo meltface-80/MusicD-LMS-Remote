@@ -273,11 +273,16 @@ This app talks to Lyrion Music Server purely over the network (HTTP on the LMS
 web port, default `9000`). It does **not** need to run on the same machine as
 LMS — it can run anywhere that can reach the LMS host and port.
 
-No local clone needed — `docker build` can pull the repo straight from GitHub:
+The image is published to the GitHub Container Registry with every release, so
+there is nothing to clone or build — `docker run` pulls it straight from the
+repo's package:
 
-```bash
-docker build -t musicd-lms-remote https://github.com/meltface-80/MusicD-LMS-Remote.git#main
 ```
+ghcr.io/meltface-80/musicd-lms-remote:latest
+```
+
+It is built for x86-64, 64-bit ARM and 32-bit ARM (Raspberry Pi OS). Needs
+Docker 20.10 or later (the first whose `docker run` takes `--pull`).
 
 ### Option A — same machine as LMS
 
@@ -287,10 +292,11 @@ Host networking lets the app auto-discover LMS on the local network, so
 ```bash
 docker run -d \
   --name musicd-lms-remote \
+  --pull always \
   --restart unless-stopped \
   --network host \
   -v musicd-lms-remote-data:/app/data \
-  musicd-lms-remote
+  ghcr.io/meltface-80/musicd-lms-remote:latest
 ```
 
 Then open `http://<this-machine-IP>:3390`.
@@ -304,12 +310,13 @@ works on the same LAN segment, so **set `LMS_HOST` explicitly** here:
 ```bash
 docker run -d \
   --name musicd-lms-remote \
+  --pull always \
   --restart unless-stopped \
   -e LMS_HOST=192.168.1.50 \
   -e LMS_PORT=9000 \
   -p 3390:3390 \
   -v musicd-lms-remote-data:/app/data \
-  musicd-lms-remote
+  ghcr.io/meltface-80/musicd-lms-remote:latest
 ```
 
 Replace `192.168.1.50` with your LMS server's IP, then open
@@ -343,11 +350,28 @@ Edit `LMS_HOST` (and uncomment the `/music` mount if you want file-tag label
 scanning), then:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-(`--build` makes Compose build the image straight from GitHub rather than ever
-trying to pull it from a registry — there is no registry image.)
+(`pull_policy: always` in the file makes every `up` fetch the current release.)
+
+### Updating, or moving from a locally built install
+
+Updates are one tap in the app (**Settings → System**). To recreate the
+container on the newest image instead, or to move an install that was built
+from source with `docker build` onto the published image, remove the container
+and run the command above again with the **same volume name** — settings,
+favourites, play history and caches all live in `musicd-lms-remote-data` and
+carry over:
+
+```bash
+docker stop musicd-lms-remote && docker rm musicd-lms-remote
+# then the docker run command above (or: docker compose up -d)
+```
+
+To build from source instead (e.g. to test a branch), clone the repo and run
+`docker build -t musicd-lms-remote .`, then use `musicd-lms-remote` as the
+image name.
 
 ## Environment variables
 
