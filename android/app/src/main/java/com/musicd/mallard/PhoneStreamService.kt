@@ -88,6 +88,8 @@ class PhoneStreamService : Service() {
                 WordsSink(UsbAudioSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(true)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build(), context).also { usbSink = it })
         }.setEnableAudioFloatOutput(true)
+            // The app's own Opus decoder (libopus, float out) ahead of Android's, which gives 16-bit: Opus 256 at 24/48.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
         return ExoPlayer.Builder(this, renderers)
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1500, 8000, 500, 1000).build())
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)

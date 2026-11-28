@@ -9,8 +9,8 @@ plugins {
 /*
  * Mallard: the native Android remote for MusicD LMS Remote. Ported from Mandarin Remote's Compose app. Its native parts
  * are for 64-bit ARM phones only, as Mandarin's are: the phone's Tailscale engine (libmusicdnet.so, built by
- * .github/workflows/mallard.yml) and the USB audio driver (src/main/cpp, built here with the NDK and CMake the workflow
- * installs).
+ * .github/workflows/mallard.yml), the USB audio driver and libopus under Media3's Opus decoder (src/main/cpp, built here
+ * with the NDK and CMake the workflow installs).
  */
 android {
     namespace = "com.musicd.mallard"
@@ -32,7 +32,7 @@ android {
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
     }
 
-    // The USB audio driver's native side (usb_jni.cc, Mandarin's): usbdevfs ioctls for the isochronous stream to a DAC.
+    // The native code (src/main/cpp, Mandarin's): the USB audio driver, and libopus under Media3's Opus decoder.
     ndkVersion = "27.2.12479018"
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
 
@@ -110,5 +110,9 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.9.0")
     // The phone's own player away from home (PhoneStreamService): the server's Ogg Opus / FLAC stream, played by ExoPlayer.
     implementation("androidx.media3:media3-exoplayer:1.8.0")
+    // Media3's Opus decoder module, carried in src/main/java/androidx/media3/decoder/opus over the app's own libopus
+    // (float out: Android's own gives 16-bit), builds on Media3's decoder base classes.
+    implementation("androidx.media3:media3-decoder:1.8.0")
+    implementation("androidx.media3:media3-extractor:1.8.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }
