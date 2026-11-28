@@ -15,7 +15,7 @@ data class PhoneHello(val playerId: String, val name: String, val away: Boolean)
 }
 
 object PhoneStream {
-    /** How this phone's tracks come away from home (Settings → Away from home → This phone): its value and its words. */
+    /** How this phone's tracks come away from home (Settings → Audio Devices → This phone): its value and its words. */
     val QUALITIES = listOf("opus" to "Opus 256 kbps · 24-bit/48 kHz", "exact" to "Bit-perfect (untouched)")
     const val DEFAULT = "opus"
     const val NOTE = "Away from home, each track comes as Opus 256 kbps, made from the file by the server and played at 24-bit/48 kHz — " +

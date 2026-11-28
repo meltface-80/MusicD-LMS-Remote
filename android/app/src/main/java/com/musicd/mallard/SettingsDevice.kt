@@ -118,10 +118,17 @@ internal fun DevicePane(id: String, client: () -> ServerClient?, onBack: () -> U
             }
             if (thisPhone) SetupNote("This phone's own player: Lyrion has it fixed at 100% and its volume is the phone's.", Modifier)
         }
+        if (thisPhone) {
+            // This phone's own settings, kept on the phone (owner request: on its own page, not in Away from home).
+            SettingsDivider(18, 18)
+            Block { DeviceTitle("Streaming"); PhoneStreamRows() }   // SettingsCache.kt
+        }
         SettingsDivider(18, 18)
         Block {
             DeviceTitle("Name")
-            if (phone) SetupNote(if (thisPhone) "Lyrion knows it as “${s.optString("name")}”." else "A phone's own player, named after the phone.", Modifier)
+            // Lyrion answers no name for a phone's player it isn't connected to (it plays only while chosen): say what it will be.
+            if (phone) SetupNote(s.optString("name").takeIf { thisPhone && it.isNotEmpty() }?.let { "Lyrion knows it as “$it”." }
+                ?: "A phone's own player, named after the phone (${android.os.Build.MODEL}) while it plays.".takeIf { thisPhone } ?: "A phone's own player, named after the phone.", Modifier)
             else RenameField(s.optString("name")) { n -> act("Renamed ✓") { it.renamePlayer(id, n) } }
         }
         SettingsDivider(18, 18)
