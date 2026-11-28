@@ -165,12 +165,12 @@ internal class PhoneRelay(
         when (c.cmd) {
             "add" -> {
                 val asOpus = opus()
-                note("add #${c.seq}: ${if (c.fresh) "fresh" else "next"}, ${if (c.play) "play" else "hold"}, " +
-                    (if (byId != null) "track $byId from the phone's cache" else "the player's bytes" + (c.trackId?.let { " (track $it, not cached yet)" } ?: "")) + (if (asOpus) " as Opus" else "") + ", ${c.mime}, gain ${c.gainDb} dB")
                 // A track the phone already holds whole (kept, or fetched ahead): from its cache, by its id. Any other: the
                 // bytes LMS is sending its player now (owner report: a track fetched by id from LMS's download stalled, and
                 // nothing played). Relative addresses: sent where the server is now (PhoneStreamService).
                 val byId = c.trackId?.takeIf { kept(CachePlan.key(it, asOpus)) }
+                note("add #${c.seq}: ${if (c.fresh) "fresh" else "next"}, ${if (c.play) "play" else "hold"}, " +
+                    (if (byId != null) "track $byId from the phone's cache" else "the player's bytes" + (c.trackId?.let { " (track $it, not cached yet)" } ?: "")) + (if (asOpus) " as Opus" else "") + ", ${c.mime}, gain ${c.gainDb} dB")
                 val path = byId?.let { PhoneStream.filePath(it, asOpus) } ?: PhoneStream.trackPath(playerId, c.seq, asOpus)
                 val item = MediaItem.Builder().setUri(path).setMediaId(c.seq.toString())
                     .apply { val m = if (asOpus) "audio/ogg" else c.mime; if (m.isNotEmpty()) setMimeType(m) }.build()
