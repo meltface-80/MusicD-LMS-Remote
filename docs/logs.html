@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Logs and reporting a problem · MusicD LMS Remote</title>
-<meta name="description" content="Where MusicD LMS Remote's logs are, and what to send so a problem can be fixed.">
+<title>Logs and reporting a problem · Mallard</title>
+<meta name="description" content="Where Mallard's logs are, and what to send so a problem can be fixed.">
 <link rel="icon" href="mallard-mark.png">
 <link rel="stylesheet" href="site.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="pagehead">
   <div class="wrap">
     <a class="back" href="index.html">← Contents</a>
-    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>Mallard</span></a>
     <span class="spacer"></span>
     <a class="pill solid" href="downloads.html">Downloads</a>
   </div>
@@ -26,17 +26,17 @@
   <h2 id="diagnostic">The diagnostic log</h2>
   <p>Off unless you switch it on. If something isn't working:</p>
   <ol class="steps">
-    <li><b>Switch it on</b> — Settings → System → Diagnostic logging, in Mallard or the web app (it is one switch, for
+    <li><b>Switch it on</b> — Settings → System → Diagnostic logging, in the Android app or the web app (it is one switch, for
         the server and both apps).</li>
     <li><b>Use the app until the problem happens.</b> While it is on, the server logs in detail and writes a snapshot of
-        what it holds every five minutes; Mallard sends it what it does — screens, taps, every request with its time,
+        what it holds every five minutes; the Android app sends it what it does — screens, taps, every request with its time,
         playback, errors and crashes — under the phone's name, and the web app its errors.</li>
-    <li><b>Download it</b> — Settings → System → Log → Download. Mallard saves it to the phone's
+    <li><b>Download it</b> — Settings → System → Log → Download. The Android app saves it to the phone's
         <code>Downloads/Mallard</code> folder (Android 8 and 9 ask where); the web app downloads it in the browser.</li>
     <li><b>Switch it off again</b> once you have it.</li>
   </ol>
   <p>It is one text file: a header (the versions, Lyrion, your players, and when Lyrion last stopped answering), the
-     server's own log, <b>Lyrion's own <code>server.log</code> and <code>scanner.log</code></b>, and from Mallard the
+     server's own log, <b>Lyrion's own <code>server.log</code> and <code>scanner.log</code></b>, and from the Android app the
      phone's own recent lines. Passwords, keys, email addresses, and internet and Tailscale addresses are left out of
      every line; your home network's addresses, room names and what was playing are kept, because they are what a
      problem is found by. Read it before you send it.</p>
@@ -58,7 +58,7 @@
 
 <footer>
   <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
-  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+  <p>Mallard · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
      Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
      independent project, affiliated with none of them.</p>
 </footer>

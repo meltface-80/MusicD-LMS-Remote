@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Settings for the server · MusicD LMS Remote</title>
-<meta name="description" content="MusicD LMS Remote's environment variables, and the free API keys that add label logos, artwork and music videos.">
+<title>Settings for the server · Mallard</title>
+<meta name="description" content="The Mallard server's environment variables, and the free API keys that add label logos, artwork and music videos.">
 <link rel="icon" href="mallard-mark.png">
 <link rel="stylesheet" href="site.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="pagehead">
   <div class="wrap">
     <a class="back" href="index.html">← Contents</a>
-    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>Mallard</span></a>
     <span class="spacer"></span>
     <a class="pill solid" href="downloads.html">Downloads</a>
   </div>
@@ -23,7 +23,7 @@
 <h1>Settings for the server</h1>
   <p class="lead">Almost everything is set in the app, in Settings. The container takes a few environment variables, all
      optional — the <a href="install.html">configurator</a> sets the ones your setup needs.</p>
-  <div class="tablewrap"><table><thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead><tbody><tr><td>PORT</td><td><code>3390</code></td><td>The port the web app, the wall display and Mallard use.</td></tr><tr><td>LMS_HOST</td><td><code>(found on the network)</code></td><td>Lyrion's address. Needed when the server runs on another machine or network than Lyrion: finding it by itself works only on the same network.</td></tr><tr><td>LMS_PORT</td><td><code>9000</code></td><td>Lyrion's web port.</td></tr><tr><td>LMS_USER / LMS_PASS</td><td>–</td><td>Lyrion's username and password, if you set one.</td></tr><tr><td>MUSIC_DIR</td><td><code>/music</code></td><td>Where the optional read-only music folder is mounted inside the container: tracks kept ahead on the phone, and record-label tags.</td></tr><tr><td>TS_AUTHKEY</td><td>–</td><td>Joins the built-in Tailscale to your tailnet without signing in in a browser.</td></tr><tr><td>TS_HOSTNAME</td><td><code>musicd-lms</code></td><td>The server's name on your tailnet.</td></tr><tr><td>TAILSCALE</td><td><code>on</code></td><td><code>off</code> leaves the built-in Tailscale out (if Tailscale runs on the host instead).</td></tr><tr><td>SLIMPROTO_PORT</td><td><code>3483</code></td><td>Lyrion's player port, for the phones' own players, if you moved it.</td></tr><tr><td>LOG_LEVEL</td><td><code>info</code></td><td><code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code> or <code>trace</code>. <code>DEBUG=1</code> is the same as <code>debug</code>.</td></tr><tr><td>LOG_FILE</td><td><code>data/logs/musicd.log</code></td><td>The rotating log file kept beside <code>docker logs</code> (8 MB × 10). <code>off</code> to switch it off.</td></tr></tbody></table></div>
+  <div class="tablewrap"><table><thead><tr><th>Variable</th><th>Default</th><th>What it does</th></tr></thead><tbody><tr><td>PORT</td><td><code>3390</code></td><td>The port the web app, the wall display and the Android app use.</td></tr><tr><td>LMS_HOST</td><td><code>(found on the network)</code></td><td>Lyrion's address. Needed when the server runs on another machine or network than Lyrion: finding it by itself works only on the same network.</td></tr><tr><td>LMS_PORT</td><td><code>9000</code></td><td>Lyrion's web port.</td></tr><tr><td>LMS_USER / LMS_PASS</td><td>–</td><td>Lyrion's username and password, if you set one.</td></tr><tr><td>MUSIC_DIR</td><td><code>/music</code></td><td>Where the optional read-only music folder is mounted inside the container: tracks kept ahead on the phone, and record-label tags.</td></tr><tr><td>TS_AUTHKEY</td><td>–</td><td>Joins the built-in Tailscale to your tailnet without signing in in a browser.</td></tr><tr><td>TS_HOSTNAME</td><td><code>musicd-lms</code></td><td>The server's name on your tailnet.</td></tr><tr><td>TAILSCALE</td><td><code>on</code></td><td><code>off</code> leaves the built-in Tailscale out (if Tailscale runs on the host instead).</td></tr><tr><td>SLIMPROTO_PORT</td><td><code>3483</code></td><td>Lyrion's player port, for the phones' own players, if you moved it.</td></tr><tr><td>LOG_LEVEL</td><td><code>info</code></td><td><code>error</code>, <code>warn</code>, <code>info</code>, <code>debug</code> or <code>trace</code>. <code>DEBUG=1</code> is the same as <code>debug</code>.</td></tr><tr><td>LOG_FILE</td><td><code>data/logs/musicd.log</code></td><td>The rotating log file kept beside <code>docker logs</code> (8 MB × 10). <code>off</code> to switch it off.</td></tr></tbody></table></div>
   <h2 id="keys">Free API keys</h2>
   <p>All free and optional. They add what Lyrion doesn't have.</p>
   <h3 class="sub">FanArt.tv — record-label logos</h3>
@@ -50,7 +50,7 @@
 
 <footer>
   <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
-  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+  <p>Mallard · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
      Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
      independent project, affiliated with none of them.</p>
 </footer>
