@@ -84,7 +84,7 @@ internal fun PhoneTailscaleBlock() {
         val choices = PhoneStream.QUALITIES.map { (v, w) -> com.musicd.mallard.client.Choice(v, w) }
         SetupRow("Stream away as", Modifier, null) {
             SelectBox(choiceWords(choices, quality), choices, Modifier, Modifier.clickable {
-                pickChoice(context, choices, quality) { v -> quality = v; Store.setAwayQuality(context, v); if (PhoneZone.id != null) PhoneZone.play(context) }
+                pickChoice(context, choices, quality) { v -> quality = v; Store.setAwayQuality(context, v); PhoneZone.requality(context) }
             })
         }
         SetupNote(PhoneStream.NOTE, Modifier)

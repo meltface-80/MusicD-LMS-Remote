@@ -34,32 +34,62 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
  * With USB direct on and a DAC on the port (Settings → Away from home → USB DAC) the sound goes to the DAC through the
  * app's own USB driver (UsbAudioSink), Android's mixer out of the way; the decoders give float, which carries a 16- or
  * 24-bit sample exactly, and WordsSink hands the DAC each sample's own word.
+ *
+ * Untouched (Settings → Away from home → Stream away as): no stream — the server's relay hands the phone each track as
+ * its own file, and PhoneRelay plays them as a playlist on this same player and reports back.
  */
 @OptIn(UnstableApi::class)
 class PhoneStreamService : Service() {
     private var player: ExoPlayer? = null
     private val main = Handler(Looper.getMainLooper())
     private var url: String? = null
+    private var relay: PhoneRelay? = null
+    private var relayFor: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
-        val u = intent?.getStringExtra(EXTRA_URL) ?: return START_NOT_STICKY
-        foreground(intent.getStringExtra(EXTRA_NAME).orEmpty())
-        if (u != url || player == null) play(u)
+        val relayPlayer = intent?.getStringExtra(EXTRA_RELAY)
+        val u = intent?.getStringExtra(EXTRA_URL)
+        if (relayPlayer == null && u == null) return START_NOT_STICKY
+        foreground(intent?.getStringExtra(EXTRA_NAME).orEmpty())
+        if (relayPlayer != null) { if (relayPlayer != relayFor || relay == null) untouched(relayPlayer) }
+        else if (u != null && (u != url || player == null)) play(u)
         return START_STICKY
     }
 
+    /** Untouched: the relay's tracks, as a playlist on this player (PhoneRelay). */
+    private fun untouched(playerId: String) {
+        val client = Store.client(this) ?: return
+        url = null
+        relay?.stop()
+        val p = ensurePlayer()
+        p.stop(); p.clearMediaItems()
+        relayFor = playerId
+        relay = PhoneRelay(p, client, playerId).also { it.start() }
+    }
+
     private fun play(u: String) {
+        relay?.stop(); relay = null; relayFor = null
         url = u
+        val p = ensurePlayer()
+        p.setMediaItem(MediaItem.fromUri(u))
+        p.prepare()
+        p.play()
+        AppLog.line("AWAY", "playing this phone's player from the server")
+    }
+
+    /** The one player, built once: its audio through WordsSink and UsbAudioSink, so a USB DAC can take it. */
+    private fun ensurePlayer(): ExoPlayer {
+        player?.let { return it }
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                 WordsSink(UsbAudioSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(true)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build(), context).also { usbSink = it })
         }.setEnableAudioFloatOutput(true)
-        val p = player ?: ExoPlayer.Builder(this, renderers)
-            .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1500, 4000, 500, 1000).build())
+        return ExoPlayer.Builder(this, renderers)
+            .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1500, 8000, 500, 1000).build())
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -76,10 +106,6 @@ class PhoneStreamService : Service() {
                 })
                 player = ex
             }
-        p.setMediaItem(MediaItem.fromUri(u))
-        p.prepare()
-        p.play()
-        AppLog.line("AWAY", "playing this phone's player from the server")
     }
 
     private fun foreground(name: String) {
@@ -106,10 +132,13 @@ class PhoneStreamService : Service() {
         val wasUsb = usbSink?.usb == true
         val want = Store.usbDirect(this) && UsbDac.device() != null
         if (wasUsb == want && (wasUsb || !UsbDriver.active)) return
+        val playing = p.playWhenReady
         p.stop()
         if (!want) UsbDriver.close()
         if (wasUsb && UsbDac.device() == null) { AppLog.line("USB", "the DAC went: the phone's sound stopped rather than go to the loudspeaker"); stopSelf(); return }
-        url?.let { p.setMediaItem(MediaItem.fromUri(it)); p.prepare(); p.play() }
+        // Untouched: the same track again from where it was, on the new path. The stream: asked for again.
+        if (relay != null) { p.prepare(); p.playWhenReady = playing }
+        else url?.let { p.setMediaItem(MediaItem.fromUri(it)); p.prepare(); p.play() }
     }
     private val onUsb: () -> Unit = { main.post { usbChanged() } }
 
@@ -118,6 +147,7 @@ class PhoneStreamService : Service() {
     override fun onDestroy() {
         UsbDac.unlisten(onUsb)
         main.removeCallbacksAndMessages(null)
+        relay?.stop(); relay = null; relayFor = null
         player?.release(); player = null; url = null; usbSink = null
         super.onDestroy()
     }
@@ -127,6 +157,7 @@ class PhoneStreamService : Service() {
         private const val ID = 4207
         private const val EXTRA_URL = "url"
         private const val EXTRA_NAME = "name"
+        private const val EXTRA_RELAY = "relay"
         private const val ACTION_STOP = "com.musicd.mallard.AWAY_STOP"
 
         /** Playing [url] (the phone's stream) as [name]; started in the foreground. False when Android won't let it start now. */
@@ -135,6 +166,12 @@ class PhoneStreamService : Service() {
             c.startForegroundService(i)
             true
         }.getOrElse { AppLog.line("AWAY", "couldn't start the phone's stream yet: ${it.message}", anomaly = true); false }
+
+        /** Untouched: the relay's tracks for [playerId] (the phone's player), as [name]. */
+        fun startRelay(c: Context, playerId: String, name: String): Boolean = runCatching {
+            c.startForegroundService(Intent(c, PhoneStreamService::class.java).putExtra(EXTRA_RELAY, playerId).putExtra(EXTRA_NAME, name))
+            true
+        }.getOrElse { AppLog.line("AWAY", "couldn't start the phone's player yet: ${it.message}", anomaly = true); false }
 
         fun stop(c: Context) { runCatching { c.stopService(Intent(c, PhoneStreamService::class.java)) } }
     }
