@@ -2,6 +2,13 @@
 
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
+
+- Gentler on LMS (owner report: Lyrion stuttering and restarting). While LMS scans — an online-library import is the
+  heaviest thing it does — this server no longer rebuilds its index on every album-count change (each rebuild re-read
+  the whole track table, every 5 minutes for the length of the import); it rebuilds once when the scan ends. The Qobuz
+  label lookup through LMS's album info now asks one album at a time, 1.5 s apart, never while LMS scans, stops after
+  five failures in a row, and remembers the albums LMS had no label for (asked again after 30 days) instead of
+  re-asking them all on every rebuild.
 renamed to the version and the Release workflow's notes are taken from it. Lines start Added / Changed / Fixed /
 Removed. Versions before v1.0.86 are described in their GitHub releases.
 
