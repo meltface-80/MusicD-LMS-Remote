@@ -91,6 +91,7 @@ internal fun handOver(nav: NavHostController, what: String, arg: String?) {
         what == "artist" && !arg.isNullOrEmpty() -> nav.navigate(ShellRoute.artist(arg, NativeShell.zone))
         what == "genre" && !arg.isNullOrEmpty() -> nav.navigate(ShellRoute.wall("genre", NativeShell.zone, com.musicd.mallard.client.WallFilter.routeQuery(com.musicd.mallard.client.WallFilter("genre", arg))))   // a genre's albums (item 139)
         what == "album" && arg != null && arg.toLongOrNull() != null -> inPlace(nav, ShellRoute.album(arg.toLong(), NativeShell.zone, ""))
+        what == "qobuz" -> nav.navigate(com.musicd.mallard.client.CollectionRoute.qobuz(NativeShell.zone))   // a search's Qobuz album (QobuzOpen)
         what == "library-changed" && arg != null -> nav.popBackStack()   // a streamed album taken out of the favourites: its page closes
         else -> handOn(what, arg)
     }
