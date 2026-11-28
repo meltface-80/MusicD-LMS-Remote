@@ -80,6 +80,11 @@ fun ServerClient.phoneReport(playerId: String, ev: String, seq: Int, ms: Long, p
     post("/api/phone/report", JSONObject().put("player_id", playerId).put("ev", ev).put("seq", seq).put("ms", ms).put("playing", playing), 10_000)
 }
 
+/** What this phone's player saw (an error, a fallback), for the server's log, where the owner can read it. */
+fun ServerClient.phoneNote(playerId: String, text: String) {
+    post("/api/phone/report", JSONObject().put("player_id", playerId).put("ev", "note").put("text", text.take(400)), 10_000)
+}
+
 /** The next [count] tracks of this phone's queue after the one playing, by LMS id (for its cache ahead). */
 fun ServerClient.phoneAhead(playerId: String, count: Int): List<String> {
     val a = getJson("/api/phone/ahead?player_id=" + java.net.URLEncoder.encode(playerId, "UTF-8") + "&count=" + count, 15_000).optJSONArray("tracks")
