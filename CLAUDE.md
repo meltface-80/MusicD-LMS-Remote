@@ -205,6 +205,12 @@ tags, no automatic releases, no cluttered history.
   home; the screens at home are a remote and play nothing. Settings → Away from
   home → USB DAC. Pulled out mid-song, the sound STOPS rather than move to the
   loudspeaker. Keep `PcmWords`/`UsbGain` in step with Mandarin's.
+- **Opus 24/48** (owner rule): Mallard decodes Opus with its OWN libopus
+  (Media3's `decoder_opus` in `src/main/java/androidx/media3/decoder/opus`,
+  `opus_jni.cc`, libopus 1.5.2 SHA-pinned in CMakeLists, fetched ahead by
+  `mallard.yml`) because Android's decoder gives 16-bit; the renderers prefer
+  extensions. Keep the proguard keeps (`SimpleDecoderOutputBuffer` is called
+  back by name from native code). The server encodes from `-sample_fmt flt`.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
   `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N

@@ -82,6 +82,29 @@ jobs:
             -o ../android/app/src/main/jniLibs/arm64-v8a/libmusicdnet.so .
           ls -la ../android/app/src/main/jniLibs/arm64-v8a/
 
+      # libopus for the app's native code (Media3's Opus decoder; android/app/src/main/cpp), fetched once and kept: its
+      # GitHub release with curl's own retries, else Xiph's downloads, its SHA-256 checked here and again by CMake, which
+      # builds from it rather than downloading it itself. As Mandarin's android.yml.
+      - name: Keep libopus's source
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/opus
+          key: opus-1.5.2-65c1d2f7
+      - name: Fetch libopus's source
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/opus"
+          f="$RUNNER_TEMP/opus/opus-1.5.2.tar.gz"
+          sum=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
+          if ! echo "$sum  $f" | sha256sum -c --quiet >/dev/null 2>&1; then
+            rm -f "$f"
+            for url in https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz; do
+              curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$f" "$url" && echo "$sum  $f" | sha256sum -c --quiet && break
+              echo "::warning::libopus from $url didn't come, or wasn't libopus 1.5.2's"; rm -f "$f"
+            done
+          fi
+          if [ -f "$f" ]; then echo "OPUS_TARBALL=$f" >> "$GITHUB_ENV"; else echo "::warning::libopus couldn't be fetched ahead: CMake fetches it itself"; fi
+
       # NEVER PUBLISHED SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's rule, its item 364). That key is public —
       # anyone can sign with it — so an APK signed with it, asking to install updates (REQUEST_INSTALL_PACKAGES), is
       # what Google Play Protect blocks as harmful: 0.2.0-t32 was. A build that may be published is signed with the
