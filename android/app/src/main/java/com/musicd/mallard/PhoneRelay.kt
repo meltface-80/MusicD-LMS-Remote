@@ -10,6 +10,8 @@ import androidx.media3.exoplayer.source.MediaSource
 import com.musicd.mallard.client.PhoneStream
 import com.musicd.mallard.client.RelayCommand
 import com.musicd.mallard.client.ServerClient
+import com.musicd.mallard.client.ThisPhone
+import com.musicd.mallard.client.phoneNote
 import com.musicd.mallard.client.phoneReport
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -44,9 +46,17 @@ internal class PhoneRelay(
     private val fallback = HashMap<Int, MediaSource>()
 
     private val listener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { gains(); ahead.soon(); if (player.isPlaying) startedNow() }
-        override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) startedNow(); pos() }
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            note("now on #${seq()} (${mediaItem?.localConfiguration?.uri})"); gains(); ahead.soon(); if (player.isPlaying) startedNow()
+        }
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            note((if (isPlaying) "playing" else "not playing") + " #${seq()} at ${player.currentPosition} ms" +
+                (if (isPlaying) ", ${player.audioFormat?.let { "${it.sampleMimeType} ${it.sampleRate} Hz ${it.channelCount} ch" } ?: "no format"}, gain ${"%.2f".format(TrackGain.gain)}, volume ${player.volume}, phone volume ${ThisPhone.volume?.level()}" else "") +
+                (if (!isPlaying && player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) ", suppressed (${player.playbackSuppressionReason})" else ""))
+            if (isPlaying) startedNow(); pos()
+        }
         override fun onPlaybackStateChanged(state: Int) {
+            note("#${seq()}: " + when (state) { Player.STATE_BUFFERING -> "buffering"; Player.STATE_READY -> "ready"; Player.STATE_ENDED -> "ended"; else -> "idle" } + " at ${player.currentPosition} ms")
             if (state == Player.STATE_ENDED) { val s = seq(); report("drained", s, 0, false) }
         }
         override fun onPlayerError(error: PlaybackException) {
@@ -55,12 +65,12 @@ internal class PhoneRelay(
             val fb = fallback.remove(s)
             if (fb != null && i >= 0) {
                 // By its id it wouldn't play (the file, or its Opus, didn't come): the same track as the player's bytes.
-                AppLog.line("PHONE", "track $s didn't play by its id (${error.errorCodeName}: ${error.cause?.message}); playing the player's stream of it", anomaly = true)
+                note("track #$s didn't play by its id (${error.errorCodeName}: ${error.cause?.message}); playing the player's stream of it", true)
                 val at = player.currentPosition.coerceAtLeast(0)
                 player.removeMediaItem(i); player.addMediaSource(i, fb); player.seekTo(i, at); player.prepare()
                 return
             }
-            AppLog.line("PHONE", "a track couldn't play (${error.errorCodeName}: ${error.cause?.message}); skipped", anomaly = true)
+            note("track #$s couldn't play (${error.errorCodeName}: ${error.cause?.message}); skipped", true)
             report("failed", s, 0, false)
             if (player.hasNextMediaItem()) { player.seekToNextMediaItem(); player.prepare(); player.play() }
         }
@@ -76,7 +86,7 @@ internal class PhoneRelay(
         player.addListener(listener)
         main.postDelayed(ticker, 1000)
         reader = Thread({ listen() }, "relay-events").apply { isDaemon = true; start() }
-        AppLog.line("PHONE", "this phone plays Lyrion's tracks, one item each")
+        note("this phone plays Lyrion's tracks, one item each; phone volume ${ThisPhone.volume?.level()}, USB DAC ${if (UsbDriver.active) "on" else "off"}")
     }
 
     fun stop() {
@@ -110,6 +120,12 @@ internal class PhoneRelay(
         val s = seq()
         if (s <= 0 || s !in started) return
         report("pos", s, (player.currentPosition - (base[s] ?: 0)).coerceAtLeast(0), player.isPlaying)
+    }
+
+    /** A line for the app's log and the server's (owner report: no sound, and nothing to say why). */
+    private fun note(msg: String, anomaly: Boolean = false) {
+        AppLog.line("PHONE", msg, anomaly)
+        if (running) runCatching { reports.execute { runCatching { client()?.phoneNote(playerId, msg) } } }
     }
 
     private fun report(ev: String, s: Int, ms: Long, playing: Boolean) {
@@ -147,6 +163,8 @@ internal class PhoneRelay(
         when (c.cmd) {
             "add" -> {
                 val asOpus = opus()
+                note("add #${c.seq}: ${if (c.fresh) "fresh" else "next"}, ${if (c.play) "play" else "hold"}, " +
+                    (c.trackId?.let { "track $it by its id" } ?: "the player's bytes") + (if (asOpus) " as Opus" else "") + ", ${c.mime}, gain ${c.gainDb} dB")
                 // The library's own track from its start: by its id, through the phone's cache (kept, and fetched ahead);
                 // else the player's own bytes for it. Relative addresses: sent where the server is now (PhoneStreamService).
                 val path = c.trackId?.let { PhoneStream.filePath(it, asOpus) } ?: PhoneStream.trackPath(playerId, c.seq, asOpus)
