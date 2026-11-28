@@ -40,6 +40,9 @@ internal fun NavGraphBuilder.collectionRoutes(nav: NavHostController, client: ()
         LivePlaylistScreen(a?.getString(CollectionRoute.ID).orEmpty(), a?.getString(CollectionRoute.NAME).orEmpty(), a?.getString(CollectionRoute.ZONE).orEmpty(), client, chrome,
             onAlbum = { offset, zone, list -> nav.navigate(ShellRoute.album(offset, zone, "", AlbumLists.put(list), list.index)) })
     }
+    composable(CollectionRoute.QOBUZ, arguments = listOf(str(CollectionRoute.ZONE))) { e ->
+        QobuzScreen(e.arguments?.getString(CollectionRoute.ZONE).orEmpty(), client, chrome)
+    }
     composable(CollectionRoute.LABELS, arguments = listOf(str(CollectionRoute.ZONE))) { e ->
         LabelsScreen(e.arguments?.getString(CollectionRoute.ZONE).orEmpty(), client, chrome, onLabel = { name -> nav.navigate(CollectionRoute.label(name, NativeShell.zone)) })
     }

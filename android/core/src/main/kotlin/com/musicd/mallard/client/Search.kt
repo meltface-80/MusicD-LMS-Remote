@@ -12,7 +12,9 @@ import org.json.JSONObject
  */
 
 /** One of a service's albums the search found: its id there, the version after the title, and whether it is one of your favourites there. */
-data class ServiceAlbum(val service: String, val id: String, val title: String, val version: String, val artist: String, val image: String?, val favourited: Boolean)
+data class ServiceAlbum(val service: String, val id: String, val title: String, val version: String, val artist: String, val image: String?, val favourited: Boolean,
+                        /** This server's cover for it (its image key), where it sends one instead of an address. */
+                        val imageKey: String? = null)
 
 /** One of a service's artists the search found, for the strip of chips. */
 data class ServiceArtist(val service: String, val id: String, val name: String, val image: String?)
@@ -56,7 +58,9 @@ data class ExternalSearch(val query: String, val qobuz: List<ServiceAlbum>?, val
         private fun JSONObject.text(k: String): String? = if (!has(k) || isNull(k)) null else optString(k).ifEmpty { null }
 
         private fun albums(service: String, a: JSONArray?): List<ServiceAlbum>? = a?.let { arr ->
-            objs(arr).map { ServiceAlbum(service, it.optString("id"), it.optString("title"), it.optString("version"), it.optString("artist"), it.text("image"), it.optBoolean("favourited", false)) }
+            // MusicD LMS sends its search's albums as the browser's rows: an opaque token for the id, the artist line as subtitle, a cover's image key.
+            objs(arr).map { ServiceAlbum(service, it.text("id") ?: it.optString("token"), it.optString("title"), it.optString("version"), it.text("artist") ?: it.optString("subtitle"),
+                it.text("image"), it.optBoolean("favourited", false), it.text("image_key")) }
         }
         private fun artists(service: String, a: JSONArray?): List<ServiceArtist> =
             objs(a).map { ServiceArtist(service, it.optString("id"), it.optString("name"), it.text("image")) }

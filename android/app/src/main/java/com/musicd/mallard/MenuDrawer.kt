@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.musicd.mallard.client.CollectionRoute
+import com.musicd.mallard.client.services
 import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.Features
 import com.musicd.mallard.client.features
@@ -102,6 +103,7 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
         "home" -> navTap(nav, "home")
         "random" -> overHome(nav, ShellRoute.wall("random", z, ""))
         "labels" -> overHome(nav, CollectionRoute.labels(z))
+        "qobuz" -> overHome(nav, CollectionRoute.qobuz(z))
         "favourites" -> overHome(nav, ShellRoute.wall("favourites", z, ""))
         "apps" -> overHome(nav, ShellRoute.apps("app", z))
         "shelf" -> overHome(nav, ShellRoute.shelf(z))
@@ -138,10 +140,13 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
     // The server's switches, read as the page's menu reads them (/api/settings/features): the Shelf row only while it is
     // on; Smart Picks unless it is switched off.
     var features by remember { mutableStateOf(Features(setOf("shelf"))) }
+    var qobuz by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         lms = withContext(Dispatchers.IO) { runCatching { c.health().lms }.getOrNull() }.orEmpty()
         withContext(Dispatchers.IO) { runCatching { c.features() }.getOrNull() }?.let { features = it; NavShelf.on.value = it.on("shelf") }
+        // Qobuz, while the server's plugin is there and signed in (the page's /api/services), under the plugin's own name.
+        qobuz = withContext(Dispatchers.IO) { runCatching { c.services() }.getOrNull() }?.firstOrNull { it.tag == "qobuz" && it.usable }?.name
     }
     Box(Modifier.fillMaxSize().parity("menu.close", Contract.label("menu.close")).pointerInput(widthPx, open) {
         detectTapGestures { at -> if (!open) return@detectTapGestures; if (at.x > widthPx) onClose() }
@@ -158,7 +163,7 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
                 Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     Column {
                         MenuHead()
-                        MenuList(lms, features, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
+                        MenuList(lms, features, qobuz, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
                     }
                 }
             }
@@ -180,7 +185,7 @@ private fun MenuHead() {
 
 /** The list, as the web app's menu (public/index.html): Home, Random albums and the Shelf; the collections; Rescan; Settings. */
 @Composable
-private fun MenuList(lms: String, features: Features, onRescan: () -> Unit, onItem: (String) -> Unit) {
+private fun MenuList(lms: String, features: Features, qobuz: String?, onRescan: () -> Unit, onItem: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         MenuItem(Modifier.clip(ITEM).clickable { onItem("home") }, R.drawable.tn_home, "Home")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
@@ -191,6 +196,7 @@ private fun MenuList(lms: String, features: Features, onRescan: () -> Unit, onIt
         MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("merges") }, R.drawable.mn_merged, "Merged albums")
+        if (qobuz != null) MenuItem(Modifier.clip(ITEM).clickable { onItem("qobuz") }, R.drawable.mn_qobuz, qobuz)
         MenuItem(Modifier.parity("menu.pitchfork", Contract.label("menu.pitchfork")).clip(ITEM).clickable { onItem("pitchfork") }, R.drawable.mn_pitchfork, Contract.label("menu.pitchfork"))
         if (features.on("smartPicks")) MenuItem(Modifier.clip(ITEM).clickable { onItem("picks") }, R.drawable.mn_picks, "Smart Picks")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("liveplaylists") }, R.drawable.mn_live, "Dynamic Playlists")

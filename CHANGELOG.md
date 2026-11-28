@@ -3,6 +3,12 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard: Qobuz, as the web app's Browse Qobuz — a side-menu row under the plugin's own name while the server's Qobuz
+  plugin is signed in (`/api/services`), walking its menus a level at a time (categories as rows, albums as tiles with
+  the account favourite's ＋ / ✓), and an album's page: Play Now, Add to queue, ＋ Add to Qobuz / ✓ In Qobuz, its
+  tracks (a tap plays that one). Search's Qobuz albums now read this server's answer (they came back with no artist
+  or cover) and open there; their ＋ adds them to the account, where both used to say "open it from the page".
+
 - Mallard: Labels, as the web app has it — a side-menu row (while Record labels is on) to every label as a tile, its
   logo or its name in words, with its album count and "N merged". A tap opens its albums with Set logo (Discogs'
   logos, or a pasted address); a long press picks labels to merge ("Merge N into …"), and "N merged" undoes one.

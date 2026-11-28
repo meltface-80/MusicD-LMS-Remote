@@ -128,10 +128,11 @@ internal fun ServiceArtistStrip(artists: List<ServiceArtist>, onTap: (ServiceArt
  * or ✓ ([fav]; a tap [onFav]), the title with its version faint after it, the artist; a tap on the tile [onOpen].
  */
 @Composable
-internal fun ServiceAlbumTile(a: ServiceAlbum, fav: Boolean, prefs: WallPrefs, onFav: () -> Unit, onOpen: () -> Unit) {
+internal fun ServiceAlbumTile(a: ServiceAlbum, fav: Boolean, prefs: WallPrefs, onFav: () -> Unit, onOpen: () -> Unit, client: (() -> com.musicd.mallard.client.ServerClient?)? = null) {
     val name = if (a.service == "tidal") "Tidal" else "Qobuz"
     Column(Modifier.parity("search.service-album service-browser.album", Contract.label("search.service-album", if (a.artist.isEmpty()) 1 else 0, a.title, a.artist)).fillMaxWidth().clickable(onClick = onOpen)) {
-        val cover = rememberWebImage(a.image)
+        // An address of the service's, or (MusicD LMS) the server's own cover by its image key.
+        val cover = rememberWebImage(a.image) ?: (if (client != null) rememberTileCover(a.imageKey, 400, client) else null)
         val corners = RoundedCornerShape(12.dp)
         Box(Modifier.parity("search.service-album-art service-browser.album-art").fillMaxWidth().aspectRatio(1f).clip(corners).background(paletteColor(Palette.BG_ELEV_2)).border(1.dp, Color.White.copy(alpha = 0.06f), corners)) {
             if (cover != null) Image(cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
