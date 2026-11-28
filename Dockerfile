@@ -19,12 +19,11 @@ WORKDIR /app
 # No native builds here — the LMS port depends only on express + compression
 # (no better-sqlite3, no music-metadata). The heavy lifting (scanning,
 # transcoding for the rooms, playback) is done by the Lyrion Music Server this
-# talks to over the network. Two programs are installed for a PHONE AWAY FROM
-# HOME (lib/phoneplayers.js): squeezelite, the phone's own LMS player (to
-# stdout, resampled to 48 kHz by libsoxr, which Debian's build has), and
-# ffmpeg, which makes its sound Opus 256 kbps or FLAC for the phone.
+# talks to over the network. ffmpeg is installed for "THIS PHONE"
+# (lib/relayplayer.js): away from home it makes each track Opus 256 kbps for
+# the phone, resampled to 48 kHz by libsoxr (which Debian's build has).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends squeezelite ffmpeg \
+ && apt-get install -y --no-install-recommends ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false

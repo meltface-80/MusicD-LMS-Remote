@@ -402,19 +402,19 @@ Only your own devices are let in over the tailnet — the nodes signed in as the
 shared in from someone else's tailnet. `TAILSCALE=off` leaves the built-in engine out (Tailscale installed on the host,
 with `--network host`, works as before).
 
-Away from home, Mallard plays on the phone itself: the server runs an LMS player for the phone (squeezelite, so every
-LMS player setting applies — ReplayGain, crossfade, Don't Stop The Music) and streams its sound to it as Opus 256 kbps
-at 24-bit/48 kHz, the rate Android's audio runs at (Settings → Away from home → This phone → Stream away as). The screens then show and play in
-that player alone, as "This phone"; home again, they are back with your rooms. At home "This phone" is one of the rooms:
-choose it to play on the phone there too. Its player is fixed at 100% in Lyrion: the phone's volume buttons (or the
-slider on This phone) set the level, as with any player app.
+Away from home, Mallard plays on the phone itself, as Mandarin does: the server is the phone's own Lyrion player, Lyrion
+sends it each track as the file, and the phone plays them one by one. Away, each track comes as Opus 256 kbps at
+24-bit/48 kHz (the rate Android's audio runs at; made from the file by the server), or — Settings → Away from home → This
+phone → Stream away as → **Bit-perfect (untouched)** — as the file itself. At home it is always the file itself. The
+screens then show and play in that player alone, as "This phone"; home again, they are back with your rooms. At home
+"This phone" is one of the rooms: choose it to play on the phone there too. Its player is fixed at 100% in Lyrion: the
+phone's volume buttons (or the slider on This phone) set the level, and Lyrion's volume levelling is applied on the
+phone.
 
 **USB DACs:** with a DAC on the phone's USB port, Settings → Away from home → USB DAC → USB direct sends the phone's
-sound to it through Mallard's own USB audio driver (Mandarin's), at the stream's own rate and the DAC's depth, with
-Android's mixer out of the way. For bit-perfect, choose **Bit-perfect (untouched)** under This phone → Stream away as: the server then
-plays to the phone as its own Lyrion player and passes each track on as the file itself — no decoding, resampling or
-volume on the way. (A Lyrion server whose Slimproto port isn't
-3483 sets `SLIMPROTO_PORT`.)
+sound to it through Mallard's own USB audio driver (Mandarin's), at the track's own rate and the DAC's depth, with
+Android's mixer out of the way — bit-perfect with the file itself and no volume levelling. (A Lyrion server whose
+Slimproto port isn't 3483 sets `SLIMPROTO_PORT`.)
 
 ## Environment variables
 

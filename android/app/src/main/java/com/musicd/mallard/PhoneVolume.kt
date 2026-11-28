@@ -7,8 +7,8 @@ import com.musicd.mallard.client.LocalVolume
 /**
  * This phone's own volume, for its own player (Mandarin's rule, owner request: the phone's player is fixed at 100% in
  * LMS and "volume changes take place with the phone's volume control"). Android's media volume; through a USB DAC under
- * USB direct, the DAC's level (UsbDriver) — the DAC's own hardware control where it has one, so Untouched stays
- * bit-perfect. A DAC Mallard can't set (fixed volume, or Untouched to a DAC with no control of its own) reads as fixed.
+ * USB direct, the DAC's level (UsbDriver) — the DAC's own hardware control where it has one (bit-perfect), else a
+ * software gain, as Mandarin's. A DAC at fixed volume reads as fixed.
  * Installed as ThisPhone.volume, so every volume call ServerClient makes for this phone's player comes here.
  */
 internal class PhoneVolume(context: Context) : LocalVolume {
@@ -19,7 +19,7 @@ internal class PhoneVolume(context: Context) : LocalVolume {
 
     /** The DAC is what plays and Mallard drives its level. */
     private fun dac() = UsbDriver.active
-    private fun dacLevel() = UsbDriver.controlsVolume && (UsbDriver.hasVolume || PhoneZone.mode != "exact")
+    private fun dacLevel() = UsbDriver.controlsVolume
 
     /** This phone's own player, running or about to (chosen at home a moment ago). */
     override fun owns(zoneId: String): Boolean = zoneId == PhoneZone.id || zoneId == own

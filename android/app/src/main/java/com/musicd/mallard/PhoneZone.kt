@@ -2,7 +2,6 @@ package com.musicd.mallard
 
 import android.content.Context
 import android.os.Build
-import com.musicd.mallard.client.PhoneStream
 import com.musicd.mallard.client.phoneBye
 import com.musicd.mallard.client.phoneHello
 
@@ -11,19 +10,15 @@ import com.musicd.mallard.client.phoneHello
  * Gone away (Away.kt, through the phone's Tailscale): hello — the server starts the phone's player and the screens play in
  * it alone ([id]; the server's zone list away is that player only, as "This phone") — and its stream plays
  * (PhoneStreamService). Home again: goodbye, the stream stops, and the screens are back in the room kept for home, which
- * going away never overwrote (Store.zone). Blocking; called on Away's own thread.
- *
- * Untouched (Stream away as): the hello asks for the server's relay player ("exact") and names the highest rate the USB
- * DAC takes, and the phone plays the relay's tracks (PhoneStreamService → PhoneRelay) instead of a stream.
+ * going away never overwrote (Store.zone). Blocking; called on Away's own thread. At home "This phone" is one of the
+ * rooms too ([here] / [leaveHere]), as Mandarin's. The hello names the highest rate the USB DAC takes; each track then
+ * comes as the file itself, or away with Opus chosen as its Opus (PhoneStreamService → PhoneRelay).
  */
 internal object PhoneZone {
     /** This phone's player while away; null at home. */
     @Volatile var id: String? = null
         private set
     @Volatile private var name = ""
-    /** The server's player for this phone, as the hello made it: "exact" (the relay) or "pcm" (squeezelite). */
-    @Volatile var mode = "pcm"
-        private set
     private val work = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     /** What LMS calls this phone: its maker and model ("Google Pixel 8"). */
@@ -31,31 +26,19 @@ internal object PhoneZone {
 
     fun goAway(c: Context) {
         val client = Store.client(c) ?: return
-        val want = PhoneStream.mode(Store.awayQuality(c))
-        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName(), want, maxRate(c)) }.getOrElse {
+        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName(), maxRate(c)) }.getOrElse {
             AppLog.line("AWAY", "the server didn't start this phone's player: ${it.message}", anomaly = true); return
         }
-        id = h.playerId; name = h.name; mode = h.mode
+        id = h.playerId; name = h.name
         AppLog.line("AWAY", "away: Lyrion plays to this phone (${h.name})")
         NativeShell.awayZone(h.playerId)
         play(c)
     }
 
-    /** The phone's sound (again, as the setting now says), while away: the relay's tracks for Untouched, else the stream. */
+    /** The phone's sound: its player's tracks, played here (PhoneStreamService). */
     fun play(c: Context) {
         val p = id ?: return
-        if (mode == "exact") { PhoneStreamService.startRelay(c, p, name); return }
-        val base = Store.client(c)?.address?.baseUrl ?: return
-        PhoneStreamService.start(c, base + PhoneStream.path(p, Store.awayQuality(c)), name)
-    }
-
-    /** Stream away as changed (Settings): a change between Untouched and the others swaps the server's player, so hello again first. */
-    fun requality(c: Context) {
-        if (id == null) return
-        val app = c.applicationContext
-        work.execute {
-            if (PhoneStream.mode(Store.awayQuality(app)) != mode) goAway(app) else play(app)
-        }
+        PhoneStreamService.start(c, p, name)
     }
 
     /** This phone's own player id, whether or not it runs (the server lists it as "This phone" at home). */
@@ -70,10 +53,10 @@ internal object PhoneZone {
         work.execute {
             if (id != null) return@execute
             val client = Store.client(app) ?: return@execute
-            val h = runCatching { client.phoneHello(Store.deviceId(app), phoneName(), PhoneStream.mode(Store.awayQuality(app)), maxRate(app)) }.getOrElse {
+            val h = runCatching { client.phoneHello(Store.deviceId(app), phoneName(), maxRate(app)) }.getOrElse {
                 AppLog.line("PHONE", "the server didn't start this phone's player: ${it.message}", anomaly = true); return@execute
             }
-            id = h.playerId; name = h.name; mode = h.mode
+            id = h.playerId; name = h.name
             AppLog.line("PHONE", "at home: Lyrion plays to this phone (${h.name})")
             play(app)
         }

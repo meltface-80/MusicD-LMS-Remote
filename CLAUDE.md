@@ -302,18 +302,19 @@ tags, no automatic releases, no cluttered history.
   The web app has no Away pane (owner decision); Mallard manages the server's engine AND runs the same engine on the
   phone (`PhoneEngine.kt`/`Away.kt`, built by `mallard.yml` for arm64): away, it forwards 127.0.0.1:34390 (never
   Mandarin's 34500) to the tailnet address `/api/status` names; `/api/ping` is that engine's probe.
-  AWAY, THE PHONE IS AN LMS PLAYER (`lib/phoneplayers.js`, `lib/phone-routes.js`): squeezelite per phone (`-o - -a 32 -r
-  48000 -R`, MAC `02:6d:…` from the phone's id) so LMS's own player settings apply, its stdout read at REAL TIME (it has
-  no clock: unread it stalls, closed it dies) into ffmpeg → Ogg Opus 256k, 24-bit/48 kHz (encoded from float; Mallard decodes with its own libopus). NO FLAC
-  OPTION: squeezelite resamples to 48 kHz, so it would not be lossless (owner decision) — bit-perfect is the relay's. Over the tailnet `/api/zones` is
-  that phone's player alone ("This phone"). Never apply ReplayGain or volume downstream: squeezelite already has.
-  UNTOUCHED (`mode:"exact"` in the hello; `lib/relayplayer.js` + `lib/slimproto.js`): no squeezelite — the server's own
-  Slimproto PLAYER (same MAC) spools each track LMS sends (`/api/phone/track`, Range) and tells Mallard over SSE
-  (`/api/phone/events`); Mallard plays them as an ExoPlayer playlist (`PhoneRelay.kt`) and reports
-  (`/api/phone/report`). THE TRAP: no DSCO/STMd before the first STMs of a started track (LMS would take the phone's
-  STMs for the next track) — held, then STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes
-  each a passthrough; `flc` first re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, `mp3StreamingMethod 1`;
-  audg is ignored. Spools live in os.tmpdir(), never data/.
+  THIS PHONE IS AN LMS PLAYER, AS MANDARIN'S PHONE ZONE (`lib/phoneplayers.js`, `lib/relayplayer.js`,
+  `lib/slimproto.js`, `lib/phone-routes.js`): per phone the server runs its OWN Slimproto player (MAC `02:6d:…` from the
+  phone's id); LMS streams it each track's own bytes, spooled (os.tmpdir(), never data/) and handed to Mallard ONE ITEM
+  PER TRACK over SSE (`/api/phone/events`); Mallard plays them as an ExoPlayer playlist (`PhoneRelay.kt`) and reports
+  (`/api/phone/report`). Each track (`/api/phone/track`, Range) is the FILE ITSELF (bit-perfect; at home ALWAYS) or,
+  away with Opus chosen (the default), `&q=opus`: Opus 256k made per track from the whole file with Mandarin's
+  arguments (soxr to 48 kHz, from float; `opusArgs`), decoded by Mallard's own libopus at 24-bit/48 kHz. NO squeezelite,
+  NO continuous stream, NO FLAC option (owner: resampled to 48 kHz it isn't lossless). LMS's ReplayGain (strm s) goes
+  with the track as `gain_db` and is applied ON THE PHONE (`TrackGain` in WordsSink), as Mandarin's. THE TRAP: no
+  DSCO/STMd before the first STMs of a started track (LMS would take the phone's STMs for the next track) — held, then
+  STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes each a passthrough; `flc` first
+  re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, level 100, `mp3StreamingMethod 1`; audg is ignored.
+  Away, over the tailnet, `/api/zones` is that phone's player alone ("This phone").
   THIS PHONE'S VOLUME IS THE PHONE'S (Mandarin's rule): the server sets every phone player fixed at 100%
   (`digitalVolumeControl 0` + level 100, `playerUp`), and Mallard's `ServerClient` hands every volume call for this
   phone's player to `ThisPhone.volume` (`PhoneVolume.kt`: Android's media volume, or the USB DAC's level) instead of
