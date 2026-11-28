@@ -193,8 +193,8 @@ private fun MenuList(lms: String, features: Features, qobuz: String?, onRescan: 
         MenuSep()
         if (features.on("labels")) MenuItem(Modifier.clip(ITEM).clickable { onItem("labels") }, R.drawable.mn_labels, "Labels")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
-        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps")
-        MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps", beta = true)
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio", beta = true)
         MenuItem(Modifier.clip(ITEM).clickable { onItem("merges") }, R.drawable.mn_merged, "Merged albums")
         if (qobuz != null) MenuItem(Modifier.clip(ITEM).clickable { onItem("qobuz") }, R.drawable.mn_qobuz, qobuz)
         MenuItem(Modifier.parity("menu.pitchfork", Contract.label("menu.pitchfork")).clip(ITEM).clickable { onItem("pitchfork") }, R.drawable.mn_pitchfork, Contract.label("menu.pitchfork"))
@@ -220,11 +220,14 @@ private val ITEM = RoundedCornerShape(10.dp)
 
 /** An item: its icon (22, in the brass) and its [word] (15), 12 all round, 14 between; its line under the word if it has one. */
 @Composable
-private fun MenuItem(modifier: Modifier, icon: Int, word: String, sub: String = "") {
+private fun MenuItem(modifier: Modifier, icon: Int, word: String, sub: String = "", beta: Boolean = false) {
     Row(modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(word, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(word, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 1)
+                if (beta) BetaTag()   // plugins are a work in progress (BetaTag.kt)
+            }
             if (sub.isNotEmpty()) Text(sub, Modifier.parity("menu.rescan-sub"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 15.6.sp)
         }
     }

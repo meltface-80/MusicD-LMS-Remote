@@ -4818,3 +4818,13 @@ body.show-quality .album-quality.hidden { display: none; }
 .ad-about span:first-child { color: var(--text-faint); }
 .ad-about span:last-child { flex: 1; text-align: right; color: var(--text); overflow-wrap: anywhere; }
 .ad-rename { width: 100%; }
+
+/* ---- Beta: plugins are a work in progress (owner: "perhaps mark as beta"). Mallard's BetaTag.kt is the same pill. ---- */
+.beta-tag {
+  display: inline-block; vertical-align: middle; margin-left: 4px; padding: 1px 6px; border-radius: 6px;
+  font-size: 10px; line-height: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent);
+}
+.settings-head h2 .beta-tag, .qb-head h2 .beta-tag { font-family: var(--font-sans, inherit); }
+.beta-note { display: flex; align-items: center; gap: 8px; margin: 4px 18px 8px; font-size: 12.5px; line-height: 17px; color: var(--text-faint); }
+.beta-note .beta-tag { margin-left: 0; flex: 0 0 auto; }

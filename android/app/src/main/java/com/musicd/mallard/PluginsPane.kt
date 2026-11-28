@@ -137,6 +137,7 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
     page?.let { p -> LmsPage(p.settings, p.title, client) { page = null }; return }
     SettingsFrame {
         PaneHead("Plugins", onBack)
+        BetaNote(Modifier.padding(bottom = 14.dp))   // plugins are a work in progress (BetaTag.kt)
         val l = list
         when {
             l == null -> SetupNote(said, Modifier)
