@@ -252,6 +252,6 @@ private fun Shell(client: () -> ServerClient?) {
     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
         ReachBanner(onTryAgain = { (ctx as? MainActivity)?.lookForServer() }, onChangeServer = { (ctx as? MainActivity)?.openConnect() })
     }
-    RoomAskOver(client)   // the question whether to move what's playing to the room chosen (item 68)
+    RoomAskOver(client); PlaylistAddOver(client)   // the question whether to move what's playing (item 68); Add to playlist's sheet
     }
 }
