@@ -1287,7 +1287,7 @@ app.get("/api/album", async (req, res) => {
     res.json({
       album:  { offset: rec.offset, title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
                 merge_id: rec.mergeId || null, part_count: rec.partCount || null,
-                quality: rec.quality || null, hires: !!rec.hires },
+                quality: rec.quality || null, hires: !!rec.hires, edited: !!rec.edited },
       // track_id is the track's PLACE in this list (identity is offset + place;
       // no LMS id ever leaves the server). length/tracknum/disc are for the
       // native app (Mallard) and are omitted when LMS doesn't know them.

@@ -3,6 +3,12 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard: Edit album, as the web app has it — the pencil left of Share at an album page's top right opens the same
+  editor: Title, Artist, Year; Artwork (Find artwork lists the covers found, a tap picks one, or paste an address);
+  Remove edits (when it carries some), Cancel, Save. Kept in the app's database; files and LMS never touched. What
+  is saved shows at once on the page and on the walls. `/api/album` now says `edited`, so both apps know when to
+  offer Remove edits.
+
 - Mallard: Add to playlist, as the web app has it — from the albums' multi-select (every track of the picked albums),
   the tracks' multi-select on an album's page, and (new in both senses) an album's ⋯. The same sheet: what is being
   added, "+ New playlist…", then Existing; the same toasts ("Added 12 tracks to new playlist “Road”", "existing …"
