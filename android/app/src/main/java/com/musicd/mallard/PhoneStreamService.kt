@@ -75,7 +75,7 @@ class PhoneStreamService : Service() {
         // Opus only away with Opus chosen (Mandarin's rule): at home always the file itself. Asked as each track is queued.
         val opus = { PhoneStream.opus(Store.awayVia, Store.awayQuality(this)) }
         val ahead = PhoneAhead(this, p, cached, client, playerId, opus)
-        relay = PhoneRelay(p, client, playerId, opus, DefaultMediaSourceFactory(cached), DefaultMediaSourceFactory(routed), ahead).also { it.start() }
+        relay = PhoneRelay(p, client, playerId, opus, DefaultMediaSourceFactory(cached), DefaultMediaSourceFactory(routed), ahead) { StreamCache.complete(this, it) }.also { it.start() }
     }
 
     /** The one player, built once: its audio through WordsSink and UsbAudioSink, so a USB DAC can take it. */
