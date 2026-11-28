@@ -3,6 +3,11 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Web: the search bar no longer shows permanently on a phone or a tablet (owner: "that's what the magnifying glass is
+  for"). The bottom bar's glass opens it with the cursor in it; its ✕ clears the words, and tapped again with none
+  closes it; a tap elsewhere on the screen closes it while it is empty. Home then has no top bar but the status bar's
+  strip, as Mandarin's page. A desktop keeps its field in the bar.
+
 - Mallard away from home plays to the phone itself (Mallard's half of the phone's own player; owner request, as
   Mandarin): the moment it goes away through its own Tailscale it says hello, the server starts this phone's LMS player,
   and every screen shows and plays in that player alone ("This phone") — the home rooms leave the picker, and the
