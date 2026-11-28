@@ -58,6 +58,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         askForNotificationPermission()
         reach = ServerReach(this)
         reach.start()
+        Away.changed = { reach.lookNow() }   // home or away through the phone's Tailscale (Away.kt): the server looked at again
+        Away.watch(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -72,13 +74,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         AppLog.onScreenAt = SystemClock.elapsedRealtime()
         AppLog.line("APP", "on screen")
         reach.resumed()
+        Away.resumed()
         NowPlayingService.start(this)
     }
 
     override fun onPause() {
         NativeShell.onScreen.value = false
         AppLog.line("APP", "off screen")
-        if (::reach.isInitialized) reach.paused()
+        if (::reach.isInitialized) { reach.paused(); Away.paused() }
         super.onPause()
     }
 
@@ -122,11 +125,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
     /**
      * The volume buttons move the chosen player's volume while the app is on screen (LMS's own relative step, so quick
      * presses never race). With no player chosen, the phone's own volume as usual. Off screen, the media session's
-     * remote volume does the same from the lock screen (NowPlayingService).
+     * remote volume does the same from the lock screen (NowPlayingService). On this phone's own player they are always
+     * the phone's (PhoneVolume): LMS has it fixed at 100%.
      */
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
             val zone = NativeShell.zone
+            // This phone's own player (fixed at 100% in LMS): the buttons are the phone's own — the DAC's level through USB
+            // direct, else Android's media volume, as with any player app (Mandarin's rule).
+            if (zone.isNotEmpty() && (zone == PhoneZone.id || zone == PhoneZone.ownId(this) || (Store.awayVia && PhoneZone.id != null))) {
+                if (MusicDApp.phoneVolume?.key(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) == true) return true
+                volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+                return super.onKeyDown(keyCode, event)
+            }
             if (zone.isNotEmpty()) {
                 val up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
                 Thread({ runCatching { Store.client(this)?.zoneVolumeStep(zone, if (up) 1 else -1) } }, "volume-key").apply { isDaemon = true; start() }

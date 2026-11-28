@@ -153,6 +153,42 @@
   --shadow-modal: 0 24px 64px rgba(58,44,26,.20);
 }
 
+/* Mallard (the default): Mallard's own look, the Android app's and Mandarin's "graphite and brass" — a warm charcoal
+   ground, flat, one elevated tone for cards and panels, the brass the one accent; Manrope, titles in Young Serif.
+   The component rules that go with it are in hifi.css (from Mandarin's page; only its look, never its layout). */
+[data-theme="dark"][data-palette="hifi"] {
+  --font-sans: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Young Serif", Georgia, "Times New Roman", serif;
+  --bg:           #17191c;
+  --bg-elev:      #1f2226;
+  --bg-elev-2:    #262a2f;
+  --border:       #30353b;
+  --text:         #ecebe6;
+  --text-dim:     #9a9ca1;
+  --text-faint:   #7a7d83;
+  --accent:       #c9a45c;
+  --accent-text:  #d4b06a;
+  --accent-soft:  rgba(201,164,92,.15);
+  --on-accent:    #17191c;
+  /* #17191c with alpha. */
+  --bg-veil:      rgba(23,25,28,.84);
+  --glass-edge:   rgba(201,164,92,.22);
+  --glass-fill:   rgba(236,235,230,.07);
+  --glass-fill-strong: rgba(236,235,230,.13);
+  --danger:       #e8836b;
+  --heart: #ff4d6d;
+  --panel-hairline: rgba(236,235,230,.08);
+  --shadow-card:  0 2px 6px rgba(0,0,0,.45), 0 12px 28px rgba(0,0,0,.4);
+  --shadow-modal: 0 24px 64px rgba(0,0,0,.65);
+  /* hifi.css's: the mini player's body, the level meter's unlit segments, the genre cards' ink, and the discs (the
+     names are Mandarin's, kept from the plum they replaced there). */
+  --mt-bg:        rgba(31,34,38,.97);
+  --meter-off:    rgba(236,235,230,.12);
+  --card-ink:     #ecebe6;
+  --plum:         #c9a45c;
+  --plum-pale:    #17191c;
+}
+
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0;
@@ -1247,7 +1283,9 @@ main { padding-top: calc(var(--topbar-h) + 14px); }
      requires exactly one, because headless Chromium reports every inset as 0
      and measures a perfectly proportioned pill either way. */
   left: 10px; right: 10px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  /* --tnav-lift: the bottom row's height while it shows (the touch layout, at the foot of this file); 0 otherwise.
+     A variable rather than a second `bottom` so the inset is still applied exactly once. */
+  bottom: calc(8px + var(--tnav-lift, 0px) + env(safe-area-inset-bottom));
   border-radius: 18px;
   /* Both of these are load-bearing, not decoration. --bg-veil is the ground
      with alpha, so where nothing is scrolled behind the pill — the very bottom
@@ -2815,6 +2853,8 @@ main { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 }
 .settings-update-btn:hover:not(:disabled) { color: var(--text); background: var(--glass-fill-strong); }
 .settings-update-btn:disabled { opacity: .6; cursor: default; }
+/* The diagnostic log's Download is a link (the browser saves it), dressed as the button above it. */
+a.settings-update-btn { display: inline-flex; align-items: center; text-decoration: none; }
 /* When a check has found an update, the button IS the install action —
    accent it so it reads as tappable. The :hover restatement out-ranks the
    generic hover rule above (0,3,0 beats 0,2,0) so the accent text survives
@@ -4641,3 +4681,160 @@ body.show-quality .album-quality.hidden { display: none; }
   border-radius: 4px; object-fit: cover;
   background: var(--bg-elev-2);
 }
+
+/* ------------------------------------------------------------------ */
+/*  Apps & radio: every LMS plugin's menus (apps-browser.js)           */
+/* ------------------------------------------------------------------ */
+.apps-tabs { display: flex; gap: 6px; margin: 0 0 12px; }
+.apps-tabs[hidden] { display: none; }
+.apps-tabs button {
+  flex: 1; padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-dim); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.apps-tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.app-node, .app-row { display: flex; align-items: center; gap: 12px; text-align: left; }
+.app-row { cursor: pointer; }
+.app-row.is-text { cursor: default; }
+.app-ico { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; object-fit: cover; background: var(--bg-elev-2); }
+.app-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-sub { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-btns { display: flex; gap: 4px; flex-shrink: 0; }
+.app-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: var(--glass-fill); color: var(--accent-text);
+}
+.app-btn:first-child { background: var(--accent); color: var(--on-accent); }
+.app-choice { width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--text-faint); }
+.app-choice.box { border-radius: 4px; }
+.app-choice.on { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--bg-elev); }
+.app-tile { display: flex; flex-direction: column; gap: 6px; }
+.app-tile-art { display: block; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: var(--bg-elev-2); }
+.app-tile-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.app-tile-t { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-more { align-self: center; margin-top: 8px; }
+
+/* ------------------------------------------------------------------ */
+/*  LMS plugins (lms-plugins.js): Settings → LMS server → Plugins      */
+/* ------------------------------------------------------------------ */
+.plugins-filter {
+  display: block; width: 100%; box-sizing: border-box; margin: 0 0 10px; padding: 9px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--glass-fill); color: var(--text); font: inherit; font-size: 14px;
+}
+.plugins-filter[hidden] { display: none; }
+.plugins-banner { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 12px 0 16px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.plugins-banner p { margin: 0; color: var(--text-dim); font-size: 14px; line-height: 1.45; }
+.plugins-group { margin: 16px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+.plugin-row { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.plugin-ico.is-blank { display: grid; place-items: center; font-weight: 700; color: var(--text-dim); }
+.plugin-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.plugin-title { font-weight: 600; overflow-wrap: anywhere; }
+.plugin-ver { font-weight: 400; font-size: 12px; color: var(--text-faint); }
+.plugin-desc {
+  font-size: 13px; color: var(--text-dim); line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.plugin-error { font-size: 13px; color: var(--danger, #e57373); }
+.plugin-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.plugin-btns .action-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 13px; }
+.plugin-link { font-size: 13px; color: var(--accent-text); text-decoration: none; padding: 6px 4px; }
+/* Repositories tab: the note, the address box beside Add, then each repository with Remove (Mallard's ReposTab). */
+.plugins-repo-note { margin: 0 0 10px; color: var(--text-dim); font-size: 14px; line-height: 1.45; }
+.plugins-repo-add { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.plugins-repo-add .plugins-filter { flex: 1; min-width: 0; margin: 0; }
+.plugins-repo-add .action-btn { flex: 0 0 auto; padding: 8px 18px; }
+.plugin-repo { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.plugin-repo-url { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 500; }
+.plugin-repo .action-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 13px; }
+
+/* Random Album's disc (Mallard's RandomAlbumTile): an outline drawing at about half the sleeve. */
+.unheard-glyph svg { display: block; width: 3.2rem; height: 3.2rem; }
+.home-today { margin-bottom: 26px; }
+
+/* ------------------------------------------------------------------ */
+/*  The touch layout: the row along the foot (touch-nav.js)            */
+/* ------------------------------------------------------------------ */
+/* Menu, Home, Library, Shelf (while it is on) and Search, evenly across, as Mallard's TouchNav.kt and Mandarin's page
+   draw it: on a phone or a tablet, never with a mouse. The mini player is lifted above it by --tnav-lift (its one
+   `bottom`, so the inset is still applied once), the page's bottom reserve grows by the row, and the toasts ride up
+   with it. An album's page or Now playing over the screen (tn-over) and the open side menu put it away, as they do
+   the mini player: both sit outside .app's stacking context, so no z-index could put the menu over them. The row
+   PADS for the home indicator (it is welded to the bottom edge); nothing here touches a top inset. */
+.touch-nav { display: none; }
+@media (hover: none), (pointer: coarse) {
+  :root { --tnav-h: 58px; --tnav-lift: var(--tnav-h); }
+  html.tn-over { --tnav-lift: 0px; }
+  .touch-nav {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: center;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 69;
+    height: calc(var(--tnav-h) + env(safe-area-inset-bottom));
+    padding: 0 max(10px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px, env(safe-area-inset-left));
+    background: var(--bg); border-top: 1px solid var(--border);
+  }
+  html.tn-over .touch-nav, body.menu-open .touch-nav { display: none; }
+  .tnav-btn {
+    width: 100%; min-width: 0; height: var(--tnav-h);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: 0; padding: 0; color: var(--text-dim); font: inherit; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tnav-btn.feature-off { display: none; }
+  .tnav-btn svg { width: 26px; height: 26px; }
+  .tnav-btn span { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .tnav-btn:active { transform: scale(.94); }
+  .tn-home:not(.tn-search) #tnav-home, .tn-lib #tnav-library, .tn-search #tnav-search { color: var(--accent-text); }
+  /* Search out of sight until the row's glass opens it (touch-nav.js, tn-search): on Home, with nothing else in the
+     bar's row, the row itself goes — the bar is then only the status bar's strip, its height measured as ever. */
+  html:not(.tn-search) #topbar-search { display: none; }
+  .tn-home:not(.tn-search) .topbar-row { display: none; }
+  .tn-home:not(.tn-search) .topbar { padding: env(safe-area-inset-top) 0 0; gap: 0; border-bottom: 0; }   /* Mandarin's: only the status bar's strip */
+  /* The menu lives in the row now. */
+  .topbar #menu-toggle { display: none; }
+  main { padding-bottom: calc(152px + env(safe-area-inset-bottom)); }
+  .toast, .settings-info-toast { margin-bottom: var(--tnav-lift); }
+}
+
+/* ---- Settings → Audio Devices (audio-devices.js; Mallard's SettingsAudio.kt / SettingsDevice.kt) ----
+   Every player as Mandarin's card: its kind's icon in a tile, its name and model, what it is doing, ›. The chosen
+   zone's card is washed in the accent. A player's page titles its sections in small capitals, faint. */
+.ad-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ad-card {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; cursor: pointer;
+  padding: 12px 14px; border-radius: 14px; font: inherit; color: var(--text);
+  background: var(--bg-elev-2); border: 1px solid var(--border);
+}
+.ad-card.is-chosen { background: var(--accent-soft); border-color: var(--accent); }
+.ad-ico {
+  flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--bg-elev); color: var(--accent-text);
+}
+.ad-card.is-off .ad-ico { opacity: .5; }
+.ad-card.is-offline .ad-ico { opacity: .55; }
+.ad-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ad-name { font-size: 15px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-sub { font-size: 12px; line-height: 16px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-state { flex: 0 0 auto; font-size: 11px; line-height: 15px; font-weight: 700; letter-spacing: .08em; color: var(--text-faint); }
+.ad-state.is-playing { color: var(--accent-text); }
+.ad-caret { flex: 0 0 auto; font-size: 20px; color: var(--text-faint); }
+.ad-title { font-size: 13px; line-height: 18px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 10px; }
+.ad-about { display: flex; gap: 16px; padding: 3px 0; font-size: 13.5px; }
+.ad-about span:first-child { color: var(--text-faint); }
+.ad-about span:last-child { flex: 1; text-align: right; color: var(--text); overflow-wrap: anywhere; }
+.ad-rename { width: 100%; }
+
+/* ---- Beta: plugins are a work in progress (owner: "perhaps mark as beta"). Mallard's BetaTag.kt is the same pill. ---- */
+.beta-tag {
+  display: inline-block; vertical-align: middle; margin-left: 4px; padding: 1px 6px; border-radius: 6px;
+  font-size: 10px; line-height: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent-text); background: var(--accent-soft); border: 1px solid var(--accent);
+}
+.settings-head h2 .beta-tag, .qb-head h2 .beta-tag { font-family: var(--font-sans, inherit); }
+.beta-note { display: flex; align-items: center; gap: 8px; margin: 4px 18px 8px; font-size: 12.5px; line-height: 17px; color: var(--text-faint); }
+.beta-note .beta-tag { margin-left: 0; flex: 0 0 auto; }
+/* ---- Now playing's quality line (np-quality.js; Mandarin's .np-format pill): under the album, the track's format and the
+   ReplayGain applied; This phone's Opus takes the accent edge. Mallard's NowPlaying quality is the same pill. ---- */
+.np-quality {
+  align-self: center; margin: 6px auto 0; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-dim); text-align: center; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: fit-content;
+}
+.np-quality.is-opus { border-color: var(--accent); color: var(--accent-text); }

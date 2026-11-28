@@ -27,18 +27,21 @@ import com.musicd.mallard.client.Contract
 
 /**
  * The touch layout's row along the foot of the screen, natively
- * (Mandarin's `.touch-nav`): Menu (the side menu over whichever screen is showing), Home, Library and Search, each an
- * equal share of the row, the one the page is on ([lit]: "home", "library", "search") in brass. Each tap is the row's
- * own button's ([onTap], by name), so there is one way to do each thing.
+ * (Mandarin's `.touch-nav`): Menu (the side menu over whichever screen is showing), Home, Library, Shelf while it is
+ * switched on (as Mandarin's row, owner request), and Search, each an equal share of the row, the one the page is on
+ * ([lit]: "home", "library", "search") in brass. Each tap is the row's own button's ([onTap], by name), so there is one
+ * way to do each thing.
  */
 @Composable
 internal fun TouchNav(lit: String, onTap: (String) -> Unit, modifier: Modifier = Modifier) {
+    val shelf = NavShelf.on.value
     Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             NavButton(R.drawable.tn_menu, Contract.label("nav.menu"), false, Modifier.weight(1f).parity("nav.menu", Contract.label("nav.menu")).clickable { onTap("menu") })
             NavButton(R.drawable.tn_home, Contract.label("nav.home"), lit == "home", Modifier.weight(1f).parity("nav.home", Contract.label("nav.home")).clickable { onTap("home") })
             NavButton(R.drawable.tn_library, Contract.label("nav.library"), lit == "library", Modifier.weight(1f).parity("nav.library", Contract.label("nav.library")).clickable { onTap("library") })
+            if (shelf) NavButton(R.drawable.tn_shelf, Contract.label("nav.shelf"), false, Modifier.weight(1f).parity("nav.shelf", Contract.label("nav.shelf")).clickable { onTap("shelf") })
             NavButton(R.drawable.tn_search, Contract.label("nav.search"), lit == "search", Modifier.weight(1f).parity("nav.search", Contract.label("nav.search")).clickable { onTap("search") })
         }
     }
@@ -53,4 +56,12 @@ private fun NavButton(icon: Int, text: String, lit: Boolean, modifier: Modifier)
         Spacer(Modifier.height(3.dp))
         Text(text, color = color, fontSize = 11.sp, lineHeight = 15.sp, fontWeight = FontWeight.W600, letterSpacing = 0.02.em, maxLines = 1)
     }
+}
+
+/**
+ * Whether the row offers Shelf: Settings → Wall display → Shelf as the server last said it (kept on the phone, so the
+ * row is drawn right from the start), then as the side menu and that switch hear it (Mandarin's NavShelf).
+ */
+internal object NavShelf {
+    val on = mutableStateOf(keptSetting("shelf")?.optBoolean("enabled") ?: false)
 }

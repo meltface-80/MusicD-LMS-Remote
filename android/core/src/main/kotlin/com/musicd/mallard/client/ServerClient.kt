@@ -41,7 +41,11 @@ class ServerClient(
     fun rooms(): List<Room> = Room.list(getJson("/api/zones"))
 
     /** What [zoneId] is playing now. The server answers at once; the caller paces the next ask (2 s playing, 6 s not). */
-    fun zoneState(zoneId: String): ZoneState = ZoneState.parse(getJson("/api/zone-state?zone=" + enc(zoneId)))
+    fun zoneState(zoneId: String): ZoneState {
+        val j = getJson("/api/zone-state?zone=" + enc(zoneId))
+        // This phone's own player: its volume is the phone's (ThisPhone), not LMS's (fixed at 100%).
+        return ZoneState.parse(ThisPhone.owning(zoneId)?.let { ThisPhone.withLevel(j, it.level(), it.muted()) } ?: j)
+    }
 
     // ---- transport ---------------------------------------------------------------------------------------------
 
@@ -67,17 +71,20 @@ class ServerClient(
         post("/api/lms/player/" + enc(zoneId) + "/mode", b)
     }
 
-    /** The room's volume to [value] (0–100). */
+    /** The room's volume to [value] (0–100); for this phone's own player, the phone's (ThisPhone). */
     fun zoneVolume(zoneId: String, value: Double) {
+        ThisPhone.owning(zoneId)?.let { it.set(Math.round(value).toInt().coerceIn(0, 100)); return }
         post("/api/volume", JSONObject().put("zone_or_output_id", zoneId).put("value", value))
     }
 
     /** A nudge up (1) or down (-1), applied by LMS itself so quick presses never race. */
     fun zoneVolumeStep(zoneId: String, direction: Int, step: Int = 2) {
+        ThisPhone.owning(zoneId)?.let { it.step(if (direction > 0) 1 else -1); return }
         post("/api/volume", JSONObject().put("zone_or_output_id", zoneId).put("relative", if (direction > 0) step else -step))
     }
 
     fun mute(zoneId: String, on: Boolean) {
+        ThisPhone.owning(zoneId)?.let { it.mute(on); return }
         post("/api/volume", JSONObject().put("zone_or_output_id", zoneId).put("mute", on))
     }
 
@@ -265,6 +272,9 @@ class ServerClient(
 
     /** The bytes at [url], one of this server's (a cover from [imageUrl]). */
     fun bytes(url: String): ByteArray = transport.bytes(url.removePrefix(address.baseUrl), timeoutMs)
+
+    /** The bytes at [path] given [timeout] ms (the diagnostic log: the server reads Lyrion's logs for it). */
+    fun bytes(path: String, timeout: Int): ByteArray = transport.bytes(path, timeout)
 
     fun getJson(path: String, timeout: Int = timeoutMs): JSONObject = transport.json("GET", path, null, timeout)
 

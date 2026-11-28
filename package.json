@@ -1,7 +1,7 @@
 {
   "name": "musicd-lms-remote",
-  "version": "1.0.86",
-  "description": "A music-discovery PWA and wall display for Lyrion Music Server (LMS) — the LMS port of MusicD Remote. Random-album browsing, whole-library instant search, Play / Queue, and a Material-skin-level settings surface.",
+  "version": "1.0.87",
+  "description": "A music-discovery PWA and wall display for Lyrion Music Server (LMS) \u2014 the LMS port of MusicD Remote. Random-album browsing, whole-library instant search, Play / Queue, and a Material-skin-level settings surface.",
   "license": "MIT",
   "author": "Lewis Menzies (Music Duck / MusicD)",
   "homepage": "https://github.com/meltface-80/MusicD-LMS-Remote",
@@ -13,7 +13,14 @@
   "scripts": {
     "start": "node launcher.js",
     "start:direct": "node index.js",
-    "test": "node lib/log.test.js && node lib/lms.test.js && node lib/search.test.js && node lib/labels.test.js && node lib/updater.test.js && node lib/albumedits.test.js && node lib/albumart.test.js && node lib/urlguard.test.js && node lib/liveplaylists.test.js && node lib/share.test.js && node lib/homepicks.test.js && node lib/favourites.test.js && node lib/albummerges.test.js && node lib/radio.test.js && node lib/musicbrainz.test.js && node lib/smartpicks.test.js && node lib/smartcache.test.js && node lib/smartpickalgo.test.js && node lib/features.test.js && node lib/pwameta.test.js && node lib/safearea.test.js && node lib/glass.test.js && node lib/apps.test.js"
+    "test": "node lib/log.test.js && node lib/lms.test.js && node lib/search.test.js && node lib/labels.test.js && node lib/updater.test.js && node lib/albumedits.test.js && node lib/albumart.test.js && node lib/urlguard.test.js && node lib/liveplaylists.test.js && node lib/share.test.js && node lib/homepicks.test.js && node lib/favourites.test.js && node lib/albummerges.test.js && node lib/radio.test.js && node lib/musicbrainz.test.js && node lib/smartpicks.test.js && node lib/smartcache.test.js && node lib/smartpickalgo.test.js && node lib/features.test.js && node lib/pwameta.test.js && node lib/safearea.test.js && node lib/glass.test.js && node lib/apps.test.js && node lib/build.test.js && node lib/sharecard.test.js && node lib/shelf.test.js && node lib/album-version.test.js && node lib/lmsplugins.test.js && node lib/tailscale.test.js && node lib/albuminfo.test.js && node lib/lmslabels.test.js && node lib/phoneplayers.test.js && node lib/relayplayer.test.js && node lib/lmswatch.test.js && node lib/phonefiles.test.js && node lib/nowquality.test.js && node lib/diagnostics.test.js",
+    "tools": "npm ci --prefix tools/lint --no-audit --no-fund",
+    "lines": "node tools/quality/file-length.js",
+    "lint": "tools/lint/node_modules/.bin/eslint -c tools/lint/eslint.config.js --suppressions-location tools/lint/eslint-suppressions.json .",
+    "lint:prune": "tools/lint/node_modules/.bin/eslint -c tools/lint/eslint.config.js --suppressions-location tools/lint/eslint-suppressions.json --prune-suppressions .",
+    "typecheck": "node tools/quality/tscheck.js && tools/lint/node_modules/.bin/tsc -p tools/lint/tsconfig.json",
+    "gates": "npm run lines && npm run typecheck && npm run lint",
+    "check": "npm run gates && npm test"
   },
   "dependencies": {
     "compression": "^1.7.4",

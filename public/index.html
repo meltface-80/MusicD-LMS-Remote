@@ -3,11 +3,11 @@
   Roon Random Albums — Copyright (c) 2026 Lewis Menzies (Music Duck / MusicD)
   Released under the MIT License. See the LICENSE file for details.
 -->
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-palette="hifi">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="theme-color" content="#0e1012">
+  <meta name="theme-color" content="#17191c">
   <title>MusicD</title>
 
   <!-- Installed app: the duck head on black, the MusicD mark.
@@ -47,6 +47,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
 
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/hifi.css">
 </head>
 <body>
   <!-- Phone landscape blocker: hidden on portrait / tablet / desktop via CSS -->
@@ -231,7 +232,7 @@
     <div class="menu-backdrop" data-menu-close></div>
     <nav class="menu-drawer">
       <div class="menu-head">
-        <span class="menu-brand">MusicD Remote</span>
+        <span class="menu-brand"><img class="menu-brand-mark" src="/icons/icon-192.png" alt="" aria-hidden="true">Mallard</span>
         <button class="icon-btn" type="button" aria-label="Close menu" data-menu-close>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -248,6 +249,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/></svg>
           <span>Random albums</span>
         </button>
+        <button class="menu-item hidden" type="button" id="menu-item-shelf">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="3" height="16" rx="1"/><rect x="8" y="4" width="3" height="16" rx="1"/><path d="M13.5 5.2l2.9-.8 3.9 14.6-2.9.8z"/><line x1="2" y1="21" x2="22" y2="21"/></svg>
+          <span>Shelf</span>
+        </button>
         <div class="menu-sep"></div>
         <button class="menu-item" type="button" id="menu-item-labels" data-target="labels-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -256,6 +261,10 @@
         <button class="menu-item" type="button" data-target="favourites-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           <span>Favourites</span>
+        </button>
+        <button class="menu-item" type="button" id="menu-item-apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 17.5a3.5 3.5 0 1 0 7 0 3.5 3.5 0 0 0-7 0z"/></svg>
+          <span>Apps &amp; radio <span class="beta-tag">Beta</span></span>
         </button>
         <button class="menu-item" type="button" data-target="merged-albums-toggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="16" rx="1.5"/><rect x="13" y="4" width="8" height="16" rx="1.5"/><path d="M11 12h2"/></svg>
@@ -381,6 +390,10 @@
            list you reorder and the rows that render cannot drift apart.
            Reordering MOVES these nodes; it never rebuilds them from markup,
            or every tile in them loses its listeners. -->
+      <!-- Home's head, as Mallard's: the greeting (home-head.js), then the strip of Random Album and today's album
+           (app.js renderHomeUnplayed fills it). One row on every screen, so a tablet can't wrap it. -->
+      <div class="home-greeting" id="home-greeting"><div class="home-greeting-date" id="home-greeting-date"></div><h1 class="home-greeting-text" id="home-greeting-text"></h1></div>
+      <div class="home-section home-today"><div id="home-today" class="home-carousel home-carousel-1row"></div></div>
       <div id="home-sections">
         <div class="home-section home-section-unplayed" data-row="unplayed">
           <h2 class="home-section-title home-section-link" id="home-unplayed-title" role="button" tabindex="0">Not played in 6 months</h2>
@@ -577,6 +590,7 @@
             <div class="np-track" id="np-track">—</div>
             <div class="np-artist" id="np-artist">—</div>
             <button class="np-album" id="np-album" type="button" aria-label="Open album detail"></button>
+            <div class="np-quality hidden" id="np-quality" aria-label="Quality"></div>
 
             <div class="np-progress">
               <input type="range" id="np-seek" class="np-seek" min="0" max="100" step="1" value="0"
@@ -793,6 +807,32 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- Mini transport (now-playing bar) — Roon-style layout -->
+  <!-- The row along the foot of the screen on a phone or a tablet (touch-nav.js; Mallard's TouchNav.kt): Menu, Home,
+       Library, Shelf while it is switched on, and Search, evenly across, under the mini player. A desktop (a mouse)
+       never shows it (style.css, "touch layout"). -->
+  <nav id="touch-nav" class="touch-nav" aria-label="Main">
+    <button id="tnav-menu" class="tnav-btn" type="button" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <span>Menu</span>
+    </button>
+    <button id="tnav-home" class="tnav-btn" type="button" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h4.5v-6h4v6h4.5V9"/></svg>
+      <span>Home</span>
+    </button>
+    <button id="tnav-library" class="tnav-btn" type="button" aria-label="Library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="4" x2="5" y2="20"/><line x1="10" y1="4" x2="10" y2="20"/><path d="m14.5 4.6 4.6 14.8"/></svg>
+      <span>Library</span>
+    </button>
+    <button id="tnav-shelf" class="tnav-btn feature-off" type="button" aria-label="Shelf">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5v13M7.5 5v13M15 5v13M18.5 5v13"/><rect x="9.5" y="4" width="4" height="15" rx=".8"/><path d="M2 21h20"/></svg>
+      <span>Shelf</span>
+    </button>
+    <button id="tnav-search" class="tnav-btn" type="button" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+      <span>Search</span>
+    </button>
+  </nav>
+
   <div id="mini-transport" class="mini-transport hidden" aria-label="Now playing">
     <div class="mt-progress" aria-hidden="true">
       <div class="mt-progress-fill" id="mt-progress-fill"></div>
@@ -950,6 +990,31 @@
 
   <!-- This app's own Favourites (lib/favourites.js) — NOT the Qobuz account's
        favourites, which are the heart on Qobuz albums. Driven by initFavourites(). -->
+  <!-- Apps & radio: every LMS plugin's menus (apps-browser.js; Mallard's Apps and Radio screens' twin). -->
+  <div id="apps-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Apps and radio">
+    <div class="settings-backdrop" data-apps-close></div>
+    <div class="settings-sheet qobuz-sheet">
+      <div class="qobuz-pin">
+        <div class="settings-grip"></div>
+        <div class="settings-head qb-head">
+          <button id="apps-back" class="icon-btn" type="button" aria-label="Back" hidden>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <h2 id="apps-title">Apps &amp; radio</h2>
+          <button class="icon-btn" type="button" aria-label="Close" data-apps-close>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div id="apps-tabs" class="apps-tabs" role="group" aria-label="Apps or radio">
+          <button type="button" data-kind="app" aria-pressed="true">Apps</button>
+          <button type="button" data-kind="radio" aria-pressed="false">Radio</button>
+        </div>
+      </div>
+      <p class="beta-note"><span class="beta-tag">Beta</span> Plugins are still being worked on — some may not behave yet.</p>
+      <div id="apps-body" class="qb-body"></div>
+    </div>
+  </div>
+
   <div id="favourites-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Favourites">
     <div class="settings-backdrop" data-fav-close></div>
     <div class="settings-sheet qobuz-sheet">
@@ -1042,29 +1107,18 @@
         <nav class="settings-nav" aria-label="Settings categories">
           <button class="settings-nav-item" type="button" data-pane="playback">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7,2 h10 a2,2,0,0,1,2,2 v16 a2,2,0,0,1,-2,2 h-10 a2,2,0,0,1,-2,-2 v-16 a2,2,0,0,1,2,-2 Z M8,14 a4,4,0,1,0,8,0 a4,4,0,1,0,-8,0 M11,6 a1,1,0,1,0,2,0 a1,1,0,1,0,-2,0"/></svg>
             </span>
             <span class="settings-nav-txt">
-              <span class="settings-nav-title">Playback</span>
-              <span class="settings-nav-desc">Output zone &amp; random album radio</span>
-            </span>
-            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-
-          <button class="settings-nav-item" type="button" data-pane="player">
-            <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            </span>
-            <span class="settings-nav-txt">
-              <span class="settings-nav-title">Player settings</span>
-              <span class="settings-nav-desc">Rename, crossfade, replay gain &amp; sync</span>
+              <span class="settings-nav-title">Audio Devices</span>
+              <span class="settings-nav-desc">Every player: power, radio &amp; Lyrion's settings</span>
             </span>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
           <button class="settings-nav-item" type="button" data-pane="labels">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.59a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3,12 a9,9,0,1,0,18,0 a9,9,0,1,0,-18,0 M9.5,12 a2.5,2.5,0,1,0,5,0 a2.5,2.5,0,1,0,-5,0 M12,3 v3 M12,18 v3 M3,12 h3 M18,12 h3"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Labels</span>
@@ -1075,7 +1129,7 @@
 
           <button class="settings-nav-item" type="button" data-pane="metadata">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9,18 V5 l12,-2 v13 M3,18 a3,3,0,1,0,6,0 a3,3,0,1,0,-6,0 M15,16 a3,3,0,1,0,6,0 a3,3,0,1,0,-6,0"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Artwork &amp; metadata</span>
@@ -1086,7 +1140,7 @@
 
           <button class="settings-nav-item" type="button" data-pane="homescreen">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="12" width="18" height="5" rx="1"/><path d="M3 20h11"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4,4 h16 a1,1,0,0,1,1,1 v3 a1,1,0,0,1,-1,1 h-16 a1,1,0,0,1,-1,-1 v-3 a1,1,0,0,1,1,-1 Z M4,12 h16 a1,1,0,0,1,1,1 v3 a1,1,0,0,1,-1,1 h-16 a1,1,0,0,1,-1,-1 v-3 a1,1,0,0,1,1,-1 Z M3,20 h11"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Home Screen</span>
@@ -1096,7 +1150,7 @@
           </button>
           <button class="settings-nav-item" type="button" data-pane="smartpicks">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4,11 a7,7,0,1,0,14,0 a7,7,0,1,0,-14,0 M20,20 l-4.5,-4.5 M11,8 v6 M8,11 h6"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Smart Picks</span>
@@ -1107,29 +1161,29 @@
 
           <button class="settings-nav-item" type="button" data-pane="lms">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4,21 L4,14 M4,10 L4,3 M12,21 L12,12 M12,8 L12,3 M20,21 L20,16 M20,12 L20,3 M1,14 L7,14 M9,8 L15,8 M17,16 L23,16"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">LMS server</span>
-              <span class="settings-nav-desc">Full server settings &amp; rescan</span>
+              <span class="settings-nav-desc">Server settings, plugins &amp; rescan</span>
             </span>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
           <button class="settings-nav-item" type="button" data-pane="display">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4,3 h16 a2,2,0,0,1,2,2 v10 a2,2,0,0,1,-2,2 h-16 a2,2,0,0,1,-2,-2 v-10 a2,2,0,0,1,2,-2 Z M8,21 L16,21 M12,17 L12,21"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Wall display</span>
-              <span class="settings-nav-desc">Always-on screen &amp; video</span>
+              <span class="settings-nav-desc">Always-on screen, video &amp; the Shelf</span>
             </span>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
           <button class="settings-nav-item" type="button" data-pane="appearance">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5,3 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M15.5,3 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M4.5,14 h4 a1.5,1.5,0,0,1,1.5,1.5 v4 a1.5,1.5,0,0,1,-1.5,1.5 h-4 a1.5,1.5,0,0,1,-1.5,-1.5 v-4 a1.5,1.5,0,0,1,1.5,-1.5 Z M14,15 h7 M14,19 h5"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Appearance</span>
@@ -1140,7 +1194,7 @@
 
           <button class="settings-nav-item" type="button" data-pane="system">
             <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21,12 a9,9,0,1,1,-2.64,-6.36 M21,3 L21,9 L15,9"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">System</span>
@@ -1163,18 +1217,19 @@
         </div>
       </div>
 
-      <!-- Playback -->
+      <!-- Audio Devices (audio-devices.js; Mallard's SettingsAudio.kt): the zone the screens play in — #zone-select, read
+           by every screen — then every Lyrion player as a card; a tap opens its page (data-pane="device"). -->
       <div class="settings-view settings-pane hidden" data-view="pane" data-pane="playback">
         <div class="settings-pane-head">
           <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h2>Playback</h2>
+          <h2>Audio Devices</h2>
         </div>
 
         <div class="settings-block">
           <div class="settings-row">
-            <span class="settings-label">Zone / output <button class="settings-info-btn" data-info="Choose which Roon zone the Play, Queue and transport controls target." aria-label="Info">ⓘ</button></span>
+            <span class="settings-label">Zone / output <button class="settings-info-btn" id="ad-zone-info" data-info="" aria-label="Info">ⓘ</button></span>
             <div class="settings-select-wrap">
               <select id="zone-select" class="settings-select" aria-label="Output zone"></select>
               <svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -1189,48 +1244,21 @@
 
         <div class="settings-block">
           <div class="settings-row">
-            <span class="settings-label">Random album radio <button class="settings-info-btn" data-info="When this zone's queue runs out, keep it going by queueing whole random albums from your library rather than shuffling single tracks. It stands down on its own while LMS's own Don't Stop The Music is switched on for the player, so the two never fight over the queue. This is per zone — it follows the zone selected above." aria-label="Info">ⓘ</button></span>
-            <label class="switch">
-              <input type="checkbox" id="radio-toggle" aria-label="Random album radio">
-              <span class="switch-track"><span class="switch-thumb"></span></span>
-            </label>
+            <span class="settings-label">Devices <button class="settings-info-btn" id="ad-devices-info" data-info="" aria-label="Info">ⓘ</button></span>
           </div>
-          <div class="settings-note" id="radio-toggle-note">Applies to the zone selected above.</div>
+          <div id="ad-list" class="ad-list"></div>
         </div>
-
-        <!-- Don't Stop The Music lives in Settings → Player settings (per
-             player, LMS-backed) — deliberately not duplicated here. -->
       </div>
 
-      <!-- Player settings (native per-player LMS settings) -->
-      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="player">
+      <!-- A player's page (audio-devices.js; Mallard's SettingsDevice.kt): Back returns to Audio Devices. -->
+      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="device">
         <div class="settings-pane-head">
-          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
+          <button class="settings-back" type="button" data-device-back aria-label="Back to Audio Devices">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <h2>Player settings</h2>
+          <h2 id="ad-dev-title">Device</h2>
         </div>
-
-        <div class="settings-block">
-          <div class="settings-row">
-            <span class="settings-label">Player</span>
-            <div class="settings-select-wrap">
-              <select id="ps-player" class="settings-select" aria-label="Player"></select>
-              <svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </div>
-          </div>
-          <div class="settings-sub" id="ps-model" style="padding-top:2px"></div>
-        </div>
-
-        <div class="settings-divider"></div>
-
-        <!-- Rows are built per player: controls whose pref the player doesn't
-             support are simply not rendered (Material-skin behaviour). -->
-        <div id="ps-body"></div>
-        <div id="ps-status" class="settings-token-status"></div>
+        <div id="ad-dev-body"></div>
       </div>
 
       <!-- Labels -->
@@ -1374,6 +1402,16 @@
 
         <div class="settings-divider"></div>
 
+        <!-- LMS's plugins: install, update, remove (lms-plugins.js; Mallard's Plugins pane is its twin). -->
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Plugins <span class="beta-tag">Beta</span> <button class="settings-info-btn" data-info="Install, update and remove LMS plugins — Qobuz, TIDAL, Spotty, radio apps and more — from your server's own plugin list. LMS applies changes when it restarts, which you can do from here too." aria-label="Info">ⓘ</button></span>
+            <button class="action-btn" id="lms-open-plugins" type="button">Open</button>
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
         <div class="settings-block">
           <div class="settings-row">
             <span class="settings-label">Rescan media library <button class="settings-info-btn" data-info="Rescan the LMS library on the server (playback keeps working while it scans). Choose what to scan, then tap Rescan. The online-music import brings in Qobuz/Tidal favourites you add through your server's plugin." aria-label="Info">ⓘ</button></span>
@@ -1434,6 +1472,18 @@
           </div>
           <div id="youtube-key-status" class="settings-token-status"></div>
         </div>
+        <!-- The Shelf's switch (owner: "Shelf isn't in wall display"), read by both apps (shelf-entry.js, Mallard's ShelfBlock). -->
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and while it is on, in the bottom bar and the menu of both apps." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="shelf-enabled" aria-label="Shelf">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="settings-note" id="shelf-enabled-note">Off. Switch it on to add Shelf to the bottom bar and the menu.</div>
+        </div>
+
       </div>
 
       <!-- Appearance -->
@@ -1573,6 +1623,23 @@
           </div>
           <div id="settings-release-notes" class="settings-release-notes hidden"></div>
         </div>
+
+        <!-- The diagnostic log (diag-log.js, lib/diagnostics.js; Mallard's Settings → System): off unless switched on. -->
+        <div class="settings-divider"></div>
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Diagnostic logging <button class="settings-info-btn" data-info="Off unless you switch it on. While it is on, the server logs in detail, and Mallard and this page send it what they do and every error, so a problem can be found. Switch it on if something isn't working, use the app until it happens, then download the log and send it. Passwords, keys, emails and internet addresses are left out." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="diag-toggle" aria-label="Diagnostic logging">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Log</span>
+            <a class="settings-update-btn" id="diag-download" href="/api/diagnostics/log" download>Download</a>
+          </div>
+          <div class="settings-note">One file: this server's log, with Mallard's and this page's lines while logging is on, and Lyrion's own server and scanner logs. Look through it before you send it.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1637,6 +1704,30 @@
 
   <!-- Full-screen LMS server-settings frame (Material-styled when the
        Material plugin is installed, classic Lyrion settings otherwise). -->
+  <!-- LMS's plugins (lms-plugins.js), opened from Settings → LMS server; after the Settings overlay so it sits above it. -->
+  <div id="plugins-overlay" class="settings-overlay hidden" role="dialog" aria-modal="true" aria-label="Plugins">
+    <div class="settings-backdrop" data-plugins-close></div>
+    <div class="settings-sheet qobuz-sheet">
+      <div class="qobuz-pin">
+        <div class="settings-grip"></div>
+        <div class="settings-head qb-head">
+          <h2>Plugins <span class="beta-tag">Beta</span></h2>
+          <button class="icon-btn" type="button" aria-label="Close" data-plugins-close>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div id="plugins-tabs" class="apps-tabs" role="group" aria-label="Installed or available" hidden>
+          <button type="button" data-tab="installed" aria-pressed="true">Installed</button>
+          <button type="button" data-tab="available" aria-pressed="false">Available</button>
+          <button type="button" data-tab="repos" aria-pressed="false">Repositories</button>
+        </div>
+        <input id="plugins-filter" class="plugins-filter" type="search" placeholder="Find a plugin" aria-label="Find a plugin" autocomplete="off" hidden>
+      </div>
+      <p class="beta-note"><span class="beta-tag">Beta</span> Plugins are still being worked on — some may not behave yet.</p>
+      <div id="plugins-body" class="qb-body"></div>
+    </div>
+  </div>
+
   <div id="lmsset-overlay" class="lmsset-overlay hidden" role="dialog" aria-modal="true" aria-label="LMS server settings">
     <div class="lmsset-bar">
       <button id="lmsset-close" class="lmsset-close" type="button" aria-label="Back" title="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
@@ -1646,7 +1737,17 @@
     <iframe id="lmsset-frame" class="lmsset-frame" title="LMS server settings"></iframe>
   </div>
 
+  <script src="/sharecard-layout.js"></script>
   <script src="/sharecard.js"></script>
   <script src="/app.js"></script>
+  <script src="/share-sheet.js"></script>
+  <script src="/shelf-entry.js"></script>
+  <script src="/touch-nav.js"></script>
+  <script src="/apps-browser.js"></script>
+  <script src="/audio-devices.js"></script>
+  <script src="/np-quality.js"></script>
+  <script src="/diag-log.js"></script>
+  <script src="/lms-plugins.js"></script>
+  <script src="/home-head.js"></script>
 </body>
 </html>

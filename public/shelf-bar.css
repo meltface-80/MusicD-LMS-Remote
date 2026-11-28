@@ -1,0 +1,126 @@
+/*
+ * shelf-bar.css — the Shelf page's transport bar, its volume sheet and its
+ * zone list (moved out of shelf.css in v1.9.10, when the bar took the album's
+ * Play now and Queue and grew to Mandarin v0.8.28's sizes; since v1.9.68 slimmer,
+ * with the shelf's count, order and Spin, the album's buttons in the album view).
+ * Copyright (c) 2026 Lewis Menzies (Music Duck / MusicD)
+ * Released under the MIT License. See the LICENSE file for details.
+ *
+ * Loaded after shelf.css, whose tokens it uses.
+ */
+
+/* The bar's sizes are tokens, so the queries below change numbers, not rules. */
+.shelf { container: shelfcol / inline-size; }
+/* v1.9.68 (the owner: a slimmer bar, so the spines have the height): about half of Mandarin v0.8.28's sizes, one
+   row, the album's buttons gone to the album view; a hand's sizes on a phone either way up. */
+.shelf-foot.mt {
+  --mt-gap: .9rem; --mt-min: 0px; --mt-btn: 2.9rem; --mt-icon: 1.6rem; --mt-skip: 1.5rem;
+  --mt-pp: 3.3rem; --mt-pp-icon: 1.5rem; --mt-art: 2.7rem; --mt-tgap: .35rem; --mt-cgap: .3rem;
+}
+@media (max-width: 700px), (max-height: 520px) {
+  .shelf-foot.mt { --mt-gap: .5rem; --mt-btn: 2.6rem; --mt-icon: 1.45rem; --mt-skip: 1.35rem; --mt-pp: 2.9rem; --mt-pp-icon: 1.35rem; --mt-art: 2.4rem; --mt-tgap: .15rem; --mt-cgap: .1rem; }
+}
+/* The side panes can leave the shelf a column far narrower than the screen,
+   and sized by the screen alone the zone and volume buttons were pushed off
+   the column's edge (an iPad on its side with both panes open: about 500px).
+   So the COLUMN decides: under 44rem the order's words and Spin's word give
+   way (below), and under 36rem it takes a hand's sizes. In rem:
+   the page's root size grows with the screen, and so does everything in the bar. */
+@container shelfcol (max-width: 36rem) {
+  .shelf-foot.mt { --mt-gap: .5rem; --mt-btn: 2.6rem; --mt-icon: 1.45rem; --mt-skip: 1.35rem; --mt-pp: 2.9rem; --mt-pp-icon: 1.35rem; --mt-art: 2.4rem; --mt-tgap: .15rem; --mt-cgap: .1rem; }
+}
+
+/* The remote's mini transport (v1.9.3), fixed under the shelf and FLAT: the
+   pill's parts — the progress line along its top edge, previous, play/pause
+   and next, the cover with the zone in small brass capitals over the track,
+   the shelf's count, order and Spin (v1.9.68), the zone and volume buttons — laid
+   along the foot of the shelf full width, square, with no shadow and no
+   float. It sits in the shelf's own column, so it never covers the selection
+   centre on the left. */
+.shelf-foot.mt {
+  position: relative; flex: 0 0 auto;
+  display: flex; align-items: center; gap: var(--mt-gap);
+  min-height: var(--mt-min);
+  padding-block: .35rem max(.35rem, env(safe-area-inset-bottom));
+  padding-inline: max(16px, 1.25rem);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.mt-progress { position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: transparent; pointer-events: none; }
+.mt-progress-fill { height: 100%; width: 0; background: var(--accent); }
+.mt-btn {
+  flex: 0 0 auto; display: grid; place-items: center;
+  width: var(--mt-btn); height: var(--mt-btn); border-radius: 50%;
+  color: var(--text);
+}
+.mt-btn svg { width: var(--mt-icon); height: var(--mt-icon); }
+.mt-btn:hover:not(:disabled) { background: var(--bg-elev-2); }
+.mt-btn[aria-expanded="true"] { color: var(--accent-hi); }
+/* Previous, play/pause and next sit together, closer than the bar's parts. */
+.mt-transport { flex: 0 0 auto; display: flex; align-items: center; gap: var(--mt-tgap); }
+.mt-skip svg { width: var(--mt-skip); height: var(--mt-skip); }
+.mt-pp { width: var(--mt-pp); height: var(--mt-pp); background: var(--accent); color: var(--on-accent); }
+.mt-pp:hover:not(:disabled) { background: var(--accent-hi); }
+.mt-pp svg { width: var(--mt-pp-icon); height: var(--mt-pp-icon); }
+.mt-info { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: .75rem; padding: .2rem .4rem .2rem .2rem; border-radius: .5rem; text-align: left; }
+.mt-info:hover { background: var(--bg-elev-2); }
+.mt-art { position: relative; width: var(--mt-art); height: var(--mt-art); flex: 0 0 auto; overflow: hidden; border-radius: 3px; background: var(--bg-elev-2); }
+.mt-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mt-text { display: flex; flex-direction: column; min-width: 0; }
+.mt-kicker { color: var(--accent-hi); font-size: .66rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-title { font-weight: 700; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-artist { color: var(--text-dim); font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-title:empty, .mt-artist:empty { display: none; }
+/* The shelf's own (v1.9.68): where it is, the order it is in, and Spin, between what is playing and the zone. */
+.mt-shelf { flex: 0 0 auto; display: flex; align-items: center; gap: .75rem; }
+.mt-pos { display: flex; flex-direction: column; align-items: flex-end; min-width: 0; line-height: 1.2; }
+.mt-pos .shelf-pos { color: var(--text); font-size: .85rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt-pos .shelf-order { color: var(--text-faint); font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; }
+.mt-shelf .spin-btn { height: var(--mt-btn); padding: 0 .9rem 0 .3rem; }
+/* narrow: the order's name and Spin's word give way; the count and the disc stay */
+@container shelfcol (max-width: 44rem) { .mt-pos .shelf-order, .spin-word { display: none; } .mt-shelf .spin-btn { padding: 0 .3rem; } }
+.mt-controls { flex: 0 0 auto; display: flex; align-items: center; gap: var(--mt-cgap); }
+/* Too narrow for all of it: what is playing gives way first (its words go), never the controls. */
+@container shelfcol (max-width: 22rem) { .mt-info .mt-text { display: none; } }
+/* A phone's column (36rem): the shelf's own take a slim row above the rest, the order named again, so what is
+   playing keeps its room (v1.9.68; the album's buttons had that row before). */
+@container shelfcol (max-width: 36rem) {
+  .shelf-foot.mt { flex-wrap: wrap; row-gap: .2rem; }
+  .mt-shelf { order: -1; flex: 1 0 100%; justify-content: space-between; }
+  .mt-pos { flex-direction: row; align-items: baseline; gap: .6rem; }
+  .mt-pos .shelf-order { display: block; }
+  .mt-shelf .spin-btn { height: 2.2rem; }
+}
+
+/* The volume sheet (v1.9.68-t2, the owner: "match the remote style and centre it"): the remote's .vol-sheet in
+   the brass — the speaker and the level, the slider with its 0 and 100 under it, a round − and + — centred over
+   the shelf's column, just above the bar however tall it is (layout() measures it into --foot-h, again as a sheet opens). */
+.vol {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--foot-h, 6rem) + .6rem); z-index: 25;
+  display: flex; align-items: center; gap: .9rem;
+  width: min(30rem, calc(100% - 2rem)); padding: 1rem 1rem 1.9rem; box-sizing: border-box;
+  border-radius: 1rem; border: 1px solid var(--border); background: var(--bg-elev); box-shadow: 0 1rem 2.6rem var(--shadow);
+}
+.vol-readout { flex: 0 0 auto; display: flex; align-items: center; gap: .5rem; color: var(--accent); }
+.vol-readout svg { width: 1.6rem; height: 1.6rem; }
+.vol-value { min-width: 2.6rem; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 1.6rem; }
+/* the 0 and 100 hang under the slider, out of flow, so the row lines up on the track (the remote's lesson) */
+.vol-slider-wrap { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.vol-scale { position: absolute; left: 0; right: 0; top: 100%; margin-top: .15rem; display: flex; justify-content: space-between; padding: 0 .25rem; color: var(--accent); font-size: .85rem; font-variant-numeric: tabular-nums; }
+/* The slider drawn here rather than left to the browser, whose track is a hairline: filled to the level (--fill,
+   from shelf-volume.js), the knob in the brass. */
+.vol-range { width: 100%; height: 1.9rem; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; accent-color: var(--accent); cursor: pointer; }
+.vol-range::-webkit-slider-runnable-track { height: .4rem; border-radius: 999px; background: linear-gradient(var(--accent), var(--accent)) 0 0 / var(--fill, 0%) 100% no-repeat, var(--border); }
+.vol-range::-moz-range-track { height: .4rem; border-radius: 999px; background: var(--border); }
+.vol-range::-moz-range-progress { height: .4rem; border-radius: 999px; background: var(--accent); }
+.vol-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 1.6rem; height: 1.6rem; margin-top: -.6rem; border-radius: 50%; border: 0; background: var(--accent); box-shadow: 0 .1rem .35rem var(--shadow); }
+.vol-range::-moz-range-thumb { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 0; background: var(--accent); box-shadow: 0 .1rem .35rem var(--shadow); }
+.vol-step { flex: 0 0 auto; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: 50%; border: 1px solid var(--accent); background: var(--bg-elev-2); color: var(--accent); }
+.vol-step:active { transform: scale(.95); }
+.vol-step svg { width: 1.35rem; height: 1.35rem; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; pointer-events: none; }
+.zones { position: absolute; right: max(16px, 1.25rem); bottom: calc(var(--foot-h, 6rem) + .5rem); z-index: 25; min-width: 15rem; max-width: calc(100% - 2rem); max-height: 60%; overflow-y: auto; padding: .4rem; border-radius: .9rem; border: 1px solid var(--border); background: var(--bg-elev); box-shadow: 0 1rem 2.6rem var(--shadow); }
+.zones p { margin: .4rem .7rem .3rem; color: var(--text-faint); font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.zones button { display: flex; align-items: center; justify-content: space-between; gap: .8rem; width: 100%; min-height: 2.8rem; padding: 0 .8rem; border-radius: .6rem; font-weight: 600; }
+.zones button:hover { background: var(--bg-elev-2); }
+.zones button[aria-checked="true"] { color: var(--accent-hi); }
+.zones button small { color: var(--text-faint); font-weight: 600; }

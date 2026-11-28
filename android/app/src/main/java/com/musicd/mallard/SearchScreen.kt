@@ -74,6 +74,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.musicd.mallard.client.qobuzFavorite
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -179,9 +180,20 @@ internal fun SearchScreen(prefs: WallPrefs, zoneId: String, client: () -> Server
 
     fun openAlbum(albums: List<com.musicd.mallard.client.AlbumSummary>, i: Int) =
         onAlbum(albums[i].offset, zone, NavList(albums.map { NavItem(it.offset, it.title) }, i))
-    // A streaming service's album: MusicD LMS plays those through its own Qobuz plugin, which Mallard doesn't browse yet.
-    fun openService(service: String, id: String) { toast("Open it from the MusicD LMS Remote page for now") }
-    fun toggleFav(service: String, id: String, now: Boolean) { toast("Open it from the MusicD LMS Remote page for now") }
+    // A Qobuz album the search found: its page in Mallard's Qobuz browser (QobuzScreen), as the page opens it; its ＋ / ✓
+    // the account's favourite. MusicD LMS searches Qobuz alone.
+    fun openService(a: com.musicd.mallard.client.ServiceAlbum) {
+        if (a.service != "qobuz") return
+        QobuzOpen.album = com.musicd.mallard.client.QobuzItem(false, "", a.id, a.title, a.artist, a.imageKey, true, true)
+        onPage("qobuz", null)
+    }
+    fun toggleFav(a: com.musicd.mallard.client.ServiceAlbum, now: Boolean) {
+        val c = client() ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { c.qobuzFavorite(a.id, !now) } }
+                .fold({ on -> SearchKept.favs[a.id] = on; toast(com.musicd.mallard.client.QobuzWords.favourited(on)) }, { toast(com.musicd.mallard.client.Failure.said(it, com.musicd.mallard.client.QobuzWords.EXPIRED)) })
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val lib = SearchKept.lib
@@ -232,7 +244,7 @@ internal fun SearchScreen(prefs: WallPrefs, zoneId: String, client: () -> Server
                 items(albums.size, key = { "$part$it-" + albums[it].id }) { i ->
                     val a = albums[i]
                     val fav = SearchKept.favs[a.id] ?: a.favourited
-                    Box(dim) { ServiceAlbumTile(a, fav, prefs, onFav = { toggleFav(part, a.id, fav) }, onOpen = { openService(part, a.id) }) }
+                    Box(dim) { ServiceAlbumTile(a, fav, prefs, onFav = { toggleFav(a, fav) }, onOpen = { openService(a) }, client = client) }
                 }
             }
         }

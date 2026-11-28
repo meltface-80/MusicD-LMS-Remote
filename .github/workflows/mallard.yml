@@ -3,21 +3,35 @@ name: Mallard (Android)
 # Builds Mallard, the native Android remote in android/. Every push that
 # touches it runs the core tests and builds a release APK (uploaded as a run
 # artifact). Pushes to dev also publish the APK on the rolling `mallard-test`
-# pre-release, so there is always one link to the newest test build. A
-# pre-release is never "latest", so it never reaches the server's in-app
-# updater (which reads releases/latest).
+# pre-release, so there is always one link to the newest test build.
 #
-# Signing: with the MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD
-# secrets set, the APK is signed with that key; without them, with the public
-# test key committed at android/app/mallard-debug.keystore, so each test build
-# still installs over the last.
+# MALLARD UPDATES ITSELF (AppUpdate.kt, core's MallardRelease.kt) from what is
+# published here: beside every APK goes `mallard.json` = {version, code, url,
+# sha256, notes}, read from releases/download/<tag>/mallard.json. Two channels:
+#   mallard-test    every dev push (versionName 0.2.0-tN, code base*1000+N)
+#   mallard-latest  a Mallard RELEASE, by hand: Run workflow on main with
+#                   "stable" ticked (code base*1000+999), also kept as an
+#                   immutable mallard-v<version>.
+# EVERY Mallard release is a PRE-release and never "latest": releases/latest is
+# the SERVER's (lib/updater.js reads it), and a Mallard release there would be
+# offered to every server install. Tags never start with "v" for the same reason.
+#
+# Signing: with the owner's private key from the repository's secrets, ALWAYS,
+# for anything that may be published (see "Restore the signing key"). Only a
+# pull request's build, never published, falls back to the public debug key
+# committed at android/app/mallard-debug.keystore.
 
 on:
   push:
-    paths: ["android/**", ".github/workflows/mallard.yml"]
+    paths: ["android/**", "musicdnet/**", ".github/workflows/mallard.yml"]
   pull_request:
-    paths: ["android/**", ".github/workflows/mallard.yml"]
+    paths: ["android/**", "musicdnet/**", ".github/workflows/mallard.yml"]
   workflow_dispatch:
+    inputs:
+      stable:
+        description: "Publish this build as a Mallard release (mallard-latest + mallard-v<version>). Run on main."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -44,7 +58,8 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          # The NDK and CMake build the USB audio driver's native side (android/app/src/main/cpp).
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1'
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -53,32 +68,112 @@ jobs:
       - name: Core tests (plain JVM)
         run: ./gradlew :core:test --no-daemon --stacktrace
 
-      - name: Release signing key (when the secrets are set)
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          KEY_B64: ${{ secrets.MALLARD_KEYSTORE_BASE64 }}
+      # Tailscale on the phone (PhoneEngine.kt): the server's own engine (musicdnet/, the same program as Mandarin's
+      # android/musicdnet) built for Android on 64-bit ARM, as Mandarin's android.yml builds it. Plain Go, no NDK.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: musicdnet/go.mod
+          cache-dependency-path: musicdnet/go.sum
+      - name: Build the phone's Tailscale engine
+        working-directory: musicdnet
         run: |
-          if [ -n "$KEY_B64" ]; then
-            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/mallard.keystore"
-            echo "MALLARD_KEYSTORE=$RUNNER_TEMP/mallard.keystore" >> "$GITHUB_ENV"
-          else
-            echo "No release key set: signing with the committed test key."
+          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+            -o ../android/app/src/main/jniLibs/arm64-v8a/libmusicdnet.so .
+          ls -la ../android/app/src/main/jniLibs/arm64-v8a/
+
+      # libopus for the app's native code (Media3's Opus decoder; android/app/src/main/cpp), fetched once and kept: its
+      # GitHub release with curl's own retries, else Xiph's downloads, its SHA-256 checked here and again by CMake, which
+      # builds from it rather than downloading it itself. As Mandarin's android.yml.
+      - name: Keep libopus's source
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/opus
+          key: opus-1.5.2-65c1d2f7
+      - name: Fetch libopus's source
+        working-directory: .
+        run: |
+          mkdir -p "$RUNNER_TEMP/opus"
+          f="$RUNNER_TEMP/opus/opus-1.5.2.tar.gz"
+          sum=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
+          if ! echo "$sum  $f" | sha256sum -c --quiet >/dev/null 2>&1; then
+            rm -f "$f"
+            for url in https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2.tar.gz https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz; do
+              curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$f" "$url" && echo "$sum  $f" | sha256sum -c --quiet && break
+              echo "::warning::libopus from $url didn't come, or wasn't libopus 1.5.2's"; rm -f "$f"
+            done
           fi
+          if [ -f "$f" ]; then echo "OPUS_TARBALL=$f" >> "$GITHUB_ENV"; else echo "::warning::libopus couldn't be fetched ahead: CMake fetches it itself"; fi
+
+      # NEVER PUBLISHED SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's rule, its item 364). That key is public —
+      # anyone can sign with it — so an APK signed with it, asking to install updates (REQUEST_INSTALL_PACKAGES), is
+      # what Google Play Protect blocks as harmful: 0.2.0-t32 was. A build that may be published is signed with the
+      # owner's private key or not at all; only a pull request's build, which is never published, may use the debug
+      # key. The key: MALLARD_KEYSTORE_BASE64 / MALLARD_KEYSTORE_PASSWORD, or else the owner's existing Android key
+      # under the names Mandarin and Android Random Remote give it (MUSICD_KEYSTORE_BASE64 / MUSICD_KEYSTORE_PASSWORD).
+      # The key's alias is read from the keystore, so either set of names works for any key.
+      - name: Restore the signing key
+        env:
+          MALLARD_B64: ${{ secrets.MALLARD_KEYSTORE_BASE64 }}
+          MUSICD_B64: ${{ secrets.MUSICD_KEYSTORE_BASE64 }}
+          MALLARD_PW: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
+          MUSICD_PW: ${{ secrets.MUSICD_KEYSTORE_PASSWORD }}
+          MALLARD_ALIAS: ${{ secrets.MALLARD_KEY_ALIAS }}
+        run: |
+          if [ -n "$MALLARD_B64" ]; then KEY="$MALLARD_B64"; PW="$MALLARD_PW"; FROM=MALLARD
+          elif [ -n "$MUSICD_B64" ]; then KEY="$MUSICD_B64"; PW="$MUSICD_PW"; FROM=MUSICD
+          else
+            if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+              echo "::error::No signing key: add MALLARD_KEYSTORE_BASE64 and MALLARD_KEYSTORE_PASSWORD (or Mandarin's MUSICD_KEYSTORE_*) to this repository's secrets. A build that may be published is never signed with the committed debug key — Play Protect blocks it as harmful."
+              exit 1
+            fi
+            echo "::notice::No signing key: a pull request's build, signed with the committed debug key and never published."
+            exit 0
+          fi
+          printf '%s' "$KEY" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/mallard.keystore"
+          # The key's own name, read from the keystore rather than guessed from which secret held it (a Mallard key saved
+          # under Mandarin's names is still named "mallard"); MALLARD_KEY_ALIAS only to choose among several.
+          ALIASES=$(keytool -list -v -keystore "$RUNNER_TEMP/mallard.keystore" -storepass "$PW" 2>/dev/null | sed -n 's/^Alias name: //p') \
+            || { echo "::error::The keystore in ${FROM}_KEYSTORE_BASE64 can't be opened with ${FROM}_KEYSTORE_PASSWORD: check both secrets."; exit 1; }
+          [ -n "$ALIASES" ] || { echo "::error::The keystore in ${FROM}_KEYSTORE_BASE64 can't be opened with ${FROM}_KEYSTORE_PASSWORD, or holds no key: check both secrets."; exit 1; }
+          ALIAS="${MALLARD_ALIAS:-$(head -n 1 <<<"$ALIASES")}"
+          echo "Signing with the key \"$ALIAS\" from the ${FROM}_KEYSTORE_* secrets."
+          { echo "MALLARD_KEYSTORE=$RUNNER_TEMP/mallard.keystore"; echo "MALLARD_KEY_ALIAS=$ALIAS"; echo "SIGNING_FROM=$FROM"; } >> "$GITHUB_ENV"
+
+      # The run number, which rises with every run of this workflow: each test
+      # build's versionCode is above the last, as Android requires before it
+      # installs over it. At 999 runs it would wrap below the codes already out
+      # there; raise mallardBase (android/app/build.gradle.kts) before then.
+      - name: Test build number (dev only)
+        if: ${{ github.ref == 'refs/heads/dev' && github.event_name == 'push' }}
+        run: |
+          n=$(( GITHUB_RUN_NUMBER % 999 )); [ "$n" -gt 0 ] || n=1
+          echo "MALLARD_TEST_BUILD=$n" >> "$GITHUB_ENV"
 
       - name: Build the APK
         env:
-          MALLARD_KEYSTORE_PASSWORD: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          MALLARD_PW: ${{ secrets.MALLARD_KEYSTORE_PASSWORD }}
+          MUSICD_PW: ${{ secrets.MUSICD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ "${SIGNING_FROM:-}" = MALLARD ]; then export MALLARD_KEYSTORE_PASSWORD="$MALLARD_PW"
+          elif [ "${SIGNING_FROM:-}" = MUSICD ]; then export MALLARD_KEYSTORE_PASSWORD="$MUSICD_PW"; fi
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
+      # The name and code as the APK itself carries them (what Android and the
+      # updater will compare), not as the build script spells them.
       - name: Name it
         id: apk
         run: |
-          V=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | cut -d'"' -f2)
-          SHA=$(git rev-parse --short HEAD)
-          OUT="Mallard-$V-$SHA.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$OUT"
+          APK=app/build/outputs/apk/release/app-release.apk
+          BADGE=$("$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | head -n 1)
+          V=$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"$BADGE")
+          CODE=$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"$BADGE")
+          [ -n "$V" ] && [ -n "$CODE" ] || { echo "couldn't read the APK's version: $BADGE"; exit 1; }
+          OUT="Mallard-$V-$(git rev-parse --short HEAD).apk"
+          cp "$APK" "$OUT"
           echo "file=android/$OUT" >> "$GITHUB_OUTPUT"
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -92,12 +187,41 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FILE: ${{ steps.apk.outputs.file }}
           VERSION: ${{ steps.apk.outputs.version }}
+          CODE: ${{ steps.apk.outputs.code }}
         run: |
           cp "$FILE" mallard-test.apk
+          # What's new: CHANGELOG.md's Unreleased lines about Mallard (the server's own aren't news to the app), whole
+          # lines up to 1200 characters — never cut mid-sentence.
+          NOTES=$(awk '$0 == "## Unreleased" { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | .github/mallard-notes.sh)
+          .github/mallard-manifest.sh mallard-test.apk "$VERSION" "$CODE" mallard-test mallard-test.apk "$NOTES" > mallard.json
+          cat mallard.json
           if ! gh release view mallard-test > /dev/null 2>&1; then
             gh release create mallard-test --target "$GITHUB_SHA" --prerelease --latest=false \
               --title "Mallard test build" --notes "The newest Mallard test build from the dev branch."
           fi
-          gh release upload mallard-test mallard-test.apk --clobber
+          gh release upload mallard-test mallard-test.apk mallard.json --clobber
           gh release edit mallard-test --prerelease --latest=false \
-            --notes "Mallard $VERSION test build from dev @ ${GITHUB_SHA::7}. Install mallard-test.apk on an Android 8.0+ phone."
+            --notes "Mallard $VERSION test build from dev @ ${GITHUB_SHA::7}. Install mallard-test.apk on an Android 8.0+ phone; installed, Mallard offers each new test build itself."
+
+      - name: Publish a Mallard release (by hand, from main)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.stable && github.ref == 'refs/heads/main' }}
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FILE: ${{ steps.apk.outputs.file }}
+          VERSION: ${{ steps.apk.outputs.version }}
+          CODE: ${{ steps.apk.outputs.code }}
+        run: |
+          case "$VERSION" in *-t*) echo "a test build ($VERSION) is never a release"; exit 1;; esac
+          cp "$FILE" mallard.apk
+          NOTES=$(awk -v h="## Mallard v$VERSION" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md | .github/mallard-notes.sh all)
+          TAG="mallard-v$VERSION"
+          for T in "$TAG" mallard-latest; do
+            .github/mallard-manifest.sh mallard.apk "$VERSION" "$CODE" "$T" mallard.apk "$NOTES" > mallard.json
+            if ! gh release view "$T" > /dev/null 2>&1; then
+              gh release create "$T" --target "$GITHUB_SHA" --prerelease --latest=false \
+                --title "Mallard $VERSION" --notes "Mallard $VERSION. Install mallard.apk on an Android 8.0+ phone."
+            fi
+            gh release upload "$T" mallard.apk mallard.json --clobber
+            gh release edit "$T" --prerelease --latest=false --title "Mallard $VERSION"
+          done

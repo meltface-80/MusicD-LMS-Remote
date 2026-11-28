@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the server · MusicD LMS Remote</title>
+<meta name="description" content="Install the MusicD LMS Remote server with Docker: one command, written for your setup.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>Install the server</h1>
+  <p class="lead">The server runs in Docker and talks to Lyrion Music Server over the network (HTTP on Lyrion's web port,
+     9000 unless you changed it). It does not have to run on the same machine as Lyrion. Pick where it runs, fill in the
+     details, and copy the command.</p>
+      <div class="cfg">
+      <div class="cfg-body">
+        <div>
+          <div class="modes" id="modes">
+            <label class="mode sel" data-mode="same">
+              <input type="radio" name="mode" value="same" checked>
+              <div class="m-title">Same machine as LMS</div>
+              <div class="m-sub">Linux host running LMS. Uses host networking so LMS can be auto-discovered.</div>
+            </label>
+            <label class="mode" data-mode="separate">
+              <input type="radio" name="mode" value="separate">
+              <div class="m-title">Separate machine from LMS</div>
+              <div class="m-sub">Another server, NAS or Pi. Point it at your LMS with its IP address.</div>
+            </label>
+            <label class="mode" data-mode="macos">
+              <input type="radio" name="mode" value="macos">
+              <div class="m-title">macOS (Docker Desktop / OrbStack)</div>
+              <div class="m-sub">Host networking isn't available on macOS, so ports are published and the LMS address is set explicitly.</div>
+            </label>
+          </div>
+
+          <div class="fields" style="margin-top:18px">
+            <div class="field" id="f-lmshost">
+              <label for="lmshost">LMS server IP / hostname <span class="req" id="lmshost-req">*</span></label>
+              <input type="text" id="lmshost" value="192.168.1.50" spellcheck="false">
+              <div class="hint" id="lmshost-hint">The address of the machine running Lyrion Music Server.</div>
+            </div>
+            <div class="field" id="f-lmsport">
+              <label for="lmsport">LMS web port</label>
+              <input type="text" id="lmsport" value="9000" spellcheck="false">
+            </div>
+            <div class="field" id="f-appport">
+              <label for="appport">App port on this machine</label>
+              <input type="text" id="appport" value="3390" spellcheck="false">
+              <div class="hint">The port you'll open in your browser.</div>
+            </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" id="mount">
+              <div>
+                <div class="t-title">Mount local music library (read-only)</div>
+                <div class="t-sub">Optional, and worth it if this machine can see your music files: Mallard keeps
+                  the next tracks on the phone from them (This phone), and the label scan reads <code>LABEL</code>
+                  tags straight from them. Mounted read-only; the app never writes to it.</div>
+              </div>
+            </label>
+            <div class="subfields hidden" id="mount-fields">
+              <div class="field">
+                <label for="musicpath">Path to your music on this machine</label>
+                <input type="text" id="musicpath" value="/path/to/your/music" spellcheck="false">
+              </div>
+            </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" id="auth">
+              <div>
+                <div class="t-title">LMS has a username &amp; password</div>
+                <div class="t-sub">Only needed if you've enabled HTTP authentication in LMS.</div>
+              </div>
+            </label>
+            <div class="subfields hidden" id="auth-fields">
+              <div class="field">
+                <label for="lmsuser">LMS username</label>
+                <input type="text" id="lmsuser" value="" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="lmspass">LMS password</label>
+                <input type="text" id="lmspass" value="" spellcheck="false">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="out">
+          <div class="note" id="mode-note"></div>
+          <div class="out-tabs">
+            <button id="tab-run" class="sel" type="button">docker run</button>
+            <button id="tab-compose" type="button">docker compose</button>
+          </div>
+          <div class="codebox">
+            <button class="copy-btn" id="copy" type="button">Copy</button>
+            <pre id="cmd"></pre>
+          </div>
+          <p class="after-note" id="after-note"></p>
+          <p class="after-note">Nothing to clone or build — the image is published to the GitHub
+             Container Registry (<code>ghcr.io/meltface-80/musicd-lms-remote</code>) with every
+             release, for x86-64, 64-bit ARM and 32-bit ARM. Needs Docker 20.10 or later. You can
+             also change the LMS host/port later from the in-app <b>Settings</b> screen instead of
+             the environment variables.</p>
+        </div>
+      </div>
+    </div>
+
+  <h2 id="open">Open it</h2>
+  <ol class="steps">
+    <li><b>In a browser</b><span><code>http://&lt;this machine&gt;:3390</code> — the web app. On a phone, add it to the
+        home screen and it runs full screen, like an app (<a href="apps.html#web">how</a>).</span></li>
+    <li><b>On Android</b><span>Install <a href="downloads.html">Mallard</a>; it finds the server on your network by
+        itself.</span></li>
+    <li><b>On a TV or tablet</b><span><code>http://&lt;this machine&gt;:3390/display</code> — the
+        <a href="apps.html#wall">wall display</a>.</span></li>
+    <li><b>Away from home</b><span>Sign the server and Mallard in to Tailscale (<a href="this-phone.html#tailscale">how</a>).</span></li>
+  </ol>
+  <h2 id="music">Your music folder (optional)</h2>
+  <p>If the machine running the server can see your music files, mount them read-only into the container — the configurator's
+     <b>Mount local music library</b> does it, or add this to <code>docker run</code>:</p>
+  <div class="codebox"><button class="copy-btn" type="button" data-copy>Copy</button><pre>-v /path/to/your/music:/music:ro</pre></div>
+  <p>Mallard then keeps the next tracks of your own music on the phone ahead of time, read straight from the folder, and the
+     record-label scan reads each file's <code>LABEL</code> tag. Use the folder Lyrion scans. If it lives somewhere other
+     than <code>/music</code> inside the container, set <code>MUSIC_DIR</code> to match.</p>
+  <h2 id="updating">Updating</h2>
+  <p>Settings → System offers each new release in the app, one tap. Or pull the newest image and recreate the container
+     with the same command — with Compose, <code>docker compose up -d</code> fetches it by itself
+     (<code>pull_policy: always</code>). Everything the app keeps — settings, favourites, play history, caches, the
+     server's Tailscale identity — lives in the <code>musicd-lms-remote-data</code> volume and carries over. Mallard
+     offers its own updates on its Home screen and in Settings → System.</p>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="apps.html">Next: On your phone, browser and TV →</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+<script src="install.js"></script>
+</body>
+</html>

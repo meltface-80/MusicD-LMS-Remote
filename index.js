@@ -44,6 +44,7 @@ const makeRadio       = require("./lib/radio");
 const makeApps        = require("./lib/apps");
 
 const pkg = require("./package.json");
+const build = require("./lib/build").buildInfo(process.env, pkg);   // release, or a :dev test build
 const { makeLogger, levelName, setLogFile } = require("./lib/log");
 const log = makeLogger("app");
 // DEBUG stays a boolean for the many existing `if (DEBUG)` gates; the leveled
@@ -220,14 +221,14 @@ let indexProgress = 0;
 // normaliser, and the persisted Discogs/FanArt/folder-depth settings (read via
 // getters so it always sees the current values after a Settings change).
 // ---------------------------------------------------------------------------
-const { makeLabels } = require("./lib/labels");
-const labels = makeLabels({
+const labels = require("./lib/labels").makeLabels({
   dataDir:             DATA_DIR,
   getAlbums:           () => index.records,
   normalize:           search.normalize,
   getDiscogsToken:     () => discogsToken,
   getFanartKey:        () => fanartKey,
   getLabelFolderDepth: () => labelFolderDepth,
+  lmsLabels: require("./lib/lmslabels").lmsLabelsHook(() => state.lms, () => !!(state.server && state.server.scanning), path.join(DATA_DIR, "cache", "lms-labels-tried.json"), log.child("labels")),
   debug:               DEBUG
 });
 
@@ -255,10 +256,11 @@ const albumInfo = makeAlbumInfo({
 // RRA_VIA_LAUNCHER=1; see lib/updater.js. Backs the /api/update/* routes.
 // ---------------------------------------------------------------------------
 const { makeUpdater } = require("./lib/updater");
+const { updateStatus } = require("./lib/build");
 const updater = makeUpdater({
   owner: "meltface-80",
   repo: "MusicD-LMS-Remote",
-  currentVersion: pkg.version,
+  currentVersion: build.version,
   dir: __dirname,
   viaLauncher: process.env.RRA_VIA_LAUNCHER === "1",
   debug: DEBUG
@@ -518,12 +520,11 @@ function lmsConfigFromSettings() {
 function rebuildAdapter() {
   const cfg = lmsConfigFromSettings();
   if (!cfg.host) { state.lms = null; return null; }
-  state.lms = createLms({ ...cfg, log: makeLogger("lms") });
+  state.lms = createLms({ ...cfg, log: makeLogger("lms"), watch: require("./lib/lmswatch").watch });   // outages and slow answers logged
   return state.lms;
 }
 
-// Try to establish/refresh the connection. Called on boot and on a timer.
-let refreshing = false;
+let refreshing = false;   // refreshConnection: establish/refresh the connection, on boot and on a timer
 async function refreshConnection() {
   // The poll interval (2.5s) is shorter than the RPC timeout (8s); against a
   // slow/wedged LMS, overlapping runs would pile up per-player status sockets.
@@ -588,10 +589,11 @@ async function refreshConnectionInner() {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
       invalidateServices();
+    } else if (ss.scanning) {
+      // LMS is scanning: its library isn't read until lastScan moves at the end (one rebuild then). Rebuilding on each count change mid-import re-read every track every 5 min (owner: stutter).
     } else if (scanChangedSinceIndex() && !indexBuilding) {
-      // LMS finished a scan we didn't start. Rebuild once, here, rather than
-      // waiting for a request to notice — merges, edits and artwork are all
-      // re-layered by buildIndex, so this is the one place that heals them.
+      // LMS finished a scan we didn't start. Rebuild once, here, rather than waiting for a request to notice —
+      // merges, edits and artwork are all re-layered by buildIndex, so this is the one place that heals them.
       log.info("lms: library rescan detected (lastScan changed) — rebuilding the index");
       libraryViewCache.clear();
       ensureIndex();
@@ -766,10 +768,9 @@ function readAddedCache(sig) {
   try {
     const j = JSON.parse(fs.readFileSync(ADDED_CACHE_FILE, "utf8"));
     if (!j || j.sig !== sig || !j.added) return null;
-    // `format` arrived later than `added`; a cache written by an older build has
-    // no formats and simply re-sweeps for them rather than being thrown away.
+    // `format` (with each album's genre, `withGenre`) came later than `added`: an older cache re-sweeps for them.
     return { added: new Map(Object.entries(j.added)),
-             format: j.format ? new Map(Object.entries(j.format)) : null };
+             format: j.format && j.withGenre ? new Map(Object.entries(j.format)) : null };
   } catch (e) { return null; }
 }
 function writeAddedCache(sig, added, format) {
@@ -779,7 +780,7 @@ function writeAddedCache(sig, added, format) {
     const tmp = ADDED_CACHE_FILE + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(),
       added: Object.fromEntries(added),
-      format: format ? Object.fromEntries(format) : undefined }));
+      format: format ? Object.fromEntries(format) : undefined, withGenre: true }));
     fs.renameSync(tmp, ADDED_CACHE_FILE);
   } catch (e) { if (DEBUG) console.error("[index] added-time cache write failed:", e.message); }
 }
@@ -789,41 +790,8 @@ function writeAddedCache(sig, added, format) {
 // LMS reports format per TRACK; there is no album-level tag. The values ride in
 // on the added-time sweep (one pass over the track table, not two).
 
-// Lossless containers. Everything else describes a DECODER rather than the
-// recording — an MP3 reports 16-bit/44.1k because that is what it decodes to,
-// and printing "16/44.1" on it would claim CD quality for a lossy file.
-const LOSSLESS_TYPES = new Set(["flc", "flac", "alc", "alac", "aif", "aiff", "wav",
-                                "wvp", "wv", "ape", "mpc", "dsf", "dff", "ogf"]);
-const QUALITY_TYPE_LABELS = { flc: "FLAC", flac: "FLAC", alc: "ALAC", alac: "ALAC",
-                              aif: "AIFF", aiff: "AIFF", wav: "WAV", dsf: "DSD", dff: "DSD",
-                              mp3: "MP3", mp4: "AAC", aac: "AAC", ogg: "OGG", ops: "Opus",
-                              wma: "WMA", wv: "WavPack", ape: "APE" };
-
-function rateShort(hz) {
-  if (!hz) return null;
-  const k = hz / 1000;
-  return String(Number.isInteger(k) ? k : Math.round(k * 10) / 10);
-}
-
-function albumQualityLabel(f) {
-  if (!f) return null;
-  const t = String(f.type || "").toLowerCase();
-  const label = QUALITY_TYPE_LABELS[t] || (t ? t.toUpperCase() : null);
-  // Lossy first, for the reason above.
-  if (t && !LOSSLESS_TYPES.has(t)) return label;
-  if (f.bits && f.rate) return f.bits + "/" + rateShort(f.rate);
-  if (f.rate) return rateShort(f.rate) + " kHz";
-  return label;
-}
-
-// Better than CD. There is no room to say so in words, so the badge takes the
-// accent colour instead.
-function albumIsHiRes(f) {
-  if (!f) return false;
-  const t = String(f.type || "").toLowerCase();
-  if (t && !LOSSLESS_TYPES.has(t)) return false;
-  return !!((f.bits && f.bits > 16) || (f.rate && f.rate > 48000));
-}
+// The album badges' words and the format vocabulary live in lib/nowquality.js, beside Now playing's quality line.
+const { QUALITY_TYPE_LABELS, rateShort, albumQualityLabel, albumIsHiRes } = require("./lib/nowquality");
 
 function stampAlbumFormats(map) {
   let hit = 0;
@@ -832,6 +800,7 @@ function stampAlbumFormats(map) {
     // one release and share it.
     const f = map.get(String(rec.id));
     if (!f) continue;
+    if (f.genre && !rec.genre) rec.genre = f.genre;   // LMS's albums query has no genre: the first track's (lib/lms.js)
     const q = albumQualityLabel(f);
     if (!q) continue;
     rec.quality = q;
@@ -1011,18 +980,19 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const notConnected = (res) => res.status(503).json({
-  error: "Not connected to Lyrion Music Server yet" + (state.lastError ? " (" + state.lastError + ")" : "")
-});
+const notConnected = (res) => res.status(503).json({ error: "Not connected to Lyrion Music Server yet" + (state.lastError ? " (" + state.lastError + ")" : "") });
 
 // ---- status / zones ----
-
+const tailscale = require("./lib/tailscale-routes").mountTailscale(app, { port: PORT, dataDir: DATA_DIR, log: log.child("tailscale") });   // away from home
+require("./lib/quality-routes").mountQuality(app, { lms: () => state.lms, phones: require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected, cacheDir: path.join(DATA_DIR, "cache", "phone-opus") }) });   // a phone's own LMS player; Now playing's quality line
+require("./lib/diagnostics").mountDiagnostics(app, { features, logMod: require("./lib/log"), lms: () => state.lms, version: pkg.version, state: () => state, outages: () => require("./lib/lmswatch").watch.outages() });   // the diagnostic log (off by default)
 app.get("/api/status", (req, res) => {
   res.json({
-    // Names the server, so a native client finding it on the network (Mallard's
-    // address sweep) can tell it from anything else answering on the port.
+    // Names the server (for Mallard's address sweep), and its tailnet address once the built-in Tailscale serves.
     app:        "musicd-lms-remote",
-    version:    pkg.version,
+    tailscale:  tailscale.address(),
+    version:    build.version,
+    channel:    build.channel,
     paired:     state.connected,
     core_id:    state.server ? state.server.uuid : null,
     core_name:  state.server ? ("Lyrion Music Server " + (state.server.version || "")) : null,
@@ -1038,7 +1008,7 @@ app.get("/api/zones", (req, res) => {
       zone_id:      p.id,
       display_name: p.name,
       state:        st ? (st.mode === "play" ? "playing" : st.mode === "pause" ? "paused" : "stopped") : "stopped",
-      outputs:      [{ output_id: p.id, display_name: p.name }]
+      outputs:      [{ output_id: p.id, display_name: p.name }], model: p.model, power: p.power, connected: p.connected   // Audio Devices' cards
     };
   }).sort((a, b) => a.display_name.localeCompare(b.display_name));
   res.json({ zones: list });
@@ -1217,43 +1187,8 @@ app.get("/api/artist-albums", async (req, res) => {
   });
 });
 
-// The streaming albums in the library, and why there may be none. LMS's Online
-// Music Library integration imports each service's FAVOURITE albums into the
-// library (albums.extid "qobuz:album:<id>"); with it off — or with its
-// per-service switch off, which LMS sets to 0 for good if it once polled with no
-// account signed in — those albums exist only inside the plugin's own menus.
-// Every pref here is read-only; nothing is changed on the server.
-app.get("/api/library/online", async (req, res) => {
-  if (!state.connected) return notConnected(res);
-  const counts = { qobuz: 0, tidal: 0, local: 0 };
-  for (const r of index.records) counts[r.source === "qobuz" ? "qobuz" : r.source === "tidal" ? "tidal" : "local"]++;
-  const pref = async (name) => { try { const v = await state.lms.getPref(name); return v == null || v === "" ? null : String(v); } catch (e) { return null; } };
-  const [state_, qobuz, tidal, purchases] = await Promise.all([
-    pref("plugin.state:OnlineLibrary"), pref("plugin.onlinelibrary:enable_PLUGIN_QOBUZ"),
-    pref("plugin.onlinelibrary:enable_PLUGIN_TIDAL"), pref("plugin.qobuz:dontImportPurchases")]);
-  const list = await services(false).catch(() => []);
-  const installed = (tag) => { const s = list.find(x => x.tag === tag); return s ? !!s.installed : null; };
-  const onlineOn = state_ == null ? null : state_ === "enabled";
-  // What both apps say, worded once HERE so the web app and Mallard can't drift.
-  const service = (tag, imported, importOn) => {
-    const name = SERVICE_LABEL[tag] || tag;
-    const importEnabled = importOn == null ? null : importOn === "1";
-    let say, problem = false;
-    if (imported > 0) say = imported + " " + name + " album" + (imported === 1 ? "" : "s") + " in your library.";
-    else if (onlineOn === false) { problem = true; say = "LMS\u2019s Online Music Library integration is off, so your " + name + " favourites stay inside the " + name + " plugin and never reach the library. Turn it on in LMS\u2019s settings (Online Music Library), then Import now."; }
-    else if (importEnabled === false) { problem = true; say = "LMS has " + name + " import switched off \u2014 it does that by itself if it ever looked before your " + name + " account was signed in. Turn " + name + " back on in LMS\u2019s Online Music Library settings, then Import now."; }
-    else say = "No " + name + " albums in your library yet. LMS imports the albums you\u2019ve favourited in " + name + " (not every album you\u2019ve played) \u2014 Import now fetches them.";
-    return { tag, name, installed: installed(tag), albums: imported, import_enabled: importEnabled, problem, say };
-  };
-  res.json({
-    online_library: onlineOn,
-    // Only services the server has (or might have: installed unknown).
-    services: [service("qobuz", counts.qobuz, qobuz), service("tidal", counts.tidal, tidal)].filter(x => x.installed !== false || x.albums > 0),
-    import_purchases: purchases == null ? null : purchases !== "1",
-    local_albums: counts.local,
-    index_built_at: index.builtAt || null,
-  });
-});
+// The streaming albums in the library, and why there may be none (lib/onlinelib.js).
+require("./lib/onlinelib").route(app, { state, index, notConnected, services: () => services(false), label: (t) => SERVICE_LABEL[t] || t });
 
 app.get("/api/library-stats", (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -1318,7 +1253,7 @@ app.get("/api/album", async (req, res) => {
     res.json({
       album:  { offset: rec.offset, title: rec.title, subtitle: rec.subtitle, image_key: rec.image_key, year: rec.year,
                 merge_id: rec.mergeId || null, part_count: rec.partCount || null,
-                quality: rec.quality || null, hires: !!rec.hires },
+                quality: rec.quality || null, hires: !!rec.hires, edited: !!rec.edited },
       // track_id is the track's PLACE in this list (identity is offset + place;
       // no LMS id ever leaves the server). length/tracknum/disc are for the
       // native app (Mallard) and are omitted when LMS doesn't know them.
@@ -2546,7 +2481,7 @@ app.get("/api/zone-state", async (req, res) => {
       }],
       now_playing: t ? {
         line1: t.title || "", line2: t.artist || "", line3: t.album || "",
-        image_key: t.coverId || null, length: st.duration || null, seek_position: st.time || null
+        image_key: t.coverId || null, length: st.duration || null, seek_position: st.time || null, fmt: t.fmt || null   // → quality (lib/quality-routes.js)
       } : null
     }
   });
@@ -2940,7 +2875,7 @@ app.post("/api/lms/player/:id/sync", async (req, res) => {
 // loopback-host case (LMS known as 127.0.0.1) and HTTPS mixed content.
 // Trust-wise this exposes nothing new: /api already offers full LMS control.
 // ---------------------------------------------------------------------------
-const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/music", "/imageproxy"];
+const LMS_PROXY_PREFIXES = ["/material", "/settings", "/Default", "/DarkLogic", "/html", "/plugins", "/cometd", "/jsonrpc.js", "/music", "/imageproxy"];
 const LMS_EMBED_CSS =
   '<style id="musicd-embed-fix">\n' +
   ':root {\n' +
@@ -2978,7 +2913,7 @@ function lmsProxy(req, res) {
         pres.on("data", (c) => chunks.push(c));
         pres.on("end", () => {
           let body = Buffer.concat(chunks).toString("utf8");
-          let inject = LMS_EMBED_CSS;
+          let inject = LMS_EMBED_CSS + (/^\/material\//.test(req.originalUrl) ? "" : '<link rel="stylesheet" href="/lms-embed.css">');   // Mallard's look; Material draws itself
           if (!/name=["']viewport["']/i.test(body)) inject = LMS_EMBED_VIEWPORT + inject;
           if (/<\/head>/i.test(body)) body = body.replace(/<\/head>/i, inject + "</head>");
           else body = inject + body;
@@ -3000,7 +2935,7 @@ function lmsProxy(req, res) {
     else res.destroy();
   });
   preq.setTimeout(30000, () => preq.destroy(new Error("LMS proxy timeout")));
-  req.pipe(preq);
+  if (req._body) { const b = Buffer.from(JSON.stringify(req.body)); preq.setHeader("content-length", b.length); preq.end(b); } else req.pipe(preq);   // express.json() may have read it
 }
 for (const p of LMS_PROXY_PREFIXES) app.use(p, lmsProxy);
 
@@ -3029,41 +2964,8 @@ app.get("/api/artist-info", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Info for the embedded LMS server-settings frame: LMS's address, whether a
-// scan is running, and which settings page to frame — served SAME-ORIGIN via
-// the proxy above (the same approach Material Skin itself uses: it iframes
-// the server settings). When the Material plugin is installed we frame ITS
-// styled page (/material/settings/server/basic.html); otherwise Lyrion's
-// classic settings (/settings/index.html). The probe result is cached 10 min.
-let lmsSettingsProbe = null;   // { at, material }
-app.get("/api/lms/settings-info", async (req, res) => {
-  if (!state.connected) return notConnected(res);
-  const cfg = state.lms.cfg;
-  if (!lmsSettingsProbe || (Date.now() - lmsSettingsProbe.at) > 10 * 60 * 1000) {
-    let material = false;
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 4000);
-      try {
-        const r = await fetch(`http://${cfg.host}:${cfg.port}/material/settings/server/basic.html`,
-          { signal: ctl.signal, redirect: "manual" });
-        material = r.status === 200;
-      } finally { clearTimeout(timer); }
-    } catch (e) { /* Material not installed / unreachable — classic it is */ }
-    lmsSettingsProbe = { at: Date.now(), material };
-  }
-  let scanning = false;
-  try { scanning = (await state.lms.serverStatus()).scanning; } catch (e) { /* best-effort */ }
-  res.json({
-    host: cfg.host,
-    port: cfg.port,
-    material: lmsSettingsProbe.material,
-    scanning,
-    // A path on THIS app's origin — served by the LMS proxy above, so the
-    // browser never needs direct reachability to the LMS host.
-    settings_path: lmsSettingsProbe.material ? "/material/settings/server/basic.html" : "/settings/index.html"
-  });
-});
+// LMS's own settings: the page the apps frame, and its plugins (lib/lms-settings-routes.js).
+require("./lib/lms-settings-routes").mountLmsSettings(app, { lms: () => (state.connected ? state.lms : null), notConnected, log: log.child("plugins") });
 
 // ---------------------------------------------------------------------------
 // Album metadata extras: release year + record label + Pitchfork score/
@@ -3870,6 +3772,11 @@ app.post("/api/settings/youtube-key", (req, res) => {
 // "turned off" note (and fetches nothing) when disabled, so flipping the
 // Settings toggle brings a mounted wall tablet to life without a reload.
 app.get("/display", (req, res) => res.sendFile(path.join(__dirname, "public", "display.html")));
+// The Shelf (lib/shelf-routes.js): its page, the whole library it flicks through, and its switch (off by default).
+require("./lib/shelf-routes").mountShelf(app, { publicDir: path.join(__dirname, "public"), features, connected: () => state.connected,
+  ensureIndex, builtAt: () => index.builtAt || 0, libraryView, formatOf: (al) => al.quality || null, records: () => index.records, mainArtists: search.mainArtistNames,
+  favOf: (al) => favourites.has(al.title, al.subtitle) || favourites.has(al.origTitle || al.title, al.origArtist || al.subtitle),
+  labelOf: (al) => { const l = features.enabled("labels") ? labels.labelForAlbum({ title: al.title, subtitle: al.subtitle }) : null; return l ? labels.canonicalName(l) : null; } });
 
 // Assembled rotation content for the now-playing album on a zone: library
 // recommendations (other albums by the artist + label-mates, both from the
@@ -3983,16 +3890,17 @@ app.get("/api/display/content", async (req, res) => {
 // progress) and `viaLauncher`, which the frontend poll reads to drive the UI.
 app.get("/api/update/status", (req, res) => {
   updater.maybeCheck(); // fire-and-forget background refresh (throttled to hourly)
-  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+  res.json(updateStatus(build, updater.getStatus()));
 });
 app.post("/api/update/check", async (req, res) => {
-  await updater.checkNow();
-  res.json({ ...updater.getStatus(), current: pkg.version, is_docker: true });
+  if (build.channel !== "dev") await updater.checkNow();
+  res.json(updateStatus(build, updater.getStatus()));
 });
 app.post("/api/update/apply", async (req, res) => {
   // Respond BEFORE apply() runs — a successful apply exits the process (code 75)
   // so the launcher can restart into the new build, and we'd never get to send a
   // reply after that. The frontend then polls /api/update/status for progress.
+  if (build.channel === "dev") return res.status(409).json({ error: require("./lib/build").DEV_NOTE });
   let st = updater.getStatus();
   if (!st.available) {
     st = await updater.checkNow();
@@ -4175,7 +4083,7 @@ function appsPlayer(zone) {
 function appsError(res, e) {
   if (e && e.status) return res.status(e.status).json({ error: e.message, expired: !!e.expired });
   log.debug("apps:", e && e.message);
-  res.status(503).json({ error: "The plugin didn\u2019t answer: " + ((e && e.message) || "no answer"), unavailable: true });
+  res.status(503).json({ error: "The plugin didn\u2019t answer \u2014 it may need signing in, or may not work with this player", unavailable: true });
 }
 app.get("/api/apps", async (req, res) => {
   if (!state.connected) return notConnected(res);
@@ -4209,7 +4117,6 @@ app.get("/api/services", async (req, res) => {
     res.json({ services: list, connected: !!state.connected });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 
 // ---------------------------------------------------------------------------
 // Smart Picks — six albums a day by artists NOT in the library.
@@ -4546,31 +4453,6 @@ async function buildSmartPicks(day) {
 
 // Kick a build in the background. Never awaited by a request — the first build
 // takes a minute or two and no page load should wait for it.
-/* Evidence that a feature has ALREADY been in use on this data volume.
- *
- * Read once, by features.applyDefaults, to decide a flag nobody has set. Each
- * returns true / false / NULL, and null means "cannot tell" — an unreadable
- * store must never be recorded as "not used", because that would switch an
- * existing install's features off permanently and repairing the store would
- * not undo it (the setting is explicit by then).
- */
-function labelsHaveHistory() {
-  try {
-    const st = labels.status();
-    if (st && Number.isFinite(st.count)) return st.count > 0;
-    return null;
-  } catch (e) { return null; }
-}
-function smartPicksHaveHistory() {
-  try {
-    const f = path.join(DATA_DIR, "smart-picks.json");
-    if (!fs.existsSync(f)) return false;          // no store at all = never used
-    const j = JSON.parse(fs.readFileSync(f, "utf8"));
-    if (!j || typeof j !== "object") return null; // present but unreadable
-    return Object.keys(j.days || {}).length > 0 || Object.keys(j.attempts || {}).length > 0;
-  } catch (e) { return null; }
-}
-
 function kickSmartPicks(day, force) {
   // THE SINGLE GATE. Every caller — the timer, the request path and the
   // manual rebuild button — comes through here, so one check covers all of
@@ -4667,7 +4549,6 @@ app.get("/api/smart-picks", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
 // "Not for me" — never suggest this artist again, and take their cards away
 // now rather than at the next rebuild.
 app.post("/api/smart-picks/block", (req, res) => {
@@ -4763,7 +4644,6 @@ app.post("/api/smart-picks/add", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-
 
 // ---- Smart Picks: schedule + settings --------------------------------------
 // Defaults chosen for an overnight build: it does 24 MusicBrainz lookups at
@@ -5009,7 +4889,7 @@ app.get("/api/qobuz/debug", async (req, res) => {
   if (!state.connected || !state.lms) return res.status(503).json({ error: "not connected to LMS" });
   const q = String(req.query.q || "radiohead").trim();
   const player = state.players[0] && state.players[0].id;
-  const out = { version: pkg.version, player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
+  const out = { version: build.version, player, players: state.players.map(p => ({ id: p.id, name: p.name })), q };
   const call = async (label, cmd) => { try { out[label] = await state.lms.request(player, cmd); } catch (e) { out[label] = { error: e.message }; } };
   if (!player) { out.error = "no player available (qobuz commands need a player id)"; return res.json(out); }
   await call("root", ["qobuz", "items", 0, 50, "menu:1"]);
@@ -5275,7 +5155,7 @@ app.post("/api/settings/label-folder-depth", (req, res) => {
 // Boot
 // ---------------------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`MusicD LMS Remote v${pkg.version} listening on :${PORT}`);
+  console.log(`MusicD LMS Remote v${build.version} (${build.channel}) listening on :${PORT}`);
   log.info("log level:", levelName(),
     "(set DEBUG=1 for diagnostics, DEBUG=trace or LOG_LEVEL=trace for the firehose)");
   refreshConnection();
@@ -5296,10 +5176,7 @@ app.listen(PORT, () => {
   // an upgrade must not switch somebody's features off underneath them. A
   // store that cannot be read defers rather than answering "no": see
   // lib/features.js.
-  features.applyDefaults({
-    labels:     () => labelsHaveHistory(),
-    smartPicks: () => smartPicksHaveHistory(),
-  });
+  features.applyDefaults(require("./lib/features-evidence").evidence({ labels, dataDir: DATA_DIR }));
   smartPicksTimer = startSmartPicksMaintenance();
 });
 

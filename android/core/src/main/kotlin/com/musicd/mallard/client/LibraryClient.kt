@@ -24,6 +24,8 @@ class LibraryClient(private val get: (String) -> JSONObject) {
 
     /** What its page shows under its artists: year, label, Pitchfork score and link, a review from LMS's own plugin. */
     fun albumExtras(title: String, artist: String): AlbumExtras = AlbumExtras.parse(get("/api/album/extras?title=" + enc(title) + "&artist=" + enc(artist)))
+    /** What the share card says (ShareCard.kt), from the same answer. */
+    fun shareCard(title: String, artist: String): CardFields = CardFields.parse(get("/api/album/extras?title=" + enc(title) + "&artist=" + enc(artist)))
 
     /** An artist's albums: their own, and those they are on. */
     fun artistAlbums(artist: String): ArtistAlbums {

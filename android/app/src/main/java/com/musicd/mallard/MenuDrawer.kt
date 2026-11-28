@@ -59,7 +59,11 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import com.musicd.mallard.client.CollectionRoute
+import com.musicd.mallard.client.services
 import com.musicd.mallard.client.Contract
+import com.musicd.mallard.client.Features
+import com.musicd.mallard.client.features
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.ServerClient
 import com.musicd.mallard.client.ShellRoute
@@ -98,10 +102,18 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
     when (what) {
         "home" -> navTap(nav, "home")
         "random" -> overHome(nav, ShellRoute.wall("random", z, ""))
+        "labels" -> overHome(nav, CollectionRoute.labels(z))
+        "qobuz" -> overHome(nav, CollectionRoute.qobuz(z))
         "favourites" -> overHome(nav, ShellRoute.wall("favourites", z, ""))
         "apps" -> overHome(nav, ShellRoute.apps("app", z))
+        "shelf" -> overHome(nav, ShellRoute.shelf(z))
         "radio" -> overHome(nav, ShellRoute.apps("radio", z))
         "pitchfork" -> overHome(nav, ShellRoute.pitchfork("", z))
+        "picks" -> overHome(nav, ShellRoute.picks(z))
+        "merges" -> overHome(nav, CollectionRoute.merges(z))
+        "liveplaylists" -> overHome(nav, CollectionRoute.livePlaylists(z))
+        "playlists" -> overHome(nav, CollectionRoute.playlists(z))
+        "import" -> overHome(nav, CollectionRoute.import(z))
         "settings" -> overHome(nav, ShellRoute.settings())
     }
 }
@@ -125,9 +137,16 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
     }
     // The LMS server's name under Rescan library, as the server reports it.
     var lms by remember { mutableStateOf("") }
+    // The server's switches, read as the page's menu reads them (/api/settings/features): the Shelf row only while it is
+    // on; Smart Picks unless it is switched off.
+    var features by remember { mutableStateOf(Features(setOf("shelf"))) }
+    var qobuz by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         lms = withContext(Dispatchers.IO) { runCatching { c.health().lms }.getOrNull() }.orEmpty()
+        withContext(Dispatchers.IO) { runCatching { c.features() }.getOrNull() }?.let { features = it; NavShelf.on.value = it.on("shelf") }
+        // Qobuz, while the server's plugin is there and signed in (the page's /api/services), under the plugin's own name.
+        qobuz = withContext(Dispatchers.IO) { runCatching { c.services() }.getOrNull() }?.firstOrNull { it.tag == "qobuz" && it.usable }?.name
     }
     Box(Modifier.fillMaxSize().parity("menu.close", Contract.label("menu.close")).pointerInput(widthPx, open) {
         detectTapGestures { at -> if (!open) return@detectTapGestures; if (at.x > widthPx) onClose() }
@@ -144,7 +163,7 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
                 Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                     Column {
                         MenuHead()
-                        MenuList(lms, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
+                        MenuList(lms, features, qobuz, onRescan = { onClose(); rescan(context, client, scope) }, onItem = onItem)
                     }
                 }
             }
@@ -164,17 +183,25 @@ private fun MenuHead() {
     }
 }
 
-/** The list: Home and Random albums, a line, Favourites and Pitchfork, a line, Rescan library, a line, Settings. */
+/** The list, as the web app's menu (public/index.html): Home, Random albums and the Shelf; the collections; Rescan; Settings. */
 @Composable
-private fun MenuList(lms: String, onRescan: () -> Unit, onItem: (String) -> Unit) {
+private fun MenuList(lms: String, features: Features, qobuz: String?, onRescan: () -> Unit, onItem: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, end = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         MenuItem(Modifier.clip(ITEM).clickable { onItem("home") }, R.drawable.tn_home, "Home")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
+        if (features.on("shelf")) MenuItem(Modifier.clip(ITEM).clickable { onItem("shelf") }, R.drawable.mn_shelf, "Shelf")
         MenuSep()
+        if (features.on("labels")) MenuItem(Modifier.clip(ITEM).clickable { onItem("labels") }, R.drawable.mn_labels, "Labels")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
-        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.st_services, "Apps")
-        MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps", beta = true)
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio", beta = true)
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("merges") }, R.drawable.mn_merged, "Merged albums")
+        if (qobuz != null) MenuItem(Modifier.clip(ITEM).clickable { onItem("qobuz") }, R.drawable.mn_qobuz, qobuz)
         MenuItem(Modifier.parity("menu.pitchfork", Contract.label("menu.pitchfork")).clip(ITEM).clickable { onItem("pitchfork") }, R.drawable.mn_pitchfork, Contract.label("menu.pitchfork"))
+        if (features.on("smartPicks")) MenuItem(Modifier.clip(ITEM).clickable { onItem("picks") }, R.drawable.mn_picks, "Smart Picks")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("liveplaylists") }, R.drawable.mn_live, "Dynamic Playlists")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("playlists") }, R.drawable.mn_playlists, "Playlists")
+        MenuItem(Modifier.clip(ITEM).clickable { onItem("import") }, R.drawable.mn_import, "Import a playlist")
         MenuSep()
         MenuItem(Modifier.parity("menu.rescan", Contract.label("menu.rescan")).clip(ITEM).clickable(onClick = onRescan), R.drawable.mn_rescan, Contract.label("menu.rescan"), lms)
         MenuSep()
@@ -193,11 +220,14 @@ private val ITEM = RoundedCornerShape(10.dp)
 
 /** An item: its icon (22, in the brass) and its [word] (15), 12 all round, 14 between; its line under the word if it has one. */
 @Composable
-private fun MenuItem(modifier: Modifier, icon: Int, word: String, sub: String = "") {
+private fun MenuItem(modifier: Modifier, icon: Int, word: String, sub: String = "", beta: Boolean = false) {
     Row(modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(painterResource(icon), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(word, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 1)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(word, color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp, lineHeight = 21.sp, maxLines = 1)
+                if (beta) BetaTag()   // plugins are a work in progress (BetaTag.kt)
+            }
             if (sub.isNotEmpty()) Text(sub, Modifier.parity("menu.rescan-sub"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 15.6.sp)
         }
     }

@@ -1,0 +1,31 @@
+{
+  "include": [
+    "index.js",
+    "launcher.js",
+    "lib/**/*.js",
+    "public/**/*.js",
+    "tools/**/*.js",
+    "android/**/*.kt"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/build/**",
+    "public/icons/**"
+  ],
+  "tests": [
+    "lib/**/*.test.js",
+    "android/**/src/test/**"
+  ],
+  "length": {
+    "cap": 500,
+    "capTests": 800,
+    "watch": 400
+  },
+  "exempt": {
+    "index.js": "over the cap when the gate came (v1.0.86); shrinks only",
+    "lib/labels.js": "over the cap when the gate came (v1.0.86); shrinks only",
+    "lib/lms.js": "over the cap when the gate came (v1.0.86); shrinks only",
+    "public/app.js": "over the cap when the gate came (v1.0.86); shrinks only",
+    "public/display.js": "over the cap when the gate came (v1.0.86); shrinks only"
+  }
+}

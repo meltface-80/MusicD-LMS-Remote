@@ -1,0 +1,179 @@
+{
+  "index.js": {
+    "no-unused-vars": {
+      "count": 4
+    },
+    "no-useless-assignment": {
+      "count": 2
+    }
+  },
+  "launcher.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/albumart.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/albumart.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "lib/albummerges.js": {
+    "no-useless-escape": {
+      "count": 5
+    }
+  },
+  "lib/albummerges.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/discovery.js": {
+    "no-unused-vars": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "lib/favourites.test.js": {
+    "no-empty": {
+      "count": 2
+    },
+    "no-regex-spaces": {
+      "count": 1
+    }
+  },
+  "lib/features.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/homepicks.js": {
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "lib/homepicks.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/labels.js": {
+    "no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-escape": {
+      "count": 4
+    }
+  },
+  "lib/labels.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/liveplaylists.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "lib/liveplaylists.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/lms.js": {
+    "no-unused-vars": {
+      "count": 1
+    },
+    "no-useless-assignment": {
+      "count": 1
+    },
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "lib/log.js": {
+    "no-empty": {
+      "count": 6
+    }
+  },
+  "lib/musicbrainz.js": {
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "lib/pitchfork.js": {
+    "no-useless-escape": {
+      "count": 1
+    }
+  },
+  "lib/radio.test.js": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "lib/safearea.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "lib/share.js": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "lib/smartcache.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/smartpicks.test.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/updater.js": {
+    "no-empty": {
+      "count": 2
+    }
+  },
+  "lib/urlguard.js": {
+    "preserve-caught-error": {
+      "count": 2
+    }
+  },
+  "lib/urlguard.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "public/app.js": {
+    "no-empty": {
+      "count": 19
+    },
+    "no-undef": {
+      "count": 14
+    },
+    "no-unused-vars": {
+      "count": 4
+    },
+    "no-useless-assignment": {
+      "count": 1
+    }
+  },
+  "public/display.js": {
+    "no-empty": {
+      "count": 3
+    }
+  },
+  "public/sharecard.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  }
+}

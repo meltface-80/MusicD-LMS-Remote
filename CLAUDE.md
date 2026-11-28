@@ -2,24 +2,127 @@
 
 MusicD LMS Remote: a music-discovery PWA + wall display for Lyrion Music
 Server (LMS). Node/Express backend (`index.js`) talks to LMS over JSON-RPC
-(`lib/lms.js`); the frontend is a no-build vanilla PWA (`public/`). See the
-Layout section of README.md.
+(`lib/lms.js`); the frontend is a no-build vanilla PWA (`public/`). Mallard
+(`android/`) is the native Android remote for it; the web page is the remote
+for iOS devices, installed as a PWA. See the Layout section of README.md.
 
-## Process — applies to every task
+The rules below are Mandarin's (meltface-80/Mandarin `CLAUDE.md`, owner
+decision), adapted to this repo. Keep the habits, avoid bloat: no accidental
+tags, no automatic releases, no cluttered history.
 
-1. **Use agent workers for all tasks.** Fan out background subagents to
-   research/map the codebase (and the web, where sources need verifying)
-   before implementing. Implement in the main session on their findings —
-   don't have multiple agents edit the same files.
+## 1. Branches: `main` is production, `dev` is integration
 
-2. **Verify before committing.** `npm test` must pass. For anything touching
-   the server or frontend behaviour, run an end-to-end check against a fake
-   LMS JSON-RPC server (spawn `index.js` with `LMS_HOST`/`LMS_PORT` pointed
-   at a mock; drive the UI with Playwright — Chromium is at
-   `/opt/pw-browsers/chromium`). Never leave a `data/` directory behind in
-   the repo (it's gitignored, but clean up after test runs).
+- **`main`** is what installs run. Nothing is committed to it directly; it
+  moves only when the OWNER merges `dev` into it (protected by a ruleset, as
+  is `dev`).
+- **`dev`** is where finished work lands for the owner to test. Every change
+  reaches it through a pull request.
+- A work branch is cut from `dev` and targets `dev`. In a Claude Code cloud
+  session that is the session's designated branch: restart it from
+  `origin/dev` after each merge (`git checkout -B <branch> origin/dev`) —
+  never stack onto merged history. One `bug-list.md` item per pull request.
+- After a release, `main` is merged back into `dev` with a MERGE commit (not
+  a squash) so dev's history carries the release tag — `tools/test-version.js`
+  counts from it.
 
-3. **Never let the iOS display geometry regress.** `lib/safearea.test.js`
+## 2. Tags and releases: only when asked
+
+- **Never auto-tag.** No workflow, hook or script creates a tag or GitHub
+  release on an ordinary commit or merge. `release.yml` runs only on a pushed
+  `v*.*.*` tag or Run workflow, refuses a tag that isn't the commit's own
+  `package.json` version, and waits for CI to pass on that commit
+  (`.github/wait-for-ci.sh`).
+- The release publishes the GitHub release (marked Latest; notes = that
+  version's CHANGELOG.md section) and the Docker image
+  `ghcr.io/meltface-80/musicd-lms-remote:<version>` + `:latest`. The in-app
+  updater reads `releases/latest` FIRST, so a version on `main` without its
+  release is invisible to every install — if the workflow fails, fix it and
+  re-run it.
+- **Test builds are not releases.** Every push to `dev` (after CI passes)
+  publishes the server image `:dev` + `:<test version>` (`server-dev.yml`;
+  `tools/test-version.js` gives e.g. `1.0.87-t3`) and Mallard's
+  `mallard-test.apk` on the rolling `mallard-test` PRE-release (`mallard.yml`,
+  `0.2.0-tN`). Neither is ever "latest". A `:dev` server knows it is one
+  (`APP_CHANNEL=dev`, `lib/build.js`) and its updater says "pull :dev again"
+  instead of offering a release.
+
+## 3. Commits and pull requests
+
+- **Squash and merge** into `dev`: one cohesive commit per item, not the
+  "fix typo" trail. (The merge-back of `main` is the one exception, above.)
+- Commit messages and PR descriptions say *what* and *why*, no chatter.
+- Open the PR into `dev` and merge it yourself once it is green; don't wait
+  to be asked. Never push straight to `main` or `dev`.
+
+## 4. Work goes to `dev`; a version bump only when the owner says
+
+1. Each bug or feature is an item in `bug-list.md`, worked on its own branch.
+2. Tested (`npm run check` green, each new test seen failing once, and the
+   end-to-end check below), it goes into `dev` by a pull request you open and
+   merge yourself. **No version change on these merges**: what each changes
+   goes in CHANGELOG.md under `## Unreleased`.
+3. The owner updates from `dev`. After every merge, tell them how, with both
+   links:
+   - server: `docker pull ghcr.io/meltface-80/musicd-lms-remote:dev`, then
+     recreate the container (`docker compose up -d`, or `docker rm -f` and the
+     same `docker run` with `:dev`), and say which test version it is;
+   - Mallard: https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk
+     (page: https://github.com/meltface-80/MusicD-LMS-Remote/releases/tag/mallard-test).
+   Check that both workflows actually published before saying so.
+4. When the owner says to bump: on one branch into `dev`, the version
+   everywhere it is shown (`package.json`; Mallard `versionName` and
+   `mallardBase` in `android/app/build.gradle.kts`, its notes under
+   `## Mallard v<version>` in CHANGELOG.md), `## Unreleased` renamed
+   to the version, and README + the Pages site (`docs/index.html`, including
+   the `#version-badge` fallback text) brought fully up to date, so a single
+   merge of `dev` to `main` brings everything up to date. The owner merges
+   `dev` to `main`; then you run the Release workflow for that version, and
+   `mallard.yml` with "stable" for Mallard's (see Mallard below).
+   **Keep v1.0.x numbering** until the owner says otherwise.
+5. Mark a `bug-list.md` item Fixed only when the owner says so.
+
+## 5. Quality gates (machine-enforced)
+
+- **`npm run check` is green before every push**: the gates (`npm run
+  gates`: file length, `@ts-check` + `tsc`, ESLint) and the whole suite. The
+  pre-commit hook (`.githooks/`, enabled by the SessionStart hook in
+  `.claude/settings.json`) runs the gates; CI (`ci.yml`) runs all of it on
+  every push and PR, and the release and the `:dev` image wait for it. Never
+  `--no-verify`, never a hook or workflow edit that skips a gate. First run in
+  a fresh checkout: `npm install && npm run tools`.
+- **Baselines only shrink.** A file in `tools/quality/allowance.json`, or
+  under `exempt` in `tools/quality/policy.json`, is never grown: what a change
+  needs goes in a new module under 400 lines (500 is the cap, 800 for tests),
+  or the file is split first. `index.js` is the main offender — move routes
+  out into `lib/` modules (as `lib/onlinelib.js` does) rather than adding to
+  it. Never raise a length entry, add a lint suppression or `eslint-disable`,
+  or add a module to `tools/quality/ts-baseline.json` to get green; if it
+  seems necessary, ask first. Baselines are written by their tools (`node
+  tools/quality/file-length.js accept <file>`, `npm run lint:prune`), never
+  by hand.
+- **Never loosen a rule to get green.** A lint rule a file breaks on purpose
+  is turned off for that file in `tools/lint/eslint.config.js`, with the
+  reason beside it. A test is never skipped, disabled or loosened; find the
+  cause.
+- **Every new server module opens with `// @ts-check`** and carries JSDoc on
+  what it exports. A listed module touched for a change gains the pragma and
+  leaves the list.
+- **A test proves something:** break the code once and watch it fail before
+  trusting it. New `lib/*.test.js` files are added to `npm test`.
+- **End to end:** anything touching server or frontend behaviour is run
+  against a fake LMS JSON-RPC server (spawn `index.js` with
+  `LMS_HOST`/`LMS_PORT` pointed at a mock; drive the UI with Playwright —
+  Chromium is at `/opt/pw-browsers/chromium`). Never leave a `data/`
+  directory behind.
+- **Use agent workers** to research/map the codebase (and the web, where
+  sources need verifying) before implementing; implement in the main session
+  — don't have several agents edit the same files.
+- **This file shrinks as the tools take over.** A rule a tool can check moves
+  out of here and into a gate.
+
+## 6. iOS display geometry
+
+**Never let the iOS display geometry regress.** `lib/safearea.test.js`
    runs in `npm test` and must stay green: the modal family
    (`.modal-close`, `.modal-share`, `.modal-edit`, `.modal-fav`,
    `.modal.np-mode .modal-home`, `.modal.np-mode .modal-body`,
@@ -51,51 +154,12 @@ Layout section of README.md.
      can be measured — but it can only catch a rule that moves, never one that
      shouldn't have.
 
-4. **Bump the version once a new build is ready.** When a feature set /
-   fix set is complete and verified, bump `version` in `package.json` and
-   commit it as `Release v1.0.x` with short release notes in the commit
-   body. **Keep v1.0.x numbering for now** — the owner will advise
-   explicitly when to move to v1.1.x or beyond.
-
-5. **The version bump IS the release.** Merging the bump to `main` runs
-   `.github/workflows/release.yml`, which (after `npm test`) tags the commit
-   `v<version>`, publishes a GitHub release marked Latest (notes = the body of
-   the `Release v1.0.x` commit) and pushes the Docker image
-   `ghcr.io/meltface-80/musicd-lms-remote:<version>` + `:latest`. Never tag or
-   release by hand. The in-app updater reads `releases/latest` FIRST (falling
-   back to tags, then `package.json` on `main`, only when no release exists),
-   so a version that reached `main` without its release would be invisible to
-   every install — if that workflow fails, fix it and re-run it.
-
-6. **Keep the GitHub Pages site in step with every release.** The docs /
-   configurator page (`docs/index.html`, served at
-   https://meltface-80.github.io/MusicD-LMS-Remote/) shows the current
-   version and must be updated in the same release commit: bump the
-   `#version-badge` fallback text to match `package.json` (the badge also
-   self-updates from `package.json` on `main` via fetch, but the static
-   fallback must not drift), and reflect any new user-facing features or
-   changed setup/config steps in the page's content.
-
-## Git
-
-- Develop on the designated `claude/…` branch; after a PR merges, restart
-  the same branch from `origin/main` (`git checkout -B <branch>
-  origin/main`) — never stack onto merged history.
-- **Land every finished build yourself** (owner decision, v1.0.38). Once
-  `npm test` and the end-to-end checks are green and the version is bumped:
-  push the branch, open the PR, and merge it. Don't wait to be asked, and
-  don't leave `main` sitting behind a finished build — the merge IS the
-  release (§5 above), so an unmerged bump means no install gets the update.
-- Never push straight to `main`; changes reach it only through a merged PR,
-  so the history keeps a reviewable record of each release.
-- Report the merged version back to the owner so they know what's live.
-
 ## Mallard (android/)
 
 - `android/` is **Mallard**, the native Android remote for this server. It is a
   port of Mandarin Remote's Compose app (meltface-80/Mandarin `android/`), with
-  everything Mandarin-only removed: Tailscale, phone playback, the USB DAC,
-  downloads, shelf, editor and sign-in. Package `com.musicd.mallard`; `:core`
+  everything Mandarin-only removed: downloads, editor and sign-in (Tailscale,
+  phone playback, the Shelf and the USB DAC came back later, as below). Package `com.musicd.mallard`; `:core`
   is pure Kotlin/JVM (API client, models, view logic) and `:app` is Compose.
 - **Look and Settings**: the look is Mandarin's (Palette, Manrope and Young
   Serif). The Settings LAYOUT is this server's page (owner decision), in
@@ -124,9 +188,65 @@ Layout section of README.md.
   - `Artists.kt` is a third copy of the artist split (ANY_SPLIT_RE /
     ARTIST_SPLIT_RE).
   - Change one copy, change all three.
+  - The SHARE CARD is drawn twice, from one layout: `public/sharecard-layout.js`
+    (+ `sharecard.js`, `share-sheet.js`) and Mallard's `ShareCard.kt`
+    (`CardLayout`, + `ShareCardPainter.kt`, `ShareSheet.kt`). The owner rule is
+    that the two apps' cards are the same picture: `lib/sharecard.test.js` and
+    `ShareCardTest.kt` run the same cases with the same stand-in font, so a
+    number changed in one copy alone fails a suite.
+- **USB DAC** (owner request, as Mandarin): Mandarin's own USB Audio Class
+  driver, ported PCM-only — `src/main/cpp/usb_jni.cc` (its JNI names
+  `Java_com_musicd_mallard_*`; built by CMake with NDK 27.2.12479018, which
+  `mallard.yml` installs; arm64 only, like `libmusicdnet.so`), `UsbDac.kt`
+  (find, permission, descriptors), `UsbDriver.kt` (the stream, the DAC's clock
+  and volume), `UsbAudioSink.kt` under `WordsSink.kt` (Mandarin's DspSink
+  without the DSP: each sample's own left-justified word, `PcmWords`) in
+  `PhoneStreamService`'s player. It plays only the phone's own stream away from
+  home; the screens at home are a remote and play nothing. Settings → Away from
+  home → USB DAC. Pulled out mid-song, the sound STOPS rather than move to the
+  loudspeaker. Keep `PcmWords`/`UsbGain` in step with Mandarin's.
+- **Opus 24/48** (owner rule): Mallard decodes Opus with its OWN libopus
+  (Media3's `decoder_opus` in `src/main/java/androidx/media3/decoder/opus`,
+  `opus_jni.cc`, libopus 1.5.2 SHA-pinned in CMakeLists, fetched ahead by
+  `mallard.yml`) because Android's decoder gives 16-bit; the renderers prefer
+  extensions. Keep the proguard keeps (`SimpleDecoderOutputBuffer` is called
+  back by name from native code). The server encodes from `-sample_fmt flt`.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
-  `package.json`. Bump `versionCode` with every published build.
+  `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N
+  (`MALLARD_TEST_BUILD`, the workflow's run number, stamped by CI on dev) and
+  `+999` for a release, so every published build installs over the last.
+- **Mallard updates itself** (owner request, as Mandarin's app does):
+  `AppUpdate.kt` reads `mallard.json` ({version, code, url, sha256, notes})
+  from `releases/download/<tag>/`, offers it on Home (Mandarin's `up_icon`
+  banner, Update / Later) and in Settings → System, and Update opens the
+  APK's link in the BROWSER, which downloads and installs it. MALLARD NEVER
+  INSTALLS AN APK ITSELF: no `REQUEST_INSTALL_PACKAGES`, no download-then-
+  launch-the-installer. 0.2.0-t32 to t41 did, as Mandarin does, and Play
+  Protect blocked every one as "Harmful app" — even signed with the owner's
+  private key: a new sideloaded app with no install history that fetches and
+  installs APKs is what its dropper model blocks (Mandarin's history vouches
+  for Mandarin; Mallard has none). Don't add the permission back. Core's `MallardRelease.kt` decides:
+  newer means a higher versionCode; a release build follows `mallard-latest`,
+  a test build that AND `mallard-test`; the APK's url must be one of this
+  repository's `mallard-*` releases. RULES THAT KEEP IT SAFE:
+  - every Mallard release is a PRE-release, never "latest", and no Mallard tag
+    starts with `v` — `releases/latest` and `v*` tags are the SERVER's, and
+    `lib/updater.js` would offer a Mallard release to every server install;
+  - NOTHING PUBLISHED IS EVER SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's
+    rule). It is public, so an app signed with it that asks to install
+    updates is indistinguishable from malware: Play Protect blocked 0.2.0-t32
+    as "harmful". `mallard.yml` signs with the owner's private key —
+    `MALLARD_KEYSTORE_*` secrets, else Mandarin's `MUSICD_KEYSTORE_*` (alias
+    `musicd`), one key for all the owner's apps — and FAILS rather than
+    publish without one. Only a pull request's build may use the debug key;
+    test and release builds share the one private key, or Android refuses
+    the update;
+  - a Mallard release is cut BY HAND: Run workflow on `mallard.yml` from main
+    with "stable" ticked (it publishes `mallard-v<version>` and refreshes
+    `mallard-latest`). Straight after, the next PR raises `mallardBase` and
+    `versionName` to the next version, or dev's test builds (base*1000+N)
+    would sit below the release's code and could never install over it.
 
 ## Plugins ("apps"), the generic engine
 
@@ -152,6 +272,11 @@ Layout section of README.md.
   use any verb of their own, or STANDARD info/favourites menus with a known
   verb. An undispatchable verb makes LMS CLOSE THE SOCKET; the engine never
   guesses, and maps that close to 503 `{unavailable:true}`.
+- Both apps draw it: Mallard's Apps and Radio screens, and the web app's
+  `public/apps-browser.js` ("Apps & radio" — ONE side-menu row with Apps |
+  Radio tabs, because the menu's height budget on a small phone has no room
+  for two). The page holds only tokens; ▶ plays, ⋯ is the app's one dropdown
+  (`window.__openOptionsMenu`) with Play next / Add to queue / More.
 - `myapps items` is asked WITH a player, so each plugin's `condition()`
   applies. Without a player it falls back to `apps 0 200 menu:1`. Radio comes
   from `radios 0 200 menu:radio`.
@@ -159,7 +284,70 @@ Layout section of README.md.
   custom actions) are NOT used by the engine. If added later they must be
   gated on detecting MusicD meets Material and hidden when it is absent.
 
+- **Installing plugins** (`lib/lmsplugins.js`, routes in `lib/lms-settings-routes.js`): LMS has NO command for
+  install/update/remove, so the server drives LMS's own `settings/server/plugins.html` (verified against
+  `Slim/Web/Settings/Server/Plugins.pm` + `plugins_main.html`): GET and parse it, POST `saveSettings=1`, `rand`,
+  ONLY the one plugin's fields (`install:N`+`N` / `install:N` alone / `manual:N`(+`N`) / `update:N=1`) and ECHO
+  `auto`, `useUnsupported`, `repos` — every save rewrites those three, so leaving one out switches it off or drops
+  a repository. `X-Requested-With: XMLHttpRequest` passes LMS's CSRF check. LMS's third-party-plugins warning
+  (`acceptPluginRisk`) is accepted only on the person's own tap (`accept:true`), never automatically. Plugins are
+  named, never addressed: the url and sha stay in LMS. Changes apply on `restartserver`, which drops the socket.
+  `lib/lmsplugins.fixture.js` renders the page as LMS's template does — keep it in step with the template.
+
+- **Away from home** (`lib/tailscale.js`, `lib/tailscale-routes.js`, `musicdnet/`): Mandarin's Go tsnet engine, built
+  into the Docker image (a cross-compiling `golang` stage) and run as a child process; driven over a loopback HTTP API
+  with a per-start secret; it exits when its stdin closes. The tailnet reaches the app ONLY through a loopback port of
+  its own, and a request there is let in only from the owner's own nodes (`own_ips`) — this server has no sign-in, so
+  never route tailnet traffic to the LAN port. `TS_AUTHKEY` is passed through the engine's API, never inherited.
+  The web app has no Away pane (owner decision); Mallard manages the server's engine AND runs the same engine on the
+  phone (`PhoneEngine.kt`/`Away.kt`, built by `mallard.yml` for arm64): away, it forwards 127.0.0.1:34390 (never
+  Mandarin's 34500) to the tailnet address `/api/status` names; `/api/ping` is that engine's probe.
+  THIS PHONE IS AN LMS PLAYER, AS MANDARIN'S PHONE ZONE (`lib/phoneplayers.js`, `lib/relayplayer.js`,
+  `lib/slimproto.js`, `lib/phone-routes.js`): per phone the server runs its OWN Slimproto player (MAC `02:6d:…` from the
+  phone's id); LMS streams it each track's own bytes, spooled (os.tmpdir(), never data/) and handed to Mallard ONE ITEM
+  PER TRACK over SSE (`/api/phone/events`); Mallard plays them as an ExoPlayer playlist (`PhoneRelay.kt`) and reports
+  (`/api/phone/report`). Each track (`/api/phone/track`, Range) is the FILE ITSELF (bit-perfect; at home ALWAYS) or,
+  away with Opus chosen (the default), `&q=opus`: Opus 256k made per track from the whole file with Mandarin's
+  arguments (soxr to 48 kHz, from float; `opusArgs`), decoded by Mallard's own libopus at 24-bit/48 kHz. NO squeezelite,
+  NO continuous stream, NO FLAC option (owner: resampled to 48 kHz it isn't lossless). LMS's ReplayGain (strm s) goes
+  with the track as `gain_db` and is applied ON THE PHONE (`TrackGain` in WordsSink), as Mandarin's. THE TRAP: no
+  DSCO/STMd before the first STMs of a started track (LMS would take the phone's STMs for the next track) — held, then
+  STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes each a passthrough; `flc` first
+  re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, level 100, `mp3StreamingMethod 1`; audg is ignored.
+  Away, over the tailnet, `/api/zones` is that phone's player alone ("This phone").
+  CACHE AHEAD, AS MANDARIN'S (`lib/phonefiles.js`, Mallard `StreamCache`/`PhoneAhead`/`CachePlan`): LMS hands a player
+  ONE track ahead, so the phone asks `/api/phone/ahead` (LMS's own play order) and fetches each track by its LMS id from
+  `/api/phone/file?id=[&q=opus]` (the file via LMS's `/music/<id>/download`, Range passed through; or Opus made once and
+  kept in data/cache/phone-opus, LRU 2 GB) into its own LRU cache keyed `t<id>:orig|opus`. `identify` tells the phone
+  which track each `strm s` is (`track_id`), so it plays it from its cache WHEN IT HOLDS IT WHOLE (else the player's bytes); a streaming service's track or a
+  part-way start (a seek) has none and plays as the player's bytes. Relative addresses, resolved at open: a track
+  cached at home plays away.
+  THIS PHONE'S VOLUME IS THE PHONE'S (Mandarin's rule): the server sets every phone player fixed at 100%
+  (`digitalVolumeControl 0` + level 100, `playerUp`), and Mallard's `ServerClient` hands every volume call for this
+  phone's player to `ThisPhone.volume` (`PhoneVolume.kt`: Android's media volume, or the USB DAC's level) instead of
+  the server; `/api/zone-state` for it carries the phone's level. Never send it to LMS. AT HOME, Mallard names itself
+  (`X-Mallard-Device`) and `/api/zones` lists its own player (`macFor`, = core `ThisPhone.playerId`) as "This phone",
+  last; choosing it says hello (`PhoneZone.here`), choosing a room says goodbye (`leaveHere`).
+  AWAY, EVERY SCREEN'S ROOM IS THE PHONE'S (Mandarin's AwayRoom): core `AwayRooms` rewrites any room a request names
+  (`zone`, `zone_or_output_id`, `/api/lms/player/<id>/…`) to this phone's player in `HttpTransport` while
+  `ThisPhone.awayRoom` names it — so a screen opened on a room at home follows the phone with nothing chosen by hand.
+  Never reopen screens instead. The reach banner never shows on ONE miss or while `Away.busy` (the way changing): two
+  misses in a row, Mandarin's rule. At home the phone's Tailscale stays joined while the app is on screen or This phone
+  plays, so going away is at once (Mandarin's keepReady).
+
 ## Gotchas worth remembering
+
+- THE SHELF (`/shelf`, ported from the Roon build): a page of its own (`public/shelf*.js|css`, `shelf.html`,
+  `shelf-off.html`), the whole library sent once by `/api/shelf/albums` (`lib/shelf.js`, `lib/shelf-routes.js`) and
+  filtered in the browser. OFF BY DEFAULT (`features` id `shelf`): off, `/shelf` serves `shelf-off.html` and the list
+  answers 403 WITHOUT reading the index — test that by counting reads, not by a hidden row. The switch is
+  `/api/settings/shelf`, which the web app (`shelf-entry.js`: menu row + Settings → Shelf) and Mallard (Settings → Shelf) both
+  read. No `/api/live` here: the page re-asks the list every 30 s with its signature and is told `same`. Its player
+  bar polls ADAPTIVELY (2 s playing / 6 s not), never the Roon build's fixed 4 s. LMS has no catalogue numbers or
+  release kinds (sent null); formats come from the album's first track (`fmtType/fmtRate/fmtBits` → `factsOf`, the
+  Roon file codes the Formats tab reads). Every file stays under the 400-line watch: `shelf-touch.js` and
+  `shelf-order.js` were cut out of the Roon build's `shelf.js` / `shelf-pick.js` for it, reaching the page's state
+  through the hub as the other parts do.
 
 - Artist strings split into separate clickable artists on ALL of " / ",
   "; ", ", ", " & ", " + " and feat./featuring/ft. (owner decision, v1.0.5 —
@@ -586,10 +774,12 @@ Layout section of README.md.
   / 5000 rows, so "Most played" / "Last played" are approximations over recent
   history, NOT all-time, and two albums sharing a title share a bucket. The
   Library sort notes say so — keep any new UI equally honest.
-- Album genre comes from LMS tags g/G via `albumGenre()` (both letters sent,
-  as with e/E, because which one carries genre varies by LMS version; a
-  multi-genre album keeps its FIRST genre). An album LMS gives no genre for
-  simply drops out of the genre facet — never throws.
+- Album genre is its FIRST TRACK's, read in the background track sweep (`albumAddedTimes`, `titles … tags:…g`) beside
+  its format. LMS's `albums` query has NO genre tag (verified in Slim/Control/Queries.pm albumsQuery) — the old belief
+  that tags g/G carried it left every album genre-less, the Shelf's Genres tab and the genre facet empty. The
+  added-times cache marks `withGenre`, so an older cache re-sweeps. An album LMS gives no genre drops out of the facet.
+- Qobuz albums' RECORD LABELS come from LMS's own album info first (`lib/lmslabels.js`: `albuminfo items` → the Qobuz
+  plugin's "On Qobuz" section → "Music Label: …"), owner request; the public qobuz.com scrape stays the fallback.
 - Live Playlists (`lib/liveplaylists.js`) store a saved LIBRARY VIEW, never a
   track list — opening one re-runs `libraryView()`, so there is no second query
   engine. The rule vocabulary is INJECTED from `LIB_SORTS` so a saved rule can
@@ -1000,8 +1190,15 @@ Layout section of README.md.
   reintroduce a tint to "group" anything. `--panel-hairline` survives only for
   genuinely RAISED surfaces (bottom sheets); flat content uses `--border`.
 - Theming is TWO axes on `<html>`: `data-theme` (dark|light) x `data-palette`
-  (classic|copper) = 4 themes (Dark, Light, Copper dark, Brass light), matching
-  the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
+  (classic|copper|hifi) = 5 themes. MALLARD (`hifi`, dark) IS THE DEFAULT
+  (owner: the web app looks as the Mallard app does): its tokens are in
+  style.css (checked by `lib/glass.test.js` like the rest), its component rules
+  in `public/hifi.css`, ported from Mandarin's page — the LOOK ONLY (fonts,
+  brass discs and glyphs, serif titles, the level-meter progress), NEVER its
+  layout: Mandarin's block also restructures the album view and puts
+  `env(safe-area-inset-top)` on the modal family, which the iOS rule forbids.
+  `THEME_KEY` moved to v3 so every install landed on Mallard once. The others
+  (Dark, Light, Copper dark, Brass light) match the MusicD Remote Roon extension. Component CSS must read TOKENS only, never a
   palette literal — a new palette should be a token block and nothing else.
   `--on-accent` is ink ON an accent fill; `--accent-text` is accent used AS text
   (they differ on light palettes, which need white on the fill). Theme list lives
@@ -1219,11 +1416,11 @@ Layout section of README.md.
   Home unheard tile really IS in the Roon build, and the side menu really has
   NO "Filter" or "Play something unheard" row. Re-download before auditing:
   `raw.githubusercontent.com/meltface-80/MusicD-Remote/<branch>/public/<file>`.
-- "Play something unheard" is the FIRST TILE of the Not-played row plus the
-  top-bar icon — not a side-menu row (v1.0.62, matching Roon). It is built
-  AFTER `renderHomeUnplayed`'s empty check, deliberately: appending it ahead of
-  that check made `rowHasContent()` always true, so the "Loading…" placeholder
-  never showed and a failed load was never retried. Any test that clicks "the
+- HOME'S HEAD IS MALLARD'S (owner report, reversing v1.0.62's "first tile of the Not-played row"): the greeting (date in
+  brass capitals, "Good evening" in the serif; `home-head.js`), then ONE strip — Random Album (the old unheard tile,
+  Mallard's disc and words; `window.__playUnheard`) and the Album of the Day — in `#home-today`, a one-row carousel on
+  every screen, then Not played in 6 months with ALBUMS ONLY. `renderHomeUnplayed` fills both. In the Mallard theme
+  every Home row is one row (a tablet's two-row grid put the next tile under the first). Any test that clicks "the
   first .album" must exclude `.home-unheard-tile`.
 - The Focus sheet's `openSections` is THREE-VALUED (`{}` with undefined =
   untouched), never a Set (v1.0.62). A boolean Set recomputed `activeCount > 0`
@@ -1350,18 +1547,18 @@ Layout section of README.md.
   the previous one's content leaves it on screen until the fetch lands.
   `showLibraryWall` must set `libraryWallActive` AFTER calling it, because
   `enterFullWall` calls `exitLibraryWall()`.
-- The app is an INSTALLABLE PWA wearing the MusicD duck (v1.0.64):
-  `public/manifest.webmanifest` + `public/icons/`, generated from the owner's
-  logo. `any` and `maskable` are SEPARATE artwork, never one file listed twice
-  — Android crops a maskable icon to a shape of its choosing and only
-  guarantees the central 80%, so the maskable pair is drawn at 0.72 inset to
-  sit inside that safe zone while `any` fills the tile at 0.88. iOS reads NONE
-  of the manifest's icons, so `apple-touch-icon` + the apple-mobile-web-app
-  metas are what make an iPhone install it rather than bookmark a screenshot.
-  The 16/32px favicons get a contrast boost before they are committed: the
-  logo is a fine engraving and its hatching averages to grey mush at that size.
-  Regenerate from a new logo with `tools/make-icons.py <logo.png>`; don't
-  hand-resize, or the sizes stop framing the art identically.
+- The app is an INSTALLABLE PWA wearing MALLARD'S MARK (owner decision, replacing the plain MusicD duck of v1.0.64):
+  the MusicD duck beside LYRION'S WAVEFORM, as Rouen pairs it with Roon's bars — but the REVERSE of Rouen's layout and
+  in MANDARIN'S BRASS, because a first cut (Rouen's artwork as it is) read as Rouen's (owner: "too similar"). Rouen's
+  duck mirrored to the right half and recoloured brass, at a brass line, with half of Lyrion's waveform on the left in
+  Lyrion's pale green, on the dark ground (half a waveform for half a duck; the full ten bars turned to
+  hatching at launcher size). ONE master, `tools/brand/mallard-mark.png`, and ONE generator, `tools/make-icons.py`,
+  write every icon: the PWA set in `public/icons` (`any` and `maskable` are SEPARATE artwork — Android guarantees only
+  a maskable icon's centre, so that pair is the mark at 80%; iOS reads none of the manifest's icons, so
+  `apple-touch-icon` + the apple-mobile-web-app metas are what make an iPhone install it), Mallard's launcher mipmaps
+  (the adaptive foreground is the mark at 72/108 on `icon_background`, the same dark ground; every full icon draws
+  the mark at 88% so a launcher's mask never cuts the headphone cup), the side menu's
+  badge, and the share card's corner tile (`duck-tile.png` / `duck_tile.png`, a brass-rimmed rounded square). Never hand-resize: run the generator so every size frames the mark identically.
 - Endpoints that fetch a USER-SUPPLIED URL server-side (album-edit `art_url`,
   label-logo `url`) must pass it through `assertPublicUrl()` (`lib/urlguard.js`)
   first — it rejects loopback/private/link-local/ULA targets (SSRF guard). It

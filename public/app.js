@@ -136,6 +136,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // window.__themes so the Settings pane can render the picker without
   // duplicating the list.
   const THEMES = [
+    { id: "mallard", label: "Mallard", note: "Graphite and brass — the Mallard app's look", theme: "dark", palette: "hifi" },
     { id: "dark",         label: "Dark",         note: "The original — cool grey and cyan",
       theme: "dark",  palette: "classic" },
     { id: "light",        label: "Light",        note: "The original — bright and neutral",
@@ -145,7 +146,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     { id: "brass-light",  label: "Brass light",  note: "Warm parchment with a brass accent",
       theme: "light", palette: "copper" },
   ];
-  const THEME_KEY = "rra-theme-v2";
+  // v3: Mallard became the default (owner: the web app looks as the Mallard app does), so every install lands on it
+  // once; a theme chosen after that is kept.
+  const THEME_KEY = "rra-theme-v3";
   window.__themes = THEMES;
 
   function applyTheme(id) {
@@ -169,14 +172,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 
   (function initTheme() {
     let id = localStorage.getItem(THEME_KEY);
-    if (!THEMES.some(t => t.id === id)) {
-      // Migrate the v1 key, which only ever held "light" | "dark".
-      const legacy = localStorage.getItem("rra-theme");
-      if (legacy === "light" || legacy === "dark") id = legacy;
-      else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) id = "light";
-      else id = "dark";
-      localStorage.setItem(THEME_KEY, id);
-    }
+    if (!THEMES.some(t => t.id === id)) { id = "mallard"; localStorage.setItem(THEME_KEY, id); }
     applyTheme(id);
   })();
 
@@ -527,7 +523,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     const glyph = document.createElement("span");
     glyph.className = "unheard-glyph";
     glyph.setAttribute("aria-hidden", "true");
-    glyph.textContent = "\u2727";
+    glyph.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><path d="M6.5 8.3a6.6 6.6 0 0 1 3.6-2.6M17.5 15.7a6.6 6.6 0 0 1-3.6 2.6"/></svg>';   // Mallard's disc
     art.appendChild(glyph);
     btn.appendChild(art);
 
@@ -535,11 +531,8 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     meta.className = "album-meta";
     const t = document.createElement("div");
     t.className = "album-title";
-    t.textContent = "Play something unheard";
-    const sub = document.createElement("div");
-    sub.className = "album-artist";
-    sub.textContent = "Surprise me";
-    meta.appendChild(t); meta.appendChild(sub);
+    t.textContent = "Random Album";   // Mallard's words: an album not played in six months
+    meta.appendChild(t);
     btn.appendChild(meta);
 
     // One implementation, two triggers: the request, the zone check and the
@@ -554,17 +547,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   function renderHomeUnplayed(aotd, albums) {
     albums = albums || [];
     homeUnplayed.innerHTML = "";
-    if (!albums.length && !aotd) {
-      homeUnplayed.innerHTML = '<div class="home-carousel-empty">Nothing here yet — play some music and check back.</div>';
-      return;
-    }
+    // Random Album and today's album: the strip under the greeting, as Mallard's Home (no longer the head of this row).
+    const today = document.getElementById("home-today");
     const frag = document.createDocumentFragment();
-    // "Play something unheard" leads the row it belongs to: this carousel IS
-    // the unheard albums, so the action and the row mean the same thing, and
-    // it sits at the top of Home without needing a place of its own. Built as
-    // a tile so it inherits the carousel's sizing on every screen rather than
-    // carrying breakpoints of its own. It comes AFTER the empty check above,
-    // so a row holding only the action tile can't read as content.
     frag.appendChild(buildUnheardTile());
     if (aotd) {
       const tile = homeTile(aotd, "home-aotd");
@@ -577,8 +562,9 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       }
       frag.appendChild(tile);
     }
-    for (const a of albums) frag.appendChild(homeTile(a));
-    homeUnplayed.appendChild(frag);
+    if (today) { today.innerHTML = ""; today.appendChild(frag); }
+    if (!albums.length) { homeUnplayed.innerHTML = '<div class="home-carousel-empty">Nothing here yet — play some music and check back.</div>'; return; }
+    for (const a of albums) homeUnplayed.appendChild(homeTile(a));
   }
 
   async function loadHomeUnplayed() {
@@ -5808,7 +5794,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
 
     if (!npTrack || !onNowPlayingScreen()) return;
-    if (!np) { setNpTrack(null); npArtist.textContent = ""; npAlbum.textContent = ""; return; }
+    if (!np) { setNpTrack(null); npArtist.textContent = ""; npAlbum.textContent = ""; if (window.__npQuality) window.__npQuality(null); return; }
 
     setNpTrack(np.line1);
     // One clickable link per credited artist, the same renderer the album view
@@ -5818,7 +5804,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (window.__artistLinkNodes) npArtist.appendChild(window.__artistLinkNodes(np.line2, "np-artist-link"));
       else npArtist.textContent = np.line2;
     }
-    npAlbum.textContent  = np.line3 || "";
+    npAlbum.textContent  = np.line3 || ""; if (window.__npQuality) window.__npQuality(np.format);   // np-quality.js
     if (npAlbum) npAlbum.setAttribute("aria-label", "Open album: " + (np.line3 || ""));
 
     const playing = currentZone.state === "playing" || currentZone.state === "loading";
@@ -6239,249 +6225,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
 })();
 
 /* ------------------------------------------------------------------ */
-/*  Share card overlay                                                 */
-/* ------------------------------------------------------------------ */
-(() => {
-  const overlay   = document.getElementById("share-overlay");
-  const frame     = document.getElementById("share-frame");
-  const actions   = document.getElementById("share-actions");
-  const hintEl    = document.getElementById("share-hint");
-  const errEl     = document.getElementById("share-err");
-  const modalBtn  = document.getElementById("modal-share-btn");
-
-  async function ensureFont() {
-    if (!document.fonts || !document.fonts.load) return;
-    try {
-      await Promise.all([
-        document.fonts.load('700 42px Manrope'),
-        document.fonts.load('400 28px Manrope'),
-        document.fonts.load('700 16px Manrope'),
-        document.fonts.load('400 22px Manrope')
-      ]);
-      await document.fonts.ready;
-    } catch { /* fall back */ }
-  }
-
-  // ShareCard normally loads via the classic <script src="/sharecard.js">
-  // tag in index.html. If that request was slow/dropped (e.g. a flaky
-  // mobile connection to the LMS host), the bare `ShareCard` identifier
-  // never gets bound and calling ShareCard.render() below throws a
-  // ReferenceError. Detect that and (re)inject the script on demand.
-  let shareCardLoadPromise = null;
-  function ensureShareCard() {
-    if (typeof ShareCard !== "undefined") return Promise.resolve();
-    if (shareCardLoadPromise) return shareCardLoadPromise;
-    shareCardLoadPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "/sharecard.js";
-      const timer = setTimeout(() => {
-        reject(new Error("Timed out loading the share-card component."));
-      }, 8000);
-      script.addEventListener("load", () => {
-        clearTimeout(timer);
-        if (typeof ShareCard === "undefined") {
-          reject(new Error("Share-card component failed to initialize."));
-        } else {
-          resolve();
-        }
-      });
-      script.addEventListener("error", () => {
-        clearTimeout(timer);
-        reject(new Error("Failed to load the share-card component."));
-      });
-      document.head.appendChild(script);
-    }).catch((e) => {
-      // Allow a future retry (e.g. next tap of Share) instead of caching
-      // a permanent failure.
-      shareCardLoadPromise = null;
-      throw e;
-    });
-    return shareCardLoadPromise;
-  }
-
-  function close() {
-    overlay.classList.add("hidden");
-    frame.innerHTML =
-      `<div class="share-placeholder"><div class="share-spinner"></div><div>Generating card…</div></div>`;
-    actions.innerHTML = "";
-    hintEl.textContent = "";
-    errEl.textContent  = "";
-  }
-  overlay.addEventListener("click", (e) => {
-    if (e.target.closest && e.target.closest("[data-share-close]")) close();
-  });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !overlay.classList.contains("hidden")) close();
-  });
-
-  // Public entry point — called from album modal share button + mini transport
-  async function open(input) {
-    const title  = input.title  || "";
-    const artist = input.artist || "";
-    if (!title) return;
-
-    actions.innerHTML = "";
-    hintEl.textContent = "";
-    errEl.textContent  = "";
-    frame.innerHTML =
-      `<div class="share-placeholder"><div class="share-spinner"></div><div>Generating card…</div></div>`;
-    overlay.classList.remove("hidden");
-
-    try {
-      await ensureFont();
-      await ensureShareCard();
-
-      // Best-effort release year + label + review via extras endpoint
-      let releaseRaw = "";
-      let labelText  = "";
-      let reviewText = "";
-      try {
-        const params = new URLSearchParams({ title, artist });
-        const r = await fetch("/api/album/extras?" + params, { cache: "no-store" });
-        if (r.ok) {
-          const j = await r.json();
-          if (j.year) releaseRaw = j.year;
-          if (j.album && j.album.year && !releaseRaw) releaseRaw = String(j.album.year);
-          if (j.album && j.album.label) labelText = String(j.album.label);
-          const desc = j.album && j.album.description;
-          if (desc) {
-            // Card height grows to fit, so show most of the review.
-            // Cap generously (~10 sentences / 1400 chars) to avoid an
-            // absurdly tall card from a very long Wikipedia article.
-            let t = String(desc).trim();
-            const sentences = t.match(/[^.!?]+[.!?]+/g);
-            if (sentences && sentences.length > 10) {
-              t = sentences.slice(0, 10).join(" ").trim();
-            }
-            if (t.length > 1400) t = t.slice(0, 1398).replace(/\s+\S*$/, "") + "…";
-            reviewText = t;
-          }
-        }
-      } catch { /* keep blank */ }
-
-      const coverUrl = input.image_key
-        ? `/api/image/${encodeURIComponent(input.image_key)}?size=1000&t=${Date.now()}`
-        : "";
-
-      const blob = await ShareCard.render({
-        coverUrl,
-        wordmarkUrl: null,
-        title,
-        artist,
-        releaseRaw,
-        label: labelText,
-        review: reviewText
-      });
-
-      const dataUrl = await blobToDataUrl(blob);
-      frame.innerHTML = `<img src="${dataUrl}" alt="Share card">`;
-      buildActions(blob, title, artist);
-    } catch (e) {
-      frame.innerHTML = `<div class="share-placeholder">Could not generate the card.</div>`;
-      errEl.textContent = (e && e.message) ? e.message : String(e);
-    }
-  }
-  window.__openShareCard = open;
-
-  function buildActions(blob, title, artist) {
-    actions.innerHTML = "";
-    const fileName =
-      `${(artist || "artist").replace(/[^a-z0-9]+/gi, "_")}-` +
-      `${(title  || "card"  ).replace(/[^a-z0-9]+/gi, "_")}.png`;
-
-    const canShare = (() => {
-      try {
-        if (!navigator.share || !navigator.canShare) return false;
-        const probe = new File([new Uint8Array([0])], "p.png", { type: "image/png" });
-        return navigator.canShare({ files: [probe] });
-      } catch { return false; }
-    })();
-    const canCopy = typeof window.ClipboardItem !== "undefined"
-      && navigator.clipboard && typeof navigator.clipboard.write === "function";
-
-    if (canCopy) {
-      const b = mkBtn("ghost", icon("copy"), "Copy image");
-      b.onclick = async () => {
-        try {
-          await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
-          setLabel(b, "Copied!"); setTimeout(() => setLabel(b, "Copy image"), 2000);
-        } catch (e) { errEl.textContent = e.message || String(e); }
-      };
-      actions.appendChild(b);
-    }
-    if (canShare) {
-      const b = mkBtn("primary", icon("share"), "Share…");
-      b.onclick = async () => {
-        try {
-          const file = new File([blob], fileName, { type: "image/png" });
-          await navigator.share({ files: [file] });
-        } catch (e) { if (e && e.name !== "AbortError") errEl.textContent = e.message || String(e); }
-      };
-      actions.appendChild(b);
-    }
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName;
-    a.appendChild(document.createTextNode(""));
-    a.innerHTML = `${icon("download")}<span>Download</span>`;
-    actions.appendChild(a);
-
-    hintEl.textContent = (canCopy || canShare)
-      ? "Tap a button above, or long-press the card to save."
-      : "Long-press the card to save, or tap Download.";
-  }
-
-  function blobToDataUrl(blob) {
-    return new Promise((res, rej) => {
-      const r = new FileReader();
-      r.onload  = () => res(r.result);
-      r.onerror = () => rej(new Error("read failed"));
-      r.readAsDataURL(blob);
-    });
-  }
-  function mkBtn(cls, iconSvg, label) {
-    const b = document.createElement("button");
-    b.className = cls;
-    b.type = "button";
-    b.innerHTML = `${iconSvg}<span>${label}</span>`;
-    return b;
-  }
-  function setLabel(btn, text) {
-    const s = btn.querySelector("span");
-    if (s) s.textContent = text;
-  }
-  function icon(name) {
-    const I = {
-      share:    '<polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>',
-      copy:     '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
-      download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'
-    };
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || ""}</svg>`;
-  }
-
-  // Wire the share button inside the album modal
-  if (modalBtn) {
-    modalBtn.addEventListener("click", () => {
-      // On the now-playing screen read the live zone state directly via
-      // window.__getCurrentNp() (not a mirrored global) so the card always
-      // reflects the current track, not the album that was playing when the
-      // modal first opened, regardless of which modal tab is active.
-      const npModal = document.getElementById("album-modal");
-      const isNp = npModal && npModal.classList.contains("np-mode");
-      const np = isNp && window.__getCurrentNp && window.__getCurrentNp();
-      if (np) {
-        open({ title: np.line3 || "", artist: np.line2 || "", image_key: np.image_key });
-        return;
-      }
-      const a = window.__currentAlbum;
-      if (!a) return;
-      open({ title: a.title || "", artist: a.subtitle || "", image_key: a.image_key });
-    });
-  }
-})();
-
-/* ------------------------------------------------------------------ */
 /*  Self-update: poll status, show a toast, install on tap            */
 /* ------------------------------------------------------------------ */
 (function initUpdater() {
@@ -6755,10 +6498,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (r.ok) {
         const s = await r.json();
         if (s && s.current) {
-          const parts = (s.current || "").split(".");
-          versionEl.textContent = parts.length >= 3
-            ? "MusicD Remote v" + parts[0] + "." + parts[1] + " (Build " + parts[2] + ")"
-            : "MusicD Remote v" + s.current;
+          versionEl.textContent = "MusicD LMS Remote v" + s.current;   // Mallard's words (core SettingsLists.version)
           versionLoaded = true;
         }
       }
@@ -7008,6 +6748,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     // Each level starts scrolled to the top, like a pushed page.
     if (sheet) sheet.scrollTop = 0;
   };
+  window.__settingsShow = showView;   // audio-devices.js: a player's page, and back to the list
   const atHome = () => {
     const home = sheet && sheet.querySelector('.settings-view[data-view="home"]');
     return !home || !home.classList.contains("hidden");
@@ -7020,254 +6761,12 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
         const pane = nav.getAttribute("data-pane");
         showView(pane);
         if (pane === "lms") loadLmsPane();
-        if (pane === "player") loadPlayerPane();
+        if (pane === "playback" && window.__audioDevices) window.__audioDevices.open();   // audio-devices.js
         if (pane === "smartpicks") loadSmartPicksPane();
         return;
       }
       if (e.target.closest("[data-settings-back]")) { showView("home"); return; }
     });
-  }
-
-  /* ---- Player settings pane (native per-player LMS settings) ------------ */
-  const psPlayer = document.getElementById("ps-player");
-  const psModel  = document.getElementById("ps-model");
-  const psBody   = document.getElementById("ps-body");
-  const psStat   = document.getElementById("ps-status");
-  let psCurrent  = null;
-  let psStatTimer = null;
-
-  function psStatus(msg, isError) {
-    if (!psStat) return;
-    psStat.textContent = msg;
-    psStat.style.color = isError ? "var(--danger)" : "";
-    clearTimeout(psStatTimer);
-    if (!isError) psStatTimer = setTimeout(() => { psStat.textContent = ""; }, 2500);
-  }
-  async function psPost(url, body, okMsg) {
-    try {
-      const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || `HTTP ${r.status}`); }
-      psStatus(okMsg || "Saved ✓");
-      return true;
-    } catch (e) { psStatus("Couldn't save: " + e.message, true); return false; }
-  }
-  const psSavePref = (name, value) =>
-    psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/pref/${encodeURIComponent(name)}`, { value });
-
-  // Row builders following the pane's existing markup patterns.
-  function psRowToggle(label, info, checked, onChange) {
-    const row = document.createElement("div");
-    row.className = "settings-row";
-    row.innerHTML =
-      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
-      `<label class="switch"><input type="checkbox"><span class="switch-track"><span class="switch-thumb"></span></span></label>`;
-    const input = row.querySelector("input");
-    input.checked = !!checked;
-    input.addEventListener("change", () => onChange(input.checked, input));
-    return row;
-  }
-  function psRowSelect(label, info, options, value, onChange) {
-    const row = document.createElement("div");
-    row.className = "settings-row";
-    row.innerHTML =
-      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
-      `<div class="settings-select-wrap"><select class="settings-select"></select>` +
-      `<svg class="settings-caret" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></div>`;
-    const sel = row.querySelector("select");
-    for (const [v, text] of options) {
-      const o = document.createElement("option");
-      o.value = String(v); o.textContent = text;
-      sel.appendChild(o);
-    }
-    sel.value = String(value);
-    if (sel.value !== String(value)) { // current value outside the list — show it raw
-      const o = document.createElement("option");
-      o.value = String(value); o.textContent = String(value);
-      sel.appendChild(o); sel.value = String(value);
-    }
-    sel.addEventListener("change", () => onChange(sel.value, sel));
-    return row;
-  }
-  function psRowNumber(label, info, value, min, max, step, onChange) {
-    const row = document.createElement("div");
-    row.className = "settings-row";
-    row.innerHTML =
-      `<span class="settings-label">${label} ${info ? `<button class="settings-info-btn" data-info="${info.replace(/"/g, "&quot;")}" aria-label="Info">ⓘ</button>` : ""}</span>` +
-      `<input type="number" class="settings-token-input ps-num" min="${min}" max="${max}" step="${step}">`;
-    const input = row.querySelector("input");
-    input.value = value != null ? String(value) : "";
-    input.addEventListener("change", () => onChange(input.value, input));
-    return row;
-  }
-  function psBlock(...rows) {
-    const b = document.createElement("div");
-    b.className = "settings-block";
-    for (const r of rows) if (r) b.appendChild(r);
-    return b.children.length ? b : null;
-  }
-
-  async function loadPlayerPane() {
-    if (!psPlayer) return;
-    try {
-      const r = await fetch("/api/zones");
-      const j = await r.json();
-      const zones = (j.zones || []);
-      psPlayer.innerHTML = "";
-      for (const z of zones) {
-        const o = document.createElement("option");
-        o.value = z.zone_id; o.textContent = z.display_name;
-        psPlayer.appendChild(o);
-      }
-      if (!zones.length) {
-        psBody.innerHTML = '<div class="settings-sub">No players found.</div>';
-        return;
-      }
-      const keep = psCurrent && zones.some(z => z.zone_id === psCurrent) ? psCurrent : zones[0].zone_id;
-      psPlayer.value = keep;
-      await loadPlayerSettings(keep);
-    } catch (e) {
-      psBody.innerHTML = '<div class="settings-sub"></div>';
-      psBody.firstChild.textContent = "Couldn't load players: " + e.message;
-    }
-  }
-  if (psPlayer) psPlayer.addEventListener("change", () => loadPlayerSettings(psPlayer.value));
-
-  async function loadPlayerSettings(id) {
-    psCurrent = id;
-    psModel.textContent = "";
-    psBody.innerHTML = '<div class="settings-sub">Loading…</div>';
-    try {
-      const r = await fetch(`/api/lms/player/${encodeURIComponent(id)}/settings`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      if (psCurrent !== id) return;   // switched players while loading
-      renderPlayerSettings(j);
-    } catch (e) {
-      if (psCurrent === id) {
-        psBody.innerHTML = '<div class="settings-sub"></div>';
-        psBody.firstChild.textContent = "Couldn't load settings: " + e.message;
-      }
-    }
-  }
-
-  function renderPlayerSettings(j) {
-    const p = j.prefs || {};
-    const has = (k) => p[k] !== null && p[k] !== undefined;
-    psModel.textContent = j.model ? j.model : "";
-    psBody.innerHTML = "";
-    const frag = document.createDocumentFragment();
-    const divider = () => { const d = document.createElement("div"); d.className = "settings-divider"; return d; };
-    const append = (block) => { if (block) { if (frag.children.length) frag.appendChild(divider()); frag.appendChild(block); } };
-
-    // Identity: rename + power
-    {
-      const b = document.createElement("div");
-      b.className = "settings-block";
-      b.innerHTML =
-        `<div class="settings-row"><span class="settings-label">Player name <button class="settings-info-btn" data-info="The name this player shows everywhere — here, in LMS and to other controllers." aria-label="Info">ⓘ</button></span></div>` +
-        `<div class="settings-token-row"><input id="ps-name" type="text" class="settings-token-input" autocomplete="off" spellcheck="false">` +
-        `<button id="ps-name-save" class="settings-update-btn" type="button">Save</button></div>`;
-      b.querySelector("#ps-name").value = j.name || "";
-      b.querySelector("#ps-name-save").addEventListener("click", async () => {
-        const name = b.querySelector("#ps-name").value.trim();
-        if (!name) return;
-        if (await psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/name`, { name }, "Renamed ✓")) {
-          const opt = psPlayer.querySelector(`option[value="${CSS.escape(psCurrent)}"]`);
-          if (opt) opt.textContent = name;
-        }
-      });
-      b.appendChild(psRowToggle("Power", "Soft power for this player.", j.power, (on) =>
-        psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/power`, { on }, on ? "Powered on" : "Powered off")));
-      append(b);
-    }
-
-    // Playback modes + Don't Stop The Music (LMS's own keep-playing feature)
-    const dstm = j.dstm && j.dstm.options && j.dstm.options.length ? j.dstm : null;
-    append(psBlock(
-      j.modes && j.modes.shuffle != null ? psRowSelect("Shuffle", "Shuffle mode for this player's queue.",
-        [[0, "Off"], [1, "By song"], [2, "By album"]], j.modes.shuffle,
-        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { shuffle: v })) : null,
-      j.modes && j.modes.repeat != null ? psRowSelect("Repeat", "Repeat mode for this player's queue.",
-        [[0, "Off"], [1, "One song"], [2, "All"]], j.modes.repeat,
-        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/mode`, { repeat: v })) : null,
-      dstm ? psRowSelect("Don't Stop The Music", "When the queue runs out, LMS keeps playing using the selected mix (Random Album, Random Artist, …). This is LMS's built-in feature — it replaces the old app-side Random album radio.",
-        dstm.options.map(o => [o.key, o.text]), dstm.current,
-        (v) => psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/dstm`, { provider: v })) : null
-    ));
-
-    // Audio
-    append(psBlock(
-      has("transitionType") ? psRowSelect("Crossfade", "How one track blends into the next.",
-        [[0, "None"], [1, "Crossfade"], [2, "Fade in"], [3, "Fade out"], [4, "Fade in & out"]],
-        p.transitionType, (v) => psSavePref("transitionType", v)) : null,
-      has("transitionDuration") ? psRowNumber("Crossfade seconds", "Length of the crossfade/fade (0–10 s).",
-        p.transitionDuration, 0, 10, 1, (v) => psSavePref("transitionDuration", v)) : null,
-      has("transitionSmart") ? psRowToggle("Smart crossfade", "Skip the crossfade between consecutive tracks of the same album (gapless stays gapless).",
-        p.transitionSmart === "1" || p.transitionSmart === 1, (on) => psSavePref("transitionSmart", on ? "1" : "0")) : null,
-      has("replayGainMode") ? psRowSelect("Volume levelling", "Use ReplayGain tags to even out loudness between tracks/albums.",
-        [[0, "Off"], [1, "Track gain"], [2, "Album gain"], [3, "Smart gain"]],
-        p.replayGainMode, (v) => psSavePref("replayGainMode", v)) : null,
-      has("remoteReplayGain") ? psRowNumber("Remote stream gain (dB)", "Fixed gain applied to remote/streamed tracks that have no ReplayGain tags.",
-        p.remoteReplayGain, -20, 20, 1, (v) => psSavePref("remoteReplayGain", v)) : null,
-      // LMS's own Volume Control setting, with its exact two options.
-      has("digitalVolumeControl") ? psRowSelect("Volume control", "Fix the output at 100% if your amplifier/DAC controls loudness or you need perfect digital passthrough. Affects both digital and analog volume.",
-        [["0", "Output level is fixed at 100%"], ["1", "Volume controls adjust outputs"]],
-        p.digitalVolumeControl, (v) => psSavePref("digitalVolumeControl", v)) : null
-    ));
-
-    // Power behaviour
-    append(psBlock(
-      has("powerOnResume") ? psRowSelect("On power on", "What playback does when the player is switched off and back on.",
-        [["PauseOff-PlayOn",     "Pause when off · resume when on"],
-         ["PauseOff-NoneOn",     "Pause when off · stay paused"],
-         ["StopOff-PlayOn",      "Stop when off · play when on"],
-         ["StopOff-NoneOn",      "Stop when off · do nothing"],
-         ["StopOff-ResetPlayOn", "Stop & reset · play when on"],
-         ["StopOff-ResetOn",     "Stop & reset · do nothing"]],
-        p.powerOnResume, (v) => psSavePref("powerOnResume", v)) : null,
-      has("fadeInDuration") ? psRowNumber("Fade in on play (s)", "Volume ramp when playback starts or resumes.",
-        p.fadeInDuration, 0, 30, 1, (v) => psSavePref("fadeInDuration", v)) : null
-    ));
-
-    // Alarms
-    append(psBlock(
-      has("alarmsEnabled") ? psRowToggle("Alarms enabled", "Master switch for all of this player's alarms (set the alarms themselves in LMS).",
-        p.alarmsEnabled === "1" || p.alarmsEnabled === 1, (on) => psSavePref("alarmsEnabled", on ? "1" : "0")) : null,
-      has("alarmDefaultVolume") ? psRowNumber("Alarm volume", "Default volume for alarms (0–100).",
-        p.alarmDefaultVolume, 0, 100, 1, (v) => psSavePref("alarmDefaultVolume", v)) : null
-    ));
-
-    // Sync group
-    {
-      const sync = j.sync || { members: [], others: [] };
-      const rows = [];
-      if (sync.others.length) {
-        rows.push(psRowSelect("Sync with", "Group this player with another for synchronous playback everywhere.",
-          [["", "Not synced"], ...sync.others.map(o => [o.id, o.name])],
-          sync.members[0] || "",
-          async (v) => {
-            if (await psPost(`/api/lms/player/${encodeURIComponent(psCurrent)}/sync`, { with: v || null }, v ? "Synced ✓" : "Unsynced ✓")) {
-              loadPlayerSettings(psCurrent);   // group membership changed — refresh
-            }
-          }));
-      }
-      if (has("syncVolume")) rows.push(psRowToggle("Sync volume", "Volume changes apply to the whole sync group.",
-        p.syncVolume === "1" || p.syncVolume === 1, (on) => psSavePref("syncVolume", on ? "1" : "0")));
-      if (has("syncPower")) rows.push(psRowToggle("Sync power", "Power state follows the sync group.",
-        p.syncPower === "1" || p.syncPower === 1, (on) => psSavePref("syncPower", on ? "1" : "0")));
-      if (has("maintainSync")) rows.push(psRowToggle("Maintain sync", "Continuously correct timing drift within the group.",
-        p.maintainSync === "1" || p.maintainSync === 1, (on) => psSavePref("maintainSync", on ? "1" : "0")));
-      append(psBlock(...rows));
-    }
-
-    // Network / streaming
-    append(psBlock(
-      has("maxBitrate") ? psRowSelect("Bitrate limit", "Cap this player's stream bitrate (transcodes on the fly). Useful for remote/slow links.",
-        [[0, "No limit"], [64, "64 kbps"], [96, "96 kbps"], [128, "128 kbps"], [160, "160 kbps"], [192, "192 kbps"], [256, "256 kbps"], [320, "320 kbps"]],
-        p.maxBitrate, (v) => psSavePref("maxBitrate", v)) : null
-    ));
-
-    psBody.appendChild(frag);
   }
 
   /* ---- LMS server pane: embedded server settings + rescan actions ------- */
@@ -7503,64 +7002,6 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   }
   const loadSmartPicksPane = () => window.__loadSmartPicksPane && window.__loadSmartPicksPane();
 
-  /* ---- Random album radio, for the selected zone ------------------------
-   *
-   * PER ZONE, and the zone is the one chosen in the picker directly above it,
-   * so the switch is re-read whenever that changes — showing another zone's
-   * state here would be worse than not showing it at all.
-   */
-  const radioToggle = document.getElementById("radio-toggle");
-  const radioNote = document.getElementById("radio-toggle-note");
-  const currentZone = () => {
-    const z = document.getElementById("zone-select");
-    return z && z.value ? z.value : "";
-  };
-  async function loadRadioToggle() {
-    if (!radioToggle) return;
-    const zone = currentZone();
-    radioToggle.disabled = !zone;
-    if (!zone) {
-      radioToggle.checked = false;
-      if (radioNote) radioNote.textContent = "Choose a zone above first.";
-      return;
-    }
-    try {
-      const r = await fetch("/api/radio?zone=" + encodeURIComponent(zone), { cache: "no-store" });
-      if (!r.ok) return;
-      const j = await r.json();
-      radioToggle.checked = !!j.enabled;
-      if (radioNote) {
-        const sel = document.getElementById("zone-select");
-        const name = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : "this zone";
-        radioNote.textContent = j.enabled
-          ? "On for " + name + " — whole albums keep coming when the queue runs out."
-          : "Applies to " + name + ".";
-      }
-    } catch (e) { /* leave the switch at its last state */ }
-  }
-  if (radioToggle) radioToggle.addEventListener("change", async () => {
-    const on = radioToggle.checked;
-    const zone = currentZone();
-    if (!zone) { radioToggle.checked = false; return; }
-    try {
-      const r = await fetch("/api/radio", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zone, enabled: on }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
-      if (window.__showToast) window.__showToast(on ? "Random album radio on" : "Random album radio off");
-      loadRadioToggle();
-    } catch (e) {
-      radioToggle.checked = !on;   // the server refused — don't lie about it
-      if (window.__showToast) window.__showToast(e.message, "error");
-    }
-  });
-  {
-    const zs = document.getElementById("zone-select");
-    if (zs) zs.addEventListener("change", loadRadioToggle);
-  }
-
   /* ---- Labels on/off ---------------------------------------------------- */
   const labelsEnabledEl = document.getElementById("labels-enabled");
   const labelsEnabledNote = document.getElementById("labels-enabled-note");
@@ -7728,7 +7169,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
   // mid-decision, showing a tick against a theme that isn't applied.
   const open = () => { showView("home"); pendingThemeId = null; renderThemeList();
     loadVersion(); loadDiscogsToken(); loadFanartKey(); loadDisplaySettings(); loadLabelFolderDepth();
-    loadLabelsEnabled(); loadHomeRowsSettings(); loadRadioToggle(); overlay.classList.remove("hidden"); };
+    loadLabelsEnabled(); loadHomeRowsSettings(); overlay.classList.remove("hidden"); };
   const close = () => {
     overlay.classList.add("hidden");
   };

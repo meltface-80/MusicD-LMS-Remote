@@ -99,7 +99,7 @@ private fun rememberAppImage(imageKey: String?, imagePath: String?, px: Int, cli
 }
 
 @Composable
-private fun AppPicture(imageKey: String?, imagePath: String?, size: Dp, client: () -> ServerClient?, round: Dp = 8.dp) {
+internal fun AppPicture(imageKey: String?, imagePath: String?, size: Dp, client: () -> ServerClient?, round: Dp = 8.dp) {
     val px = with(LocalDensity.current) { size.roundToPx() }.coerceIn(64, 600)
     val img = rememberAppImage(imageKey, imagePath, px, client)
     Box(Modifier.size(size).clip(RoundedCornerShape(round)).background(paletteColor(Palette.BG_ELEV_2))) {
@@ -130,6 +130,7 @@ internal fun AppsScreen(kind: String, zoneId: String, client: () -> ServerClient
         val list = entries
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 18.dp), contentPadding = PaddingValues(top = 64.dp, bottom = 176.dp)) {
             item { WallHead(title, WallPrefs(), (failed ?: if (list != null && list.isEmpty()) (if (kind == "radio") "LMS offers no radio here." else "No plugins are installed on your server, or none can play on this player.") else null)?.let { it to (failed != null) }) }
+            item { BetaNote(Modifier.padding(bottom = 10.dp)) }   // plugins are a work in progress (BetaTag.kt)
             if (list == null && failed == null) item { Text("Loading…", Modifier.padding(vertical = 18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             itemsIndexed(list.orEmpty()) { i, e ->
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onOpen(e) }.padding(vertical = 10.dp),

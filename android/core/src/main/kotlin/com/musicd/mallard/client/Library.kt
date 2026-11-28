@@ -218,7 +218,9 @@ data class Album(
     val conductor: String? = null,
     val performers: List<String> = emptyList(),
     /** How many LMS albums are merged into it (a multi-disc set shown as one), when it is a merge. */
-    val partCount: Int? = null
+    val partCount: Int? = null,
+    /** Carrying the owner's edits (title, artist, year or artwork, kept in the app's database): Remove edits offered. */
+    val edited: Boolean = false
 ) {
     /** Set out as works: at least one of them named (an album with none is the plain list). */
     val classical: Boolean get() = works.any { it.title != null }
@@ -245,7 +247,8 @@ data class Album(
                 composers = a.optJSONArray("composers").strings(),
                 conductor = a.str("conductor"),
                 performers = a.optJSONArray("performers").strings(),
-                partCount = a.int("part_count")
+                partCount = a.int("part_count"),
+                edited = a.optBoolean("edited", false)
             )
         }
     }

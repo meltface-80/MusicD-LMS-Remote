@@ -1,38 +1,47 @@
 name: Release
 
-# The version bump on main IS the release (CLAUDE.md §5). On every push to
-# main this workflow runs the tests, then — for a version not released yet —
-#   1. tags the commit v<version> and publishes a GitHub release (marked
-#      Latest) whose notes are the body of the "Release v<version>" commit;
+# A version becomes a release WHEN THE OWNER ASKS, never by itself (CLAUDE.md,
+# "Releases"): a tag v<version> pushed on main's commit, or Run workflow on
+# main. The tag must be the commit's own version (package.json). Nothing is
+# released until CI has passed on the same commit (.github/wait-for-ci.sh).
+#   1. tags the commit v<version> (Run workflow) and publishes a GitHub release
+#      marked Latest, its notes the CHANGELOG.md section for that version;
 #   2. builds the container image and publishes it to the GitHub Container
 #      Registry as ghcr.io/meltface-80/musicd-lms-remote:<version> + :latest.
-# A merge that leaves the version alone (docs, CI) finds both already there
-# and does nothing, so neither the release nor :latest moves to an unbumped
-# commit.
-#
-# The in-app updater (lib/updater.js) resolves the newest version from
-# releases/latest FIRST and only falls back to tags and then package.json on
-# main when there is no release at all. Once one release exists, every later
-# version MUST get one too or installs stop seeing updates — which is why the
-# release is cut here, automatically, rather than by hand.
-
+# The in-app updater (lib/updater.js) reads releases/latest FIRST, so every
+# version that reaches an install must come through here.
 on:
   push:
-    branches: [main]
+    tags: ['v*.*.*']
   workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 70
     permissions:
       contents: read
+      actions: read     # to see CI's runs (.github/wait-for-ci.sh)
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install --no-audit --no-fund
-      - run: npm test
+      - name: Only main's commit, at its own version
+        run: |
+          V=$(jq -r .version package.json)
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$V" ]; then
+            echo "Tag $GITHUB_REF_NAME is not this commit's version (v$V)"; exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = branch ] && [ "$GITHUB_REF_NAME" != main ]; then
+            echo "Releases are cut from main, not $GITHUB_REF_NAME"; exit 1
+          fi
+      - name: Wait for CI to pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: .github/wait-for-ci.sh "$GITHUB_SHA"
 
   release:
     needs: test
@@ -54,13 +63,14 @@ jobs:
             echo "Release $TAG already exists — nothing to do."
             exit 0
           fi
-          # Notes: the body of the most recent "Release v<version>" commit,
-          # matched on the exact version so v1.0.8 never picks up v1.0.85.
-          SHA=$(git log --format='%H %s' | awk -v t="Release $TAG" '
-            { s = substr($0, 42) }
-            index(s, t) == 1 && (length(s) == length(t) || substr(s, length(t) + 1, 1) ~ /[ :—-]/) { print $1; exit }')
-          if [ -n "$SHA" ]; then
-            git log -1 --format='%b' "$SHA" | sed '/^Co-Authored-By:/d;/^Claude-Session:/d' > /tmp/notes.md
+          # Notes: CHANGELOG.md's section for this version, else the body of
+          # the "Release v<version>" commit (releases before the changelog).
+          awk -v h="## $TAG" '$0 == h || index($0, h " ") == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > /tmp/notes.md || true
+          if ! grep -q '[^[:space:]]' /tmp/notes.md; then
+            SHA=$(git log --format='%H %s' | awk -v t="Release $TAG" '
+              { s = substr($0, 42) }
+              index(s, t) == 1 && (length(s) == length(t) || substr(s, length(t) + 1, 1) ~ /[ :—-]/) { print $1; exit }')
+            [ -n "$SHA" ] && git log -1 --format='%b' "$SHA" | sed '/^Co-Authored-By:/d;/^Claude-Session:/d' > /tmp/notes.md
           fi
           if [ ! -s /tmp/notes.md ] || ! grep -q '[^[:space:]]' /tmp/notes.md; then
             echo "MusicD LMS Remote $TAG." > /tmp/notes.md

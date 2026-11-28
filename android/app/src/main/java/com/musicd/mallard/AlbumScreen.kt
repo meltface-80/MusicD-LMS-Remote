@@ -89,6 +89,8 @@ internal fun AlbumScreen(offset: Long, zoneId: String, lit: String, client: () -
     var picks by remember(offset) { mutableStateOf<List<Int>?>(null) }   // selecting tracks: their places, in order of picking
     var failed by remember(offset) { mutableStateOf<String?>(null) }
     var favourite by remember(offset) { mutableStateOf(false) }
+    var sharing by remember(offset) { mutableStateOf(false) }   // its Share card open
+    var editing by remember(offset) { mutableStateOf(false) }   // the editor open (AlbumEditSheet.kt)
     var loads by remember(offset) { mutableIntStateOf(0) }
     // Not reached, or the server's own trouble: asked again at once when it answers again, else in a while.
     var again by remember(offset) { mutableStateOf(false) }
@@ -222,11 +224,21 @@ internal fun AlbumScreen(offset: Long, zoneId: String, lit: String, client: () -
                 Icon(painterResource(R.drawable.np_back), contentDescription = null, modifier = Modifier.size(22.dp))
             }
             Row(Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Edit, left of Share, as the page's .modal-chrome has them (the pencil, #modal-edit-btn).
+                if (album != null && picks == null) FilledIconButton(onClick = { editing = true }, colors = disc, modifier = Modifier.size(40.dp)) {
+                    Icon(painterResource(R.drawable.np_edit), contentDescription = "Edit album", modifier = Modifier.size(18.dp))
+                }
+                // Share at the corner, as the page's .modal-chrome has it: the album's Share card.
+                if (album != null) FilledIconButton(onClick = { sharing = true }, colors = disc,
+                    modifier = Modifier.parity("album.share", Contract.label("album.share")).size(40.dp)) {
+                    Icon(painterResource(R.drawable.np_share), contentDescription = null, modifier = Modifier.size(20.dp))
+                }
                 // Selecting tracks, their menu at the corner.
                 val p = picks
                 val al = album
                 if (p != null && al != null) SelectMenu(p, onAct = { act ->
                     if (act == "clear") picks = null
+                    else if (act == "playlist") PlaylistAdd.open(com.musicd.mallard.client.PlaylistAdds.tracks(al.album.offset, p.sorted()), com.musicd.mallard.client.PlaylistAdds.describeTracks(p.size)) { picks = null }
                     else {
                         val c = client()
                         if (c == null || zone.isEmpty()) toast("Pick a player first")
@@ -234,6 +246,13 @@ internal fun AlbumScreen(offset: Long, zoneId: String, lit: String, client: () -
                     }
                 })
             }
+            // The editor: what it saved shown at once here and on the walls (as the page's applySaved).
+            if (editing) album?.let { al -> AlbumEditSheet(al.album, al.edited, client, onClose = { editing = false }) { e ->
+                album = al.copy(album = al.album.copy(title = e.album.title, subtitle = e.album.subtitle, year = e.album.year, imageKey = e.album.imageKey), edited = e.edited)
+                LibraryWall.coverIs(offset, e.album.imageKey)
+            } }
+            // The Share card, over the screen, above the mini player and the nav when they are shown.
+            if (sharing) album?.let { ShareSheet(it.album.title, it.album.subtitle, it.album.imageKey, if (chrome) 144.dp else 0.dp, client) { sharing = false } }
             if (chrome) Column(Modifier.align(Alignment.BottomCenter)) {
                 MiniPlayer(zone, room, client, onOpen = { onNowPlaying(zone) }, onRoom = { id -> zone = id; onRoom(id) }, onPage = onPage)
                 TouchNav(lit, onTap = onNav)

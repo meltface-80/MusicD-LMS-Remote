@@ -86,7 +86,21 @@ internal object NativeShell {
         zone = id
         homeArgs.value = homeArgs.value.first to id
         // The notification and lock screen follow the room chosen now, not at their next look at the rooms (item 120).
-        store?.let { Store.setZone(it, id); NowPlayingService.start(it) }
+        store?.let { s ->
+            // "This phone" chosen at home: its own player starts; another room: it stops. Away, the home room is kept as it was.
+            if (id == PhoneZone.ownId(s)) { if (PhoneZone.id == null) PhoneZone.here(s) }
+            else { PhoneZone.leaveHere(s); if (!Store.awayVia) Store.setZone(s, id) }
+            NowPlayingService.start(s)
+        }
+    }
+
+    /** Away from home: the screens play in this phone's own player ([id]); null, home again: in the room kept for home. */
+    fun awayZone(id: String?) {
+        val s = store ?: return
+        val now = id ?: Store.zone(s).orEmpty()
+        zone = now
+        homeArgs.value = homeArgs.value.first to now
+        NowPlayingService.start(s)
     }
 
     /** A room chosen on a screen: Home's own room too, so Back finds it following that room (item 63); what's playing in the one left offered to move (item 68). */
@@ -160,6 +174,7 @@ private fun Shell(client: () -> ServerClient?) {
         // The search (item 61): over Home or the page; an album's page over it, and Back comes back to the same results.
         // The search (item 61) and the rest: ShellRoutes.kt.
         moreRoutes(nav, client)
+        collectionRoutes(nav, client)   // the side menu's collections: CollectionRoutes.kt
         composable(ShellRoute.NOW_PLAYING, arguments = listOf(navArgument(ShellRoute.ZONE) { type = NavType.StringType })) { entry ->
             NowPlayingScreen(
                 entry.arguments?.getString(ShellRoute.ZONE).orEmpty(), client, onBack = { nav.popBackStack() },
@@ -251,6 +266,6 @@ private fun Shell(client: () -> ServerClient?) {
     Box(Modifier.fillMaxSize().statusBarsPadding(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
         ReachBanner(onTryAgain = { (ctx as? MainActivity)?.lookForServer() }, onChangeServer = { (ctx as? MainActivity)?.openConnect() })
     }
-    RoomAskOver(client)   // the question whether to move what's playing to the room chosen (item 68)
+    RoomAskOver(client); PlaylistAddOver(client)   // the question whether to move what's playing (item 68); Add to playlist's sheet
     }
 }
