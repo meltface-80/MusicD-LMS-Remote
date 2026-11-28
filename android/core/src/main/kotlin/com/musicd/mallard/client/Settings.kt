@@ -25,8 +25,7 @@ object SettingsLists {
         SettingsRow("display", "Wall display", "Always-on screen & video"),
         SettingsRow("shelf", "Shelf", "The record-shop browser, on or off"),
         SettingsRow("appearance", "Appearance", "Mallard's colours"),
-        SettingsRow("system", "System", "Updates & version"),
-        SettingsRow("connection", "Mallard", "This phone's server & about"))
+        SettingsRow("system", "System", "Server address, updates & version"))
 
     const val REPO = "https://github.com/meltface-80/MusicD-LMS-Remote"
 

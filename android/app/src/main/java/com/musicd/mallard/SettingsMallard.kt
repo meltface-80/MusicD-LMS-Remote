@@ -1,6 +1,5 @@
 package com.musicd.mallard
 
-import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -67,7 +66,7 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
             "shelf", "away" -> MorePane(pane, client, onBack, showInfo)   // SettingsShelf.kt, SettingsAway.kt
             "appearance" -> AppearancePane(onBack, showInfo)
             "system" -> SystemPane(client, onBack)
-            else -> ConnectionPane(client, onBack)
+            else -> SystemPane(client, onBack)   // the server's address is here too (owner: Mallard's own pane folded in)
         }
         info?.let { InfoTip(it, Modifier) }
     }
@@ -433,28 +432,5 @@ private fun AppearancePane(onBack: () -> Unit, info: (String) -> Unit) {
             }
         }
         SetupNote("Saved on this phone only.", Modifier.padding(bottom = 12.dp))
-    }
-}
-
-// ---- Mallard -----------------------------------------------------------------------------------------------------
-
-@Composable
-private fun ConnectionPane(client: () -> ServerClient?, onBack: () -> Unit) {
-    val context = LocalContext.current
-    SettingsFrame {
-        PaneHead("Mallard", onBack)
-        Block {
-            SetupRow("Server", Modifier, null) {
-                SetupButton("Change", false, Modifier.clickable {
-                    context.startActivity(Intent(context, ConnectActivity::class.java))
-                })
-            }
-            SetupNote(client()?.address?.toString() ?: "None chosen", Modifier)
-        }
-        SettingsDivider()
-        Block {
-            SetupRow("Mallard", Modifier, null) {}
-            SetupNote("Version ${BuildConfig.VERSION_NAME} — the native Android remote for MusicD LMS Remote, built on Mandarin Remote.", Modifier)
-        }
     }
 }
