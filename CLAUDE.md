@@ -285,6 +285,10 @@ tags, no automatic releases, no cluttered history.
   The web app has no Away pane (owner decision); Mallard manages the server's engine AND runs the same engine on the
   phone (`PhoneEngine.kt`/`Away.kt`, built by `mallard.yml` for arm64): away, it forwards 127.0.0.1:34390 (never
   Mandarin's 34500) to the tailnet address `/api/status` names; `/api/ping` is that engine's probe.
+  AWAY, THE PHONE IS AN LMS PLAYER (`lib/phoneplayers.js`, `lib/phone-routes.js`): squeezelite per phone (`-o - -a 32 -r
+  48000 -R`, MAC `02:6d:…` from the phone's id) so LMS's own player settings apply, its stdout read at REAL TIME (it has
+  no clock: unread it stalls, closed it dies) into ffmpeg → Ogg Opus 256k or FLAC 24/48. Over the tailnet `/api/zones` is
+  that phone's player alone ("This phone"). Never apply ReplayGain or volume downstream: squeezelite already has.
 
 ## Gotchas worth remembering
 

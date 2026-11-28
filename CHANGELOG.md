@@ -3,6 +3,14 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- A phone away from home gets an LMS player of its own (server half; Mallard's half follows). On a phone's hello the
+  server runs squeezelite for it — a real LMS player named after the phone, its MAC fixed per phone so LMS keeps its
+  settings — so LMS plays to it losslessly and every LMS player setting applies: volume, ReplayGain levelling,
+  crossfade, Don't Stop The Music. Its sound (to stdout, resampled to 48 kHz) is read at real time and made into one
+  continuous Ogg stream for the phone: Opus 256 kbps, or lossless FLAC 24-bit/48 kHz. Over the tailnet, from the phone
+  that said hello, the zone list is that player alone, as "This phone". The Docker image now installs squeezelite and
+  ffmpeg. Routes: `POST /api/phone/hello`, `GET /api/phone/stream`, `POST /api/phone/bye`.
+
 - Mallard: Qobuz, as the web app's Browse Qobuz — a side-menu row under the plugin's own name while the server's Qobuz
   plugin is signed in (`/api/services`), walking its menus a level at a time (categories as rows, albums as tiles with
   the account favourite's ＋ / ✓), and an album's page: Play Now, Add to queue, ＋ Add to Qobuz / ✓ In Qobuz, its
