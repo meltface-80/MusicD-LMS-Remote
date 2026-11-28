@@ -51,6 +51,19 @@ object Store {
     fun awayQuality(context: Context): String = com.musicd.mallard.client.PhoneStream.quality(prefs(context).getString("away_quality", null))
     fun setAwayQuality(context: Context, q: String) { prefs(context).edit().putString("away_quality", q).apply() }
 
+    /** The USB DAC away from home (UsbDac, UsbDriver; Mandarin's settings): USB direct, the DAC's level, fixed volume, its limit, which device. */
+    fun usbDirect(context: Context): Boolean = prefs(context).getBoolean("usb_direct", false)
+    fun setUsbDirect(context: Context, on: Boolean) { prefs(context).edit().putBoolean("usb_direct", on).apply() }
+    fun usbVolume(context: Context): Int = prefs(context).getInt("usb_volume", -1)
+    fun setUsbVolume(context: Context, pct: Int) { prefs(context).edit().putInt("usb_volume", if (pct < 0) -1 else pct.coerceIn(0, 100)).apply() }
+    /** Fixed volume as set, else [default] (fixed for a DAC with no volume control of its own). */
+    fun usbFixed(context: Context, default: Boolean): Boolean = prefs(context).let { if (it.contains("usb_fixed")) it.getBoolean("usb_fixed", default) else default }
+    fun setUsbFixed(context: Context, on: Boolean) { prefs(context).edit().putBoolean("usb_fixed", on).apply() }
+    fun usbLimit(context: Context): Int = prefs(context).getInt("usb_limit", 80).coerceIn(1, 100)
+    fun setUsbLimit(context: Context, pct: Int) { prefs(context).edit().putInt("usb_limit", pct.coerceIn(1, 100)).apply() }
+    fun usbDevice(context: Context): String? = prefs(context).getString("usb_device", null)
+    fun setUsbDevice(context: Context, key: String?) { prefs(context).edit().apply { if (key.isNullOrBlank()) remove("usb_device") else putString("usb_device", key) }.apply() }
+
     fun setZone(context: Context, zoneId: String?) { prefs(context).edit().putString(KEY_ZONE, zoneId).apply() }
 
     /** The screen settings as JSON (core ScreenPrefs). */

@@ -125,10 +125,12 @@ class MainActivity : androidx.activity.ComponentActivity() {
     /**
      * The volume buttons move the chosen player's volume while the app is on screen (LMS's own relative step, so quick
      * presses never race). With no player chosen, the phone's own volume as usual. Off screen, the media session's
-     * remote volume does the same from the lock screen (NowPlayingService).
+     * remote volume does the same from the lock screen (NowPlayingService). Away from home through a USB DAC whose level
+     * isn't fixed, they step the DAC's level instead (Mandarin's USB direct).
      */
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (PhoneZone.id != null && UsbDriver.controlsVolume) { UsbDriver.stepVolume(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP); return true }
             val zone = NativeShell.zone
             if (zone.isNotEmpty()) {
                 val up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP

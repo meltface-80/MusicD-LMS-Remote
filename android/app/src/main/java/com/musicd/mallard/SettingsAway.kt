@@ -29,9 +29,9 @@ import kotlinx.coroutines.withContext
 
 /*
  * Settings → Away from home: the server's built-in Tailscale (lib/tailscale.js), as the web app's pane draws it
- * (public/away-settings.js) — switched on or off, its state, Sign in (Tailscale's page in the browser) and Sign out, and
+ * (as public/away-settings.js drew it) — switched on or off, its state, Sign in (Tailscale's page in the browser) and Sign out, and
  * its tailnet name and address once connected. Read again every 3 s while open, as signing in happens in the browser.
- * Under it, This phone: Tailscale on the phone itself (SettingsAwayPhone.kt).
+ * Under it, This phone: Tailscale on the phone itself (SettingsAwayPhone.kt), and the USB DAC its sound can go to (SettingsUsb.kt).
  */
 
 @Composable
@@ -88,5 +88,6 @@ internal fun AwayPane(client: () -> ServerClient?, onBack: () -> Unit, info: (St
             }
         }
         PhoneTailscaleBlock()   // SettingsAwayPhone.kt
+        UsbBlock(info)          // SettingsUsb.kt
     }
 }

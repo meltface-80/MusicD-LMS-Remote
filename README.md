@@ -389,21 +389,27 @@ Mallard and the web app can reach your server from anywhere — over mobile data
 internet, and no router ports are forwarded. **Tailscale is built into the server's Docker image**: nothing to install
 on the machine it runs on, and it works with ordinary bridge networking.
 
-1. **Sign the server in:** Settings → Away from home → Sign in to Tailscale (in the web app or Mallard), and sign in in
+1. **Sign the server in:** in Mallard, Settings → Away from home → Sign in to Tailscale, and sign in in
    the page that opens. Or, to join without a browser, set `TS_AUTHKEY` (a key from Tailscale's admin console) in the
    container's environment. The server joins your tailnet as `musicd-lms` (`TS_HOSTNAME` to change it), and Settings
    shows its address, e.g. `100.80.0.5:3390`. Its identity lives in the data volume, so updates keep it.
-2. **On your phone**, install the Tailscale app and sign in to the **same** account.
-3. **In Mallard:** Settings → Mallard → Server → Change, and enter that address. **In the web app:** open it in the
-   phone's browser and add it to the home screen again.
+2. **In Mallard:** Settings → Away from home → This phone → Sign in to Tailscale, with the **same** account. Tailscale
+   is built into Mallard too, so the phone needs no Tailscale app: away from home Mallard reaches the server through it
+   by itself. (Any other device — a laptop, or the web app on a phone — uses the Tailscale app, signed in to the same
+   account, and the server's tailnet address.)
 
 Only your own devices are let in over the tailnet — the nodes signed in as the server's own Tailscale user, not ones
 shared in from someone else's tailnet. `TAILSCALE=off` leaves the built-in engine out (Tailscale installed on the host,
 with `--network host`, works as before).
 
-Away, Mallard is a full remote for your players at home: browse, search, play, queue, the Shelf, Settings. Next stages:
-Tailscale built into Mallard too (so the phone needs no Tailscale app), then Mallard as a Lyrion player, to play music
-on the phone itself.
+Away from home, Mallard plays on the phone itself: the server runs an LMS player for the phone (squeezelite, so every
+LMS player setting applies — volume, ReplayGain, crossfade, Don't Stop The Music) and streams its sound to it as Opus
+256 kbps or lossless FLAC (Settings → Away from home → This phone → Stream away as). The screens then show and play in
+that player alone, as "This phone"; home again, they are back with your rooms.
+
+**USB DACs:** with a DAC on the phone's USB port, Settings → Away from home → USB DAC → USB direct sends the phone's
+sound to it through Mallard's own USB audio driver (Mandarin's), at the stream's own rate and the DAC's depth, with
+Android's mixer out of the way. An untouched, bit-perfect stream from the server is the next stage.
 
 ## Environment variables
 

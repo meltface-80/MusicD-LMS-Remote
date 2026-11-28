@@ -20,6 +20,8 @@ class MusicDApp : Application() {
         AppLog.start(this)
         CrashLog.install(this)
         CrashLog.watchMainThread(this)
+        // The USB port watched (a DAC plugged in or pulled out) for the phone's own player away from home.
+        UsbDac.start(this)
     }
 }
 
