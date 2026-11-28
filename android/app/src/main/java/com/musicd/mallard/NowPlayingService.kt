@@ -100,6 +100,7 @@ class NowPlayingService : Service() {
     private var artKey: String? = null
     private var idleSince = SystemClock.elapsedRealtime()
     private var volumeProvider: RoomVolume? = null
+    private var local = false   // the session plays "locally": this phone's own player (PhoneVolume.session)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -186,9 +187,9 @@ class NowPlayingService : Service() {
                 if (zoneId == null || wake || failures > 0 || SystemClock.elapsedRealtime() - zonesAt > ZONES_MS) {
                     val zones = client.zones().also { zonesAt = SystemClock.elapsedRealtime() }
                     // The player the app has chosen, if the server still has it; else the first.
-                    val kept = Store.zone(this)
+                    val kept = PhoneZone.id ?: Store.zone(this)   // this phone's own player never overwrites the room kept for home
                     val chosen = kept?.takeIf { k -> zones.zones.any { it.id == k } } ?: zones.zones.firstOrNull()?.id
-                    if (chosen != zoneId) { zoneId = chosen; if (chosen != null && chosen != kept) Store.setZone(this, chosen) }
+                    if (chosen != zoneId) { zoneId = chosen; if (chosen != null && chosen != kept && PhoneZone.id == null) Store.setZone(this, chosen) }
                 }
                 val id = zoneId
                 if (id == null) {
@@ -314,18 +315,13 @@ class NowPlayingService : Service() {
                     .build()
             )
             s.setPlaybackState(state(zone))
-            // The phone's volume keys move the room's volume while the session
-            // is showing — the same as any Cast or Sonos app.
+            // The phone's volume keys move the room's volume while the session is showing, as any Cast or Sonos app; on this
+            // phone's own player (fixed at 100% in LMS) they move the phone's (PhoneVolume.session).
+            local = zone != null && PhoneVolume.session(s, zone.id, local)
+            if (local) { volumeProvider = null; return }
             val v = zone?.volume
             if (zone != null && v != null) {
-                val p = volumeProvider
-                if (p == null) {
-                    val np2 = RoomVolume(v)
-                    volumeProvider = np2
-                    s.setPlaybackToRemote(np2)
-                } else {
-                    p.currentVolume = v
-                }
+                volumeProvider?.let { it.currentVolume = v } ?: RoomVolume(v).also { volumeProvider = it; s.setPlaybackToRemote(it) }
             }
         } catch (e: Exception) {
             Log.w(TAG, "could not update the session", e)

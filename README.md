@@ -403,15 +403,17 @@ shared in from someone else's tailnet. `TAILSCALE=off` leaves the built-in engin
 with `--network host`, works as before).
 
 Away from home, Mallard plays on the phone itself: the server runs an LMS player for the phone (squeezelite, so every
-LMS player setting applies — volume, ReplayGain, crossfade, Don't Stop The Music) and streams its sound to it as Opus
-256 kbps or lossless FLAC (Settings → Away from home → This phone → Stream away as). The screens then show and play in
-that player alone, as "This phone"; home again, they are back with your rooms.
+LMS player setting applies — ReplayGain, crossfade, Don't Stop The Music) and streams its sound to it as Opus 256 kbps
+at 24-bit/48 kHz, the rate Android's audio runs at (Settings → Away from home → This phone → Stream away as). The screens then show and play in
+that player alone, as "This phone"; home again, they are back with your rooms. At home "This phone" is one of the rooms:
+choose it to play on the phone there too. Its player is fixed at 100% in Lyrion: the phone's volume buttons (or the
+slider on This phone) set the level, as with any player app.
 
 **USB DACs:** with a DAC on the phone's USB port, Settings → Away from home → USB DAC → USB direct sends the phone's
 sound to it through Mallard's own USB audio driver (Mandarin's), at the stream's own rate and the DAC's depth, with
-Android's mixer out of the way. For bit-perfect, choose **Untouched** under This phone → Stream away as: the server then
+Android's mixer out of the way. For bit-perfect, choose **Bit-perfect (untouched)** under This phone → Stream away as: the server then
 plays to the phone as its own Lyrion player and passes each track on as the file itself — no decoding, resampling or
-volume on the way — and Lyrion's volume moves the DAC's own volume control. (A Lyrion server whose Slimproto port isn't
+volume on the way. (A Lyrion server whose Slimproto port isn't
 3483 sets `SLIMPROTO_PORT`.)
 
 ## Environment variables

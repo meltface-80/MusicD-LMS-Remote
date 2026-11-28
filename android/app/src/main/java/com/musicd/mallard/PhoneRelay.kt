@@ -23,8 +23,7 @@ import java.util.concurrent.Executors
  * relay tells LMS. Commands arrive on the relay's event channel (Server-Sent Events), read on a thread of their own and
  * acted on on the main thread. The sound goes where PhoneStreamService's sinks send it: the USB DAC with USB direct on.
  *
- * Lyrion's volume arrives as dB and moves the DAC's own volume control (bit-perfect: the samples are never scaled); a
- * DAC with none plays at full. Without a DAC the phone's player volume follows it.
+ * The volume is the phone's own (PhoneVolume; LMS has this player fixed at 100%): the samples are never scaled here.
  */
 internal class PhoneRelay(private val player: ExoPlayer, private val client: ServerClient, private val playerId: String) {
     private val main = Handler(Looper.getMainLooper())
@@ -52,15 +51,9 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
     private val ticker = object : Runnable {
         override fun run() {
             if (player.isPlaying) pos()
-            // Lyrion's volume came before the DAC's stream opened (which starts it low): given to the stream once it is open.
-            val open = UsbDriver.current
-            if (open != null && open !== volumeFor) wanted?.let { volume(it) }
             main.postDelayed(this, 1000)
         }
     }
-    /** Lyrion's last volume, and the DAC stream it was given to. */
-    private var wanted: RelayCommand? = null
-    private var volumeFor: Any? = null
 
     fun start() {
         player.addListener(listener)
@@ -142,18 +135,7 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
             "stop" -> { player.stop(); player.clearMediaItems(); started.clear(); base.clear() }
             "pause" -> player.pause()
             "resume" -> player.play()
-            "volume" -> volume(c)
         }
     }
 
-    private fun volume(c: RelayCommand) {
-        wanted = c
-        volumeFor = UsbDriver.current
-        val usb = UsbDriver.active
-        when {
-            usb && UsbDriver.hasVolume && !UsbDriver.fixed() -> { UsbDriver.setVolume(RelayCommand.level(c.db)); UsbDriver.setMute(c.muted) }
-            usb -> Unit   // no volume control of its own (or fixed): full, untouched
-            else -> player.volume = if (c.muted) 0f else c.db?.let { Math.pow(10.0, it.coerceAtMost(0.0) / 20.0).toFloat() } ?: 0f
-        }
-    }
 }

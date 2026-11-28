@@ -58,6 +58,38 @@ internal object PhoneZone {
         }
     }
 
+    /** This phone's own player id, whether or not it runs (the server lists it as "This phone" at home). */
+    fun ownId(c: Context): String = com.musicd.mallard.client.ThisPhone.playerId(Store.deviceId(c))
+
+    /**
+     * "This phone" chosen among the rooms at home (owner request: the phone zone on the same network as Lyrion too, as
+     * Mandarin's): its player started and its sound played here, as away. Choosing a room stops it again ([leaveHere]).
+     */
+    fun here(c: Context) {
+        val app = c.applicationContext
+        work.execute {
+            if (id != null) return@execute
+            val client = Store.client(app) ?: return@execute
+            val h = runCatching { client.phoneHello(Store.deviceId(app), phoneName(), PhoneStream.mode(Store.awayQuality(app)), maxRate(app)) }.getOrElse {
+                AppLog.line("PHONE", "the server didn't start this phone's player: ${it.message}", anomaly = true); return@execute
+            }
+            id = h.playerId; name = h.name; mode = h.mode
+            AppLog.line("PHONE", "at home: Lyrion plays to this phone (${h.name})")
+            play(app)
+        }
+    }
+
+    /** A room chosen at home while this phone played: its player stopped, its sound too. */
+    fun leaveHere(c: Context) {
+        if (Store.awayVia) return
+        val p = id ?: return
+        id = null
+        PhoneStreamService.stop(c)
+        val app = c.applicationContext
+        work.execute { runCatching { Store.client(app)?.phoneBye(p) } }
+        AppLog.line("PHONE", "at home: this phone's own player stopped")
+    }
+
     /** The highest rate this phone takes: the USB DAC's, with USB direct on and one on the port; else 192 kHz. */
     private fun maxRate(c: Context): Int {
         val info = UsbDac.info()

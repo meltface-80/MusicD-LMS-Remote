@@ -16,17 +16,19 @@ data class PhoneHello(val playerId: String, val name: String, val away: Boolean,
 
 object PhoneStream {
     /** How the phone's player reaches it away (Settings → Away from home → This phone), its value and its words. */
-    val QUALITIES = listOf("opus" to "Opus 256 kbps", "flac" to "Lossless (FLAC 24-bit/48 kHz)", "exact" to "Untouched (bit-perfect)")
+    val QUALITIES = listOf("opus" to "Opus 256 kbps · 24-bit/48 kHz", "exact" to "Bit-perfect (untouched)")
     const val DEFAULT = "opus"
-    const val NOTE = "Opus and Lossless: Lyrion plays to this phone's own player losslessly, so its volume levelling and player settings " +
-        "apply, and the server sends it on as Opus 256 kbps (about a quarter of a CD's data) or FLAC 24-bit/48 kHz. Untouched: each " +
-        "track reaches the phone as its own file, bit for bit, at its own rate and depth — for a USB DAC with USB direct on. Lyrion's " +
-        "volume then moves the DAC's own volume control; nothing is done to the samples, so no volume levelling."
-    fun quality(v: String?): String = when (v) { "flac" -> "flac"; "exact" -> "exact"; else -> DEFAULT }
+    const val NOTE = "Opus: Lyrion plays to this phone's own player, so its volume levelling and player settings apply, and the server " +
+        "sends it on as Opus 256 kbps at 24-bit/48 kHz — the rate Android's audio runs at, so the phone doesn't resample it. " +
+        "Bit-perfect: each track reaches the phone as its own file, bit for bit, at its own rate and depth — for a USB DAC with USB " +
+        "direct on; nothing is done to the samples, so no volume levelling. The volume is always the phone's own: Lyrion has this " +
+        "player fixed at 100%."
+    /** The setting as kept: "exact" (bit-perfect) or "opus" — an older "flac" (no longer offered: not lossless at 48 kHz) is Opus. */
+    fun quality(v: String?): String = if (v == "exact") "exact" else DEFAULT
     /** The server's player for [q]: "exact" (the relay) for Untouched, else "pcm" (squeezelite). */
     fun mode(q: String?): String = if (quality(q) == "exact") "exact" else "pcm"
 
-    /** The stream's path on the server, for [playerId] made as [q] (Opus or FLAC). */
+    /** The stream's path on the server, for [playerId] (Opus; [q] as kept). */
     fun path(playerId: String, q: String): String = "/api/phone/stream?player_id=" + enc(playerId) + "&q=" + quality(q)
     /** The relay's commands for [playerId] (Server-Sent Events). */
     fun eventsPath(playerId: String): String = "/api/phone/events?player_id=" + enc(playerId)
@@ -40,26 +42,19 @@ object PhoneStream {
  *   add     a track to play: [seq], its type; [fresh] the first of a new start (what was queued goes), [play] start at once
  *   drop    the queued track [seq] let go (the playlist changed)
  *   stop / pause / resume
- *   volume  Lyrion's volume, [db] (null: silence), for the DAC's own control
+ * (No volume: LMS has this player fixed at 100%, and its volume is the phone's own — ThisPhone.)
  */
-data class RelayCommand(val cmd: String, val seq: Int = 0, val mime: String = "", val fresh: Boolean = false, val play: Boolean = false,
-                        val db: Double? = null, val muted: Boolean = false) {
+data class RelayCommand(val cmd: String, val seq: Int = 0, val mime: String = "", val fresh: Boolean = false, val play: Boolean = false) {
     companion object {
         /** A `data:` line's JSON, or null for anything that isn't a command the phone knows. */
         fun parse(json: String): RelayCommand? {
             val j = runCatching { JSONObject(json) }.getOrNull() ?: return null
             val cmd = j.optString("cmd")
-            if (cmd !in setOf("add", "drop", "stop", "pause", "resume", "volume")) return null
+            if (cmd !in setOf("add", "drop", "stop", "pause", "resume")) return null
             if ((cmd == "add" || cmd == "drop") && j.optInt("seq", 0) <= 0) return null
-            return RelayCommand(cmd, j.optInt("seq", 0), j.optString("mime"), j.optBoolean("fresh"), j.optBoolean("play"),
-                if (j.isNull("db") || !j.has("db")) null else j.optDouble("db"), j.optBoolean("muted"))
+            return RelayCommand(cmd, j.optInt("seq", 0), j.optString("mime"), j.optBoolean("fresh"), j.optBoolean("play"))
         }
 
-        /**
-         * Lyrion's volume in dB as a level for the DAC's own control (UsbDriver.setVolume, whose curve is
-         * 60·log10(level/100) dB below the top): the level that gives the same dB. Silence is 0; above 0 dB is 100.
-         */
-        fun level(db: Double?): Int = if (db == null) 0 else Math.round(100.0 * Math.pow(10.0, db.coerceAtMost(0.0) / 60.0)).toInt().coerceIn(0, 100)
     }
 }
 

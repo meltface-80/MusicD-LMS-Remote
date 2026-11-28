@@ -13,7 +13,8 @@ class PhonePlayerTest {
         val h = PhoneHello.parse(JSONObject("""{"player_id":"02:6d:aa:bb:cc:dd","name":"Pixel 8","away":true}"""))
         assertEquals("02:6d:aa:bb:cc:dd", h.playerId); assertTrue(h.away); assertEquals("pcm", h.mode)
         assertEquals("/api/phone/stream?player_id=02%3A6d%3Aaa%3Abb%3Acc%3Add&q=opus", PhoneStream.path(h.playerId, "opus"))
-        assertEquals("/api/phone/stream?player_id=x&q=flac", PhoneStream.path("x", "flac"))
+        assertEquals("opus", PhoneStream.quality("flac"))   // no longer offered (not lossless at 48 kHz): Opus
+        assertEquals(listOf("opus", "exact"), PhoneStream.QUALITIES.map { it.first })
         assertEquals("opus", PhoneStream.quality("anything else"))
     }
 
@@ -35,17 +36,6 @@ class PhonePlayerTest {
         assertNull(RelayCommand.parse("""{"cmd":"add"}"""))          // a track needs its number
         assertNull(RelayCommand.parse("""{"cmd":"format"}"""))       // not a command the phone knows
         assertNull(RelayCommand.parse("not json"))
-        val v = RelayCommand.parse("""{"cmd":"volume","db":-6.02,"muted":false}""")!!
-        assertEquals(-6.02, v.db!!, 1e-9)
-        assertNull(RelayCommand.parse("""{"cmd":"volume","db":null,"muted":true}""")!!.db)
-    }
-
-    @Test fun `Lyrion's volume as the DAC's level, on the DAC's own curve`() {
-        assertEquals(100, RelayCommand.level(0.0))
-        assertEquals(100, RelayCommand.level(3.0))
-        assertEquals(50, RelayCommand.level(-18.06))     // 60·log10(0.5) = -18.06 dB
-        assertEquals(10, RelayCommand.level(-60.0))
-        assertEquals(0, RelayCommand.level(null))
-        assertEquals(0, RelayCommand.level(-200.0))
+        assertNull(RelayCommand.parse("""{"cmd":"volume","db":-6.02}"""))   // LMS's volume isn't the phone's
     }
 }

@@ -304,7 +304,8 @@ tags, no automatic releases, no cluttered history.
   Mandarin's 34500) to the tailnet address `/api/status` names; `/api/ping` is that engine's probe.
   AWAY, THE PHONE IS AN LMS PLAYER (`lib/phoneplayers.js`, `lib/phone-routes.js`): squeezelite per phone (`-o - -a 32 -r
   48000 -R`, MAC `02:6d:…` from the phone's id) so LMS's own player settings apply, its stdout read at REAL TIME (it has
-  no clock: unread it stalls, closed it dies) into ffmpeg → Ogg Opus 256k or FLAC 24/48. Over the tailnet `/api/zones` is
+  no clock: unread it stalls, closed it dies) into ffmpeg → Ogg Opus 256k, 24-bit/48 kHz (encoded from float; Mallard decodes with its own libopus). NO FLAC
+  OPTION: squeezelite resamples to 48 kHz, so it would not be lossless (owner decision) — bit-perfect is the relay's. Over the tailnet `/api/zones` is
   that phone's player alone ("This phone"). Never apply ReplayGain or volume downstream: squeezelite already has.
   UNTOUCHED (`mode:"exact"` in the hello; `lib/relayplayer.js` + `lib/slimproto.js`): no squeezelite — the server's own
   Slimproto PLAYER (same MAC) spools each track LMS sends (`/api/phone/track`, Range) and tells Mallard over SSE
@@ -312,7 +313,13 @@ tags, no automatic releases, no cluttered history.
   (`/api/phone/report`). THE TRAP: no DSCO/STMd before the first STMs of a started track (LMS would take the phone's
   STMs for the next track) — held, then STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes
   each a passthrough; `flc` first re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, `mp3StreamingMethod 1`;
-  LMS's volume (audg) drives the DAC's HARDWARE volume only, never the samples. Spools live in os.tmpdir(), never data/.
+  audg is ignored. Spools live in os.tmpdir(), never data/.
+  THIS PHONE'S VOLUME IS THE PHONE'S (Mandarin's rule): the server sets every phone player fixed at 100%
+  (`digitalVolumeControl 0` + level 100, `playerUp`), and Mallard's `ServerClient` hands every volume call for this
+  phone's player to `ThisPhone.volume` (`PhoneVolume.kt`: Android's media volume, or the USB DAC's level) instead of
+  the server; `/api/zone-state` for it carries the phone's level. Never send it to LMS. AT HOME, Mallard names itself
+  (`X-Mallard-Device`) and `/api/zones` lists its own player (`macFor`, = core `ThisPhone.playerId`) as "This phone",
+  last; choosing it says hello (`PhoneZone.here`), choosing a room says goodbye (`leaveHere`).
 
 ## Gotchas worth remembering
 

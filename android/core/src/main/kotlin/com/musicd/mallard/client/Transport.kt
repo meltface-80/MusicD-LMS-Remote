@@ -67,6 +67,8 @@ class HttpTransport(private val baseUrl: String) : Transport {
             readTimeout = timeout
             useCaches = false
             setRequestProperty("Accept", "application/json")
+            // Which phone is asking, so the server can offer its own player as "This phone" at home (ThisPhone).
+            ThisPhone.deviceId?.let { setRequestProperty("X-Mallard-Device", it) }
         }
 
     /** Android's connection takes PATCH (Settings → Audio Devices, item 89); one that refuses it has it set underneath. */
