@@ -59,4 +59,14 @@ class PluginsTest {
         assertEquals("Installing", LmsPlugin.doing("install"))
         assertEquals("Disabling", LmsPlugin.doing("disable"))
     }
+
+    @Test fun `repositories are read, and an address is held to LMS's rule`() {
+        val l = PluginList.parse(JSONObject("""{"repos":["https://dev.example/plugins.xml",""],"enabled":[],"disabled":[],"available":[]}"""))
+        assertEquals(listOf("https://dev.example/plugins.xml"), l.repos)
+        assertTrue(PluginRepos.valid(" https://dev.example/plugins.xml "))
+        assertTrue(PluginRepos.valid("http://192.168.0.2/repo.xml?x=1"))
+        assertTrue(!PluginRepos.valid("ftp://dev.example/plugins.xml"))
+        assertTrue(!PluginRepos.valid("https://dev.example/plugins"))
+        assertEquals("https://dev.example/repo.xml", PluginRepos.trim(" https://dev.example/repo.xml/ "))
+    }
 }

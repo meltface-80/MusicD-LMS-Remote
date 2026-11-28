@@ -23,6 +23,15 @@
   const toast = (msg, type) => { if (window.__showToast) window.__showToast(msg, type); };
   const imgSrc = (p) => (p.image_key ? `/api/image/${encodeURIComponent(p.image_key)}?size=96` : p.image_path || "");
   const VERB = { install: "Install", update: "Update", remove: "Remove", enable: "Enable", disable: "Disable" };
+  // Repositories: the same words as Mallard's (core's PluginRepos), and LMS's rule for an address (Plugins.pm).
+  const REPO = {
+    note: "A repository is a list of plugins LMS can install. Paste a repository’s address — the link to its .xml file — and its plugins show under Available.",
+    hint: "https://…/repo.xml", none: "No repositories added. LMS’s own are always there.",
+    bad: "A repository is the address of its .xml file (http:// or https://, ending .xml)",
+    added: "Repository added — its plugins show under Available once LMS has read it",
+    remove: "Remove this repository? Plugins installed from it stay installed.",
+  };
+  const repoValid = (u) => /^https?:\/\/\S*\.xml/i.test(String(u || "").trim().replace(/\W*$/, ""));
   const DOING = { install: "Installing", update: "Updating", remove: "Removing", enable: "Enabling", disable: "Disabling" };
 
   async function call(url, payload) {
@@ -115,8 +124,9 @@
         if (b.dataset.tab === "installed") b.textContent = n ? `Installed · ${n} update${n === 1 ? "" : "s"}` : "Installed";
       }
     }
-    if (filterEl) filterEl.hidden = false;
+    if (filterEl) filterEl.hidden = tab === "repos";
     body.innerHTML = "";
+    if (tab === "repos") { drawRepos(); return; }
     if (list.restart || restarting) body.appendChild(restartBanner());
     const q = ((filterEl && filterEl.value) || "").trim().toLowerCase();
     const match = (p) => !q || `${p.title} ${p.desc} ${p.creator} ${p.name}`.toLowerCase().includes(q);
@@ -136,6 +146,43 @@
       for (const [repo, ps] of byRepo) group(repo || "Other", ps);
       if (!byRepo.size) say(q ? "Nothing available matches." : "LMS’s repositories offer nothing more to install.", true);
     }
+  }
+
+  /** The Repositories tab: LMS's extra repositories, each with Remove, and a box for a new one's .xml address. */
+  function drawRepos() {
+    const note = document.createElement("p"); note.className = "plugins-repo-note"; note.textContent = REPO.note;
+    const form = document.createElement("form"); form.className = "plugins-repo-add";
+    const input = document.createElement("input");
+    Object.assign(input, { type: "url", placeholder: REPO.hint, className: "plugins-filter", autocomplete: "off", spellcheck: false });
+    input.setAttribute("aria-label", "Repository address"); input.setAttribute("autocapitalize", "off");
+    const add = document.createElement("button"); add.type = "submit"; add.className = "action-btn primary";
+    add.textContent = busy === "repos" ? "Adding…" : "Add"; add.disabled = !!busy;
+    form.append(input, add);
+    form.addEventListener("submit", (e) => { e.preventDefault(); if (input.value.trim()) repo({ add: input.value }); });
+    body.append(note, form);
+    const repos = list.repos || [];
+    if (!repos.length) say(REPO.none, true);
+    for (const r of repos) {
+      const row = document.createElement("div"); row.className = "plugin-repo";
+      const u = document.createElement("span"); u.className = "plugin-repo-url"; u.textContent = r;
+      const b = document.createElement("button"); b.type = "button"; b.className = "action-btn"; b.textContent = "Remove"; b.disabled = !!busy;
+      b.addEventListener("click", () => { if (confirm(REPO.remove)) repo({ remove: r }); });
+      row.append(u, b);
+      body.appendChild(row);
+    }
+  }
+
+  async function repo(what) {
+    if (what.add != null && !repoValid(what.add)) { toast(REPO.bad, "error"); return; }
+    busy = "repos"; draw();
+    try {
+      list = await call("/api/lms/plugins/repos", what);
+      if (what.add != null) toast(REPO.added);
+    } catch (e) {
+      if (e.risk) { busy = ""; return load(); }
+      toast(e.message || "LMS didn’t take that", "error");
+    }
+    busy = ""; draw();
   }
 
   function group(title, ps) {

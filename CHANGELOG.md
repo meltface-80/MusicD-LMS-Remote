@@ -3,6 +3,12 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Plugin repositories (owner request: a developer's own plugins to try). Settings → LMS server → Plugins has a third
+  tab, Repositories, in both apps: LMS's extra repository addresses, each with Remove, and a box to paste a new one's
+  .xml address. The server saves LMS's own plugin page with the list changed (LMS keeps only `http(s)://….xml`, the
+  same rule both apps check before sending), LMS reads the repository, and its plugins appear under Available under
+  the repository's name, ready to install.
+
 - Gentler on LMS (owner report: Lyrion stuttering and restarting). While LMS scans — an online-library import is the
   heaviest thing it does — this server no longer rebuilds its index on every album-count change (each rebuild re-read
   the whole track table, every 5 minutes for the length of the import); it rebuilds once when the scan ends. The Qobuz
