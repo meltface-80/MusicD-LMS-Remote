@@ -32,7 +32,7 @@ class MusicDApp : Application() {
 
     companion object {
         /** This phone's own volume (the volume buttons on its own player). */
-        @Volatile var phoneVolume: PhoneVolume? = null
+        @Volatile internal var phoneVolume: PhoneVolume? = null
     }
 }
 
