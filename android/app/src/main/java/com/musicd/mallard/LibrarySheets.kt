@@ -123,10 +123,15 @@ private val COVERAGE_NOTE = mapOf(
 )
 private val COVERAGE_OF = mapOf("rate" to "format", "bits" to "format", "chan" to "format")
 
-/** The Focus sheet over [view] with [facets] (null until they come); each change [onChange]; [onShow] closes with the view applied. */
+/**
+ * The Focus sheet over [view] with [facets] (null until they come); each change [onChange]; [onShow] closes with the view
+ * applied; [onSave] saves it as a Dynamic Playlist. [edit]: a Dynamic Playlist's rules being edited (the web's
+ * openLibFocusSheet(editTarget)) — its Order and Playlist size first, changed through [onEdit], and Save changes.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryView) -> Unit, onShow: () -> Unit, onClose: () -> Unit) {
+internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryView) -> Unit, onShow: () -> Unit, onClose: () -> Unit,
+                        onSave: () -> Unit = {}, edit: com.musicd.mallard.client.LiveEdit? = null, onEdit: (com.musicd.mallard.client.LiveEdit) -> Unit = {}) {
     // Which sections are open: a section with something on opens by itself, and stays open until its head is tapped.
     val open = remember { mutableStateMapOf<String, Boolean>() }
     val faint = paletteColor(Palette.TEXT_FAINT)
@@ -137,6 +142,10 @@ internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryVi
             modifier = Modifier.parity("library.focus-clear", Contract.label("library.focus-clear")).weight(1f).defaultMinSize(minHeight = 40.dp).then(edge)) {
             Text(Contract.label("library.focus-clear"), fontSize = 13.sp, fontWeight = FontWeight.W500, maxLines = 1)
         }
+        Button(onClick = onSave, colors = footColors(false), contentPadding = pad, modifier = Modifier.weight(1.4f).defaultMinSize(minHeight = 40.dp).then(edge)) {
+            Text(if (edit != null) "Save changes" else "Save as Dynamic Playlist", fontSize = 13.sp, lineHeight = 15.sp, fontWeight = FontWeight.W500, maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
         Button(onClick = onShow, colors = footColors(true), contentPadding = pad,
             modifier = Modifier.parity("library.focus-show", Contract.label("library.focus-show")).weight(1f).defaultMinSize(minHeight = 40.dp)) {
             Text(Contract.label("library.focus-show"), fontSize = 13.sp, fontWeight = FontWeight.W500, maxLines = 1)
@@ -145,6 +154,17 @@ internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryVi
         @Composable fun Section(id: String, label: String, active: Int, chips: @Composable () -> Unit, notes: List<String>) =
             FocusSection(id, label, active, open, chips, notes)
         @Composable fun Chip(label: String, state: String, onTap: () -> Unit) = FocusChip(label, state, onTap)
+        // Editing a Dynamic Playlist: its own order and size first, both open (the page's LP_ORDERS / LP_LIMITS).
+        if (edit != null) {
+            if (open["lp-order"] == null) open["lp-order"] = true
+            if (open["lp-size"] == null) open["lp-size"] = true
+            Section("lp-order", "Order", 0, chips = {
+                for ((id, label) in com.musicd.mallard.client.LiveSaves.ORDERS) Chip(label, if (edit.order == id) "on" else "off") { onEdit(edit.copy(order = id)) }
+            }, notes = listOf(com.musicd.mallard.client.LiveSaves.ORDER_NOTE))
+            Section("lp-size", "Playlist size", 0, chips = {
+                for (n in com.musicd.mallard.client.LiveSaves.LIMITS) Chip("$n", if (edit.limit == n) "on" else "off") { onEdit(edit.copy(limit = n)) }
+            }, notes = listOf(com.musicd.mallard.client.LiveSaves.SIZE_NOTE))
+        }
         // Listening first: the one facet always there, from this server's own play history.
         Section("played", "Listening", if (view.played != "any") 1 else 0, chips = {
             for (p in LibraryView.PLAYED) Chip(p.label, if (view.played == p.id) "on" else "off") { onChange(view.copy(played = p.id)) }

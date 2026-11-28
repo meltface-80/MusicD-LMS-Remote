@@ -40,6 +40,7 @@ import com.musicd.mallard.client.NavItem
 import com.musicd.mallard.client.NavList
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.ServerClient
+import com.musicd.mallard.client.liveEditOf
 import com.musicd.mallard.client.WallPrefs
 import com.musicd.mallard.client.deleteLivePlaylist
 import com.musicd.mallard.client.livePlaylistPage
@@ -86,7 +87,15 @@ internal fun LivePlaylistsScreen(zoneId: String, client: () -> ServerClient?, na
     }
 }
 
-/** One Dynamic Playlist ([id], [name]): its albums as a wall, Play now / Add to queue / Delete above them. */
+/** A Dynamic Playlist's rules handed to the Library to edit (its Edit rules): taken once, by the Library's next opening. */
+internal object LiveEditing {
+    @Volatile private var pending: com.musicd.mallard.client.LiveEdit? = null
+    fun set(e: com.musicd.mallard.client.LiveEdit) { pending = e }
+    fun take(): com.musicd.mallard.client.LiveEdit? = pending.also { pending = null }
+}
+
+/** One Dynamic Playlist ([id], [name]): its albums as a wall, Play now / Add to queue / Edit rules / Delete above them. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun LivePlaylistScreen(id: String, name: String, zoneId: String, client: () -> ServerClient?, nav: CollectionNav,
                                 onAlbum: (Long, String, NavList) -> Unit) {
@@ -130,9 +139,19 @@ internal fun LivePlaylistScreen(id: String, name: String, zoneId: String, client
             Column {
                 WallHead(name, prefs, (failed ?: if (total == 0) "Nothing in your library matches these rules right now." else null)?.let { it to (failed != null) })
                 if (total > 0) Text(if (total == 1) "1 album" else "$total albums", Modifier.padding(top = 4.dp), color = paletteColor(Palette.TEXT_DIM), fontSize = 13.sp)
-                Row(Modifier.padding(top = 14.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Four buttons: on a narrow phone they wrap rather than run off the edge.
+                androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 14.dp, bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActPill("Play now", true, enabled = total > 0) { play("play_now", "Playing $name") }
                     ActPill("Add to queue", false, enabled = total > 0) { play("queue", "Added $name to the queue") }
+                    // Edit rules (the page's): its rules in the Library's Focus, with its order and size; Save changes writes them back.
+                    ActPill("Edit rules", false) {
+                        val c = client()
+                        if (c != null) scope.launch {
+                            withContext(Dispatchers.IO) { runCatching { c.liveEditOf(id) } }.fold({ e ->
+                                if (e == null) toast("That playlist has gone") else { LiveEditing.set(e); nav.onNav("library") }
+                            }, { toast(Failure.said(it, "Couldn't read it")) })
+                        }
+                    }
                     ActPill("Delete", false) { asking = true }
                 }
             }
