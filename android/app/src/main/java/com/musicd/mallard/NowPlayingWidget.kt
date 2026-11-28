@@ -34,7 +34,7 @@ class NowPlayingWidget : AppWidgetProvider() {
             val np = zone?.nowPlaying
             v.setTextViewText(R.id.widget_title, when {
                 Store.server(context) == null -> "Open Mallard to connect"
-                !reachable -> "Can't reach MusicD LMS Remote"
+                !reachable -> "Can't reach the Mallard server"
                 np != null -> np.title
                 else -> "Nothing playing"
             })

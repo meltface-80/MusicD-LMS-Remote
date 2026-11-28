@@ -388,7 +388,7 @@ class NowPlayingService : Service() {
         )
         val playing = zone?.isPlaying == true
         val title = when {
-            !reachable -> "Can't reach MusicD LMS Remote"
+            !reachable -> "Can't reach the Mallard server"
             np != null -> np.title
             zone != null -> zone.name
             else -> "Mallard"

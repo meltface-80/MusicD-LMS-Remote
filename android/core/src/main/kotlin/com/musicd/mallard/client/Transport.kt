@@ -22,7 +22,11 @@ interface Transport {
 
 /** The server, over HTTP at [baseUrl]. Plain HttpURLConnection, no library. MusicD LMS Remote has no sign-in. */
 class HttpTransport(private val baseUrl: String) : Transport {
-    override fun json(method: String, path: String, body: JSONObject?, timeout: Int): JSONObject {
+    override fun json(method: String, path0: String, body0: JSONObject?, timeout: Int): JSONObject {
+        // Away, every screen's room is this phone's (AwayRooms, Mandarin's AwayRoom).
+        val own = ThisPhone.awayRoom()
+        val path = if (own.isNullOrEmpty()) path0 else AwayRooms.path(path0, own)
+        val body = if (own.isNullOrEmpty()) body0 else AwayRooms.body(path0, body0, own)
         val c = open(baseUrl + path, timeout)
         try {
             if (method != "GET") method(c, method)

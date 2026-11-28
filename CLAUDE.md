@@ -321,6 +321,12 @@ tags, no automatic releases, no cluttered history.
   the server; `/api/zone-state` for it carries the phone's level. Never send it to LMS. AT HOME, Mallard names itself
   (`X-Mallard-Device`) and `/api/zones` lists its own player (`macFor`, = core `ThisPhone.playerId`) as "This phone",
   last; choosing it says hello (`PhoneZone.here`), choosing a room says goodbye (`leaveHere`).
+  AWAY, EVERY SCREEN'S ROOM IS THE PHONE'S (Mandarin's AwayRoom): core `AwayRooms` rewrites any room a request names
+  (`zone`, `zone_or_output_id`, `/api/lms/player/<id>/…`) to this phone's player in `HttpTransport` while
+  `ThisPhone.awayRoom` names it — so a screen opened on a room at home follows the phone with nothing chosen by hand.
+  Never reopen screens instead. The reach banner never shows on ONE miss or while `Away.busy` (the way changing): two
+  misses in a row, Mandarin's rule. At home the phone's Tailscale stays joined while the app is on screen or This phone
+  plays, so going away is at once (Mandarin's keepReady).
 
 ## Gotchas worth remembering
 

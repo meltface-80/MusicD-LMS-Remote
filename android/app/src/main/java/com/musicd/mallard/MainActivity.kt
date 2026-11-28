@@ -133,7 +133,7 @@ class MainActivity : androidx.activity.ComponentActivity() {
             val zone = NativeShell.zone
             // This phone's own player (fixed at 100% in LMS): the buttons are the phone's own — the DAC's level through USB
             // direct, else Android's media volume, as with any player app (Mandarin's rule).
-            if (zone.isNotEmpty() && (zone == PhoneZone.id || zone == PhoneZone.ownId(this))) {
+            if (zone.isNotEmpty() && (zone == PhoneZone.id || zone == PhoneZone.ownId(this) || (Store.awayVia && PhoneZone.id != null))) {
                 if (MusicDApp.phoneVolume?.key(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) == true) return true
                 volumeControlStream = android.media.AudioManager.STREAM_MUSIC
                 return super.onKeyDown(keyCode, event)

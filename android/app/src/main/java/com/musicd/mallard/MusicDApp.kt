@@ -26,6 +26,8 @@ class MusicDApp : Application() {
         // its volume is the phone's own (Mandarin's rule; ThisPhone in core).
         com.musicd.mallard.client.ThisPhone.deviceId = Store.deviceId(this)
         com.musicd.mallard.client.ThisPhone.volume = PhoneVolume(this).also { phoneVolume = it }
+        // Away, every screen's room is this phone's (Mandarin's AwayRoom): a screen opened on a room at home follows the phone.
+        com.musicd.mallard.client.ThisPhone.awayRoom = { if (Store.awayVia) PhoneZone.id else null }
     }
 
     companion object {

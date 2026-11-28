@@ -16,6 +16,8 @@ object ThisPhone {
     @Volatile var deviceId: String? = null
     /** The phone's own volume, for its own player; set by the app. */
     @Volatile var volume: LocalVolume? = null
+    /** Away from home, this phone's player — what every screen's room is sent as (AwayRooms); null at home. Set by the app. */
+    @Volatile var awayRoom: () -> String? = { null }
 
     /**
      * This phone's LMS player id for [deviceId], whether or not it runs: the server's macFor (lib/phoneplayers.js) —

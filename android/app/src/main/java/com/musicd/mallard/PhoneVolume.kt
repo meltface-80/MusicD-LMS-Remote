@@ -22,7 +22,7 @@ internal class PhoneVolume(context: Context) : LocalVolume {
     private fun dacLevel() = UsbDriver.controlsVolume
 
     /** This phone's own player, running or about to (chosen at home a moment ago). */
-    override fun owns(zoneId: String): Boolean = zoneId == PhoneZone.id || zoneId == own
+    override fun owns(zoneId: String): Boolean = zoneId == PhoneZone.id || zoneId == own || (Store.awayVia && PhoneZone.id != null)   // away, every room is the phone's
 
     override fun level(): Int? =
         if (dac()) (if (dacLevel()) UsbDriver.volume() else null)

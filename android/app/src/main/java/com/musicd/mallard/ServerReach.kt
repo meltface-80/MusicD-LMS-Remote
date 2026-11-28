@@ -37,6 +37,7 @@ internal class ServerReach(private val a: MainActivity) {
 
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var onScreen = false
+    private var misses = 0
 
     fun start() {
         runCatching { a.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(netWatch) }
@@ -63,14 +64,20 @@ internal class ServerReach(private val a: MainActivity) {
             val health = runCatching { Health.parse(client.getJson("/api/status", 4000)) }
             main.post {
                 val h = health.getOrNull()
+                if (h == null) {
+                    AppLog.line("REACH", "the server didn't answer: " + (health.exceptionOrNull()?.message ?: "?"), anomaly = true)
+                    Away.lookSoon(0)   // home or away again
+                    // Not said at once (Mandarin's "two missed in a row"): the Wi-Fi gone is the way changing to away, which
+                    // takes a moment, and one slow answer isn't out of reach. Said once two looks in a row have missed with
+                    // no look at the way under way; until then the screens keep what they last drew.
+                    if (++misses < 2 || Away.busy) { if (onScreen) lookSoon(2_500); return@post }
+                } else { misses = 0; Store.setAwayLearned(a, h.tailscale) }   // its tailnet address kept
                 state.value = when {
                     h == null -> Reach.Down
                     !h.connected -> Reach.NoLms
                     else -> Reach.Up
                 }
-                if (h == null) AppLog.line("REACH", "the server didn't answer: " + (health.exceptionOrNull()?.message ?: "?"), anomaly = true)
-                if (h == null) Away.lookSoon(0) else Store.setAwayLearned(a, h.tailscale)   // home or away again; its tailnet address kept
-                if (state.value != Reach.Up && onScreen) lookSoon(20_000)
+                if (state.value != Reach.Up && onScreen) lookSoon(if (Store.awayVia) 10_000 else 20_000)
             }
         }, "reach").apply { isDaemon = true; start() }
     }
@@ -99,10 +106,13 @@ internal fun ReachBanner(onTryAgain: () -> Unit, onChangeServer: () -> Unit) {
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(c(Palette.BG_ELEV)).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(if (s == ServerReach.Reach.Down) "Can't reach MusicD LMS Remote" else "Waiting for Lyrion Music Server",
+            Text(if (s == ServerReach.Reach.Down) "Can't reach the Mallard server" else "Waiting for Lyrion Music Server",
                 color = c(Palette.TEXT), fontWeight = FontWeight.W700, fontSize = 15.sp)
-            Text(if (s == ServerReach.Reach.Down) "Is the phone on the same network as the server, and is the server running?"
-                 else "The server is up but can't reach LMS yet. It keeps trying by itself.",
+            Text(when {
+                    s != ServerReach.Reach.Down -> "The server is up but can't reach LMS yet. It keeps trying by itself."
+                    Store.awayVia -> "Away from home, through Tailscale: is the server running, and signed in to Tailscale?"
+                    else -> "At home: is the phone on the same network as the server, and is the server running? Away from home, sign this phone in to Tailscale (Settings → Away from home)."
+                 },
                 color = c(Palette.TEXT_DIM), fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Try again", color = c(Palette.ACCENT_TEXT), fontWeight = FontWeight.W700, fontSize = 14.sp,
