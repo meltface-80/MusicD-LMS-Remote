@@ -5,8 +5,24 @@ changed. Work merged into `dev` goes under `## Unreleased` until the owner says 
 renamed to the version and the Release workflow's notes are taken from it. Lines start Added / Changed / Fixed /
 Removed. Versions before v1.0.86 are described in their GitHub releases.
 
-## Unreleased
+## v1.0.87
 
+The first release of MusicD LMS Remote as it is now: the server, the web app, the wall display and Mallard v0.2.0 for
+Android, one design across all of them — and a new [website](https://meltface-80.github.io/MusicD-LMS-Remote/) and README.
+New and least tested, so please try them and report what you find: **This phone** (Mallard as a Lyrion player of its own,
+named after the phone, at home and away — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, gapless, volume levelling on
+the phone), **going away and coming home** (Mallard follows from Wi-Fi to mobile data and back on its own), **tracks kept
+ahead** on the phone (your own music files, from the music folder mounted into the container), **a USB DAC** on the
+phone, and **Tailscale built in** to the server and Mallard. Also new: Now playing shows the quality of what is playing
+in every room, with the volume levelling applied; and a **diagnostic log**, off unless you switch it on (Settings →
+System), with the server's, Mallard's and Lyrion's own logs in one file — attach it to any report. Plugins (Apps &
+radio, installing plugins) are in beta. Known limits: a Qobuz or TIDAL track is held one ahead on the phone, as Lyrion
+hands its players one track ahead; without the music folder mounted, tracks ahead come through Lyrion's download, which
+some servers never answer.
+
+### Changes
+
+- Changed - The README and the [website](https://meltface-80.github.io/MusicD-LMS-Remote/) are new, written for this release: the site in Mandarin's style — a contents page and a page per topic (downloads, install with the Docker configurator, the apps, configuration, features, This phone and away from home, plugins, how it works, logs, troubleshooting) — with a Buy Me a Coffee button on the README and every page, as Mandarin's.
 - Added - Diagnostic logging (owner request: "a full sweep covering everything … capture all Lyrion logs also … off by default, a user turns it on if they feel they are having trouble"), as Mandarin's, adapted to Lyrion. Settings → System → Diagnostic logging, in both apps, one switch, off unless switched on. On, the server logs in detail and writes a snapshot of what it holds every five minutes; Mallard sends it its own lines (screens, taps, every request with its time, playback, errors and crashes) under the phone's name, and the web app its page errors. Log → Download gives one text file: a header (versions, Lyrion, the players, when Lyrion last stopped answering), the server's log, Lyrion's own server.log and scanner.log, and on Mallard the phone's recent lines — saved to Downloads/Mallard on the phone (Android 8 and 9 ask where), and through the browser from the web app. Every line leaves out passwords, keys, emails, and internet and Tailscale addresses (lib/scrub.js, the twin of Mallard's LogRedact).
 - Added - Now playing shows the quality of what is playing, in every room and on This phone (owner request), in both apps: Mandarin's line under the album — the track's own format ("FLAC 24/96", "ALAC 16/44.1", "MP3 320 kbps", "DSD 2.8 MHz"; a lossy file never claims a depth), This phone away with Opus "Opus 256 kbps · 24/48" and bit-perfect the file's own quality, and " · ReplayGain −6.2 dB" while the player's volume levelling applies a gain (the track's or the album's, as its mode says; on This phone the gain Lyrion sent with the track). The mini player's short form is the format alone ("FLAC 24/96", "Opus 256").
 - Changed - Plugins are marked Beta (owner: they are a work in progress): a small brass Beta pill beside Apps & radio (Mallard: Apps and Radio) in the side menu and Settings → LMS server → Plugins, and a line at the top of their screens saying they are still being worked on, in both apps.
@@ -80,6 +96,16 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 - Changed - Releases are cut only when asked for (a `v*.*.*` tag on main, or Run workflow), never by a merge
 - Changed - Quality gates from Mandarin: a file-length ratchet, `@ts-check` + `tsc`, and ESLint against a shrink-only baseline, run by a pre-commit hook and by CI on every push and pull request
 - Changed - The online-library explanation (`/api/library/online`) and the build stamp moved into modules of their own (`lib/onlinelib.js`, `lib/build.js`)
+
+## Mallard v0.2.0
+
+- Added - Mallard v0.2.0, the first release of the Android app for MusicD LMS Remote: every screen of the web app, controls on the lock screen and in the notification, and a home-screen widget.
+- Added - This phone: Mallard as a Lyrion player of its own, at home and away from home — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, gapless, Lyrion's volume levelling on the phone, the phone's own volume, and the next tracks kept on the phone.
+- Added - Away from home over Tailscale, built into the app: no Tailscale app needed, and Mallard follows from Wi-Fi to mobile data and back on its own.
+- Added - A USB DAC on the phone, bit-perfect through Mallard's own USB audio driver.
+- Added - Now playing shows what is playing and how ("FLAC 24/96", "Opus 256 kbps · 24/48"), with the volume levelling applied; This phone goes by the phone's own name.
+- Added - A diagnostic log, off unless switched on (Settings → System), saved to Downloads/Mallard: the server's, the app's and Lyrion's own logs in one file.
+- Added - Audio Devices, the Shelf, Apps & radio, installing Lyrion plugins, Share cards, and updates offered on Home and in Settings → System.
 
 ## v1.0.86
 
