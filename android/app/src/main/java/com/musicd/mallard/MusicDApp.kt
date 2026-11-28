@@ -18,6 +18,7 @@ class MusicDApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLog.start(this)
+        AppLog.follow(this)   // the diagnostic log: sent to the server while its switch is on
         CrashLog.install(this)
         CrashLog.watchMainThread(this)
         // The USB port watched (a DAC plugged in or pulled out) for the phone's own player away from home.

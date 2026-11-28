@@ -27,12 +27,14 @@ import org.json.JSONObject
  * installer putting the new build over this one. A test build of either says so and how it is updated instead.
  */
 @Composable
-internal fun SystemPane(client: () -> ServerClient?, onBack: () -> Unit) {
+internal fun SystemPane(client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
     SettingsFrame {
         PaneHead("System", onBack)
         ServerAddressRow(client)   // this phone's server (it was Settings → Mallard's own pane; owner: one fewer row)
         Block { ServerUpdateRow(client) }
         Block { AppUpdateRow() }
+        SettingsDivider()
+        Block { DiagnosticsBlock(client, info) }   // the diagnostic log (SettingsDiag.kt)
     }
 }
 

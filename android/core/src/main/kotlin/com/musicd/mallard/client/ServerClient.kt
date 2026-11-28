@@ -273,6 +273,9 @@ class ServerClient(
     /** The bytes at [url], one of this server's (a cover from [imageUrl]). */
     fun bytes(url: String): ByteArray = transport.bytes(url.removePrefix(address.baseUrl), timeoutMs)
 
+    /** The bytes at [path] given [timeout] ms (the diagnostic log: the server reads Lyrion's logs for it). */
+    fun bytes(path: String, timeout: Int): ByteArray = transport.bytes(path, timeout)
+
     fun getJson(path: String, timeout: Int = timeoutMs): JSONObject = transport.json("GET", path, null, timeout)
 
     fun post(path: String, body: JSONObject, timeout: Int = timeoutMs): JSONObject = transport.json("POST", path, body, timeout)
