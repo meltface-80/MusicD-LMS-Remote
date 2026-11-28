@@ -120,8 +120,8 @@ class UsbAudioSink(private val inner: AudioSink, private val context: Context) :
         if (out.capacity() < need) out = ByteBuffer.allocateDirect(need).order(ByteOrder.LITTLE_ENDIAN)
         out.clear()
         val src = buffer.duplicate().order(if (words) ByteOrder.LITTLE_ENDIAN else ByteOrder.nativeOrder())
-        // 1 (a DAC with its own volume control, or fixed volume) leaves the samples untouched.
-        val gain = UsbDriver.softwareGain().toDouble()
+        // 1 (a DAC with its own volume control, or fixed volume) leaves the samples untouched — and always Untouched.
+        val gain = if (PhoneZone.mode == "exact") 1.0 else UsbDriver.softwareGain().toDouble()
         for (i in 0 until samples) {
             val w = if (words) PcmWords.scaled(src.getInt(), gain) else PcmWords.of(src.getFloat().toDouble() * gain)
             PcmWords.put(out, w, subslot)

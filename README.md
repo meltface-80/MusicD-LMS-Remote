@@ -409,7 +409,10 @@ that player alone, as "This phone"; home again, they are back with your rooms.
 
 **USB DACs:** with a DAC on the phone's USB port, Settings → Away from home → USB DAC → USB direct sends the phone's
 sound to it through Mallard's own USB audio driver (Mandarin's), at the stream's own rate and the DAC's depth, with
-Android's mixer out of the way. An untouched, bit-perfect stream from the server is the next stage.
+Android's mixer out of the way. For bit-perfect, choose **Untouched** under This phone → Stream away as: the server then
+plays to the phone as its own Lyrion player and passes each track on as the file itself — no decoding, resampling or
+volume on the way — and Lyrion's volume moves the DAC's own volume control. (A Lyrion server whose Slimproto port isn't
+3483 sets `SLIMPROTO_PORT`.)
 
 ## Environment variables
 
@@ -420,6 +423,7 @@ Android's mixer out of the way. An untouched, bit-perfect stream from the server
 | `LMS_PORT` | `9000` | LMS JSON-RPC/web port |
 | `TS_AUTHKEY` | *(none)* | Joins the built-in Tailscale to your tailnet without the browser sign-in (Away from home) |
 | `TS_HOSTNAME` | `musicd-lms` | The server's name on your tailnet |
+| `SLIMPROTO_PORT` | `3483` | LMS's Slimproto port, for the phones' own players away from home |
 | `TAILSCALE` | *(on)* | `off` leaves the built-in Tailscale engine out |
 | `LMS_USER` / `LMS_PASS` | – | LMS HTTP auth, if enabled |
 | `MUSIC_DIR` | `/music` | Where the optional read-only music mount lives inside the container (only used for file-tag label scanning). |

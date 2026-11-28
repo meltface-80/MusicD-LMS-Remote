@@ -300,6 +300,13 @@ tags, no automatic releases, no cluttered history.
   48000 -R`, MAC `02:6d:…` from the phone's id) so LMS's own player settings apply, its stdout read at REAL TIME (it has
   no clock: unread it stalls, closed it dies) into ffmpeg → Ogg Opus 256k or FLAC 24/48. Over the tailnet `/api/zones` is
   that phone's player alone ("This phone"). Never apply ReplayGain or volume downstream: squeezelite already has.
+  UNTOUCHED (`mode:"exact"` in the hello; `lib/relayplayer.js` + `lib/slimproto.js`): no squeezelite — the server's own
+  Slimproto PLAYER (same MAC) spools each track LMS sends (`/api/phone/track`, Range) and tells Mallard over SSE
+  (`/api/phone/events`); Mallard plays them as an ExoPlayer playlist (`PhoneRelay.kt`) and reports
+  (`/api/phone/report`). THE TRAP: no DSCO/STMd before the first STMs of a started track (LMS would take the phone's
+  STMs for the next track) — held, then STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes
+  each a passthrough; `flc` first re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, `mp3StreamingMethod 1`;
+  LMS's volume (audg) drives the DAC's HARDWARE volume only, never the samples. Spools live in os.tmpdir(), never data/.
 
 ## Gotchas worth remembering
 

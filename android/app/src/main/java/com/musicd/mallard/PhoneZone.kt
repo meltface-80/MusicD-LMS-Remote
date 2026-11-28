@@ -12,32 +12,57 @@ import com.musicd.mallard.client.phoneHello
  * it alone ([id]; the server's zone list away is that player only, as "This phone") — and its stream plays
  * (PhoneStreamService). Home again: goodbye, the stream stops, and the screens are back in the room kept for home, which
  * going away never overwrote (Store.zone). Blocking; called on Away's own thread.
+ *
+ * Untouched (Stream away as): the hello asks for the server's relay player ("exact") and names the highest rate the USB
+ * DAC takes, and the phone plays the relay's tracks (PhoneStreamService → PhoneRelay) instead of a stream.
  */
 internal object PhoneZone {
     /** This phone's player while away; null at home. */
     @Volatile var id: String? = null
         private set
     @Volatile private var name = ""
+    /** The server's player for this phone, as the hello made it: "exact" (the relay) or "pcm" (squeezelite). */
+    @Volatile var mode = "pcm"
+        private set
+    private val work = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     /** What LMS calls this phone: its maker and model ("Google Pixel 8"). */
     fun phoneName(): String = listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL).distinct().joinToString(" ").trim().ifEmpty { "Mallard phone" }
 
     fun goAway(c: Context) {
         val client = Store.client(c) ?: return
-        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName()) }.getOrElse {
+        val want = PhoneStream.mode(Store.awayQuality(c))
+        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName(), want, maxRate(c)) }.getOrElse {
             AppLog.line("AWAY", "the server didn't start this phone's player: ${it.message}", anomaly = true); return
         }
-        id = h.playerId; name = h.name
+        id = h.playerId; name = h.name; mode = h.mode
         AppLog.line("AWAY", "away: Lyrion plays to this phone (${h.name})")
         NativeShell.awayZone(h.playerId)
         play(c)
     }
 
-    /** The stream (again, as the quality setting now says), while away. */
+    /** The phone's sound (again, as the setting now says), while away: the relay's tracks for Untouched, else the stream. */
     fun play(c: Context) {
         val p = id ?: return
+        if (mode == "exact") { PhoneStreamService.startRelay(c, p, name); return }
         val base = Store.client(c)?.address?.baseUrl ?: return
         PhoneStreamService.start(c, base + PhoneStream.path(p, Store.awayQuality(c)), name)
+    }
+
+    /** Stream away as changed (Settings): a change between Untouched and the others swaps the server's player, so hello again first. */
+    fun requality(c: Context) {
+        if (id == null) return
+        val app = c.applicationContext
+        work.execute {
+            if (PhoneStream.mode(Store.awayQuality(app)) != mode) goAway(app) else play(app)
+        }
+    }
+
+    /** The highest rate this phone takes: the USB DAC's, with USB direct on and one on the port; else 192 kHz. */
+    private fun maxRate(c: Context): Int {
+        val info = UsbDac.info()
+        val rates = info?.streams?.filter { it.pcm }?.flatMap { s -> s.rates + (s.continuous?.let { listOf(it[1]) } ?: emptyList()) }.orEmpty() + (info?.clockRates ?: emptyList())
+        return rates.maxOrNull()?.takeIf { Store.usbDirect(c) && UsbDac.device() != null && it >= 44100 } ?: 192000
     }
 
     fun goHome(c: Context, homeClient: com.musicd.mallard.client.ServerClient?) {
