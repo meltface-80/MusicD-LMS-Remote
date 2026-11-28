@@ -41,8 +41,15 @@ object Store {
     /** The player the screens play in, as last chosen. */
     fun zone(context: Context): String? = prefs(context).getString(KEY_ZONE, null)
 
-    /** The room the screens play in now: the one kept ("" when none has been chosen yet). */
-    fun playRoom(context: Context): String = zone(context).orEmpty()
+    /** The room the screens play in now: away, this phone's own player (PhoneZone); else the one kept ("" when none yet). */
+    fun playRoom(context: Context): String = PhoneZone.id ?: zone(context).orEmpty()
+
+    /** This phone's own id for the server (its player's MAC is made from it): made once, kept. */
+    fun deviceId(context: Context): String = prefs(context).getString("device_id", null) ?: java.util.UUID.randomUUID().toString().also { prefs(context).edit().putString("device_id", it).apply() }
+
+    /** Away from home, the stream made as "opus" (256 kbps) or "flac" (Settings → Away from home → This phone). */
+    fun awayQuality(context: Context): String = com.musicd.mallard.client.PhoneStream.quality(prefs(context).getString("away_quality", null))
+    fun setAwayQuality(context: Context, q: String) { prefs(context).edit().putString("away_quality", q).apply() }
 
     fun setZone(context: Context, zoneId: String?) { prefs(context).edit().putString(KEY_ZONE, zoneId).apply() }
 

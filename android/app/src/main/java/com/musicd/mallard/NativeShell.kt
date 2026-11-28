@@ -86,7 +86,16 @@ internal object NativeShell {
         zone = id
         homeArgs.value = homeArgs.value.first to id
         // The notification and lock screen follow the room chosen now, not at their next look at the rooms (item 120).
-        store?.let { Store.setZone(it, id); NowPlayingService.start(it) }
+        store?.let { if (PhoneZone.id == null) Store.setZone(it, id); NowPlayingService.start(it) }   // away, the home room is kept as it was
+    }
+
+    /** Away from home: the screens play in this phone's own player ([id]); null, home again: in the room kept for home. */
+    fun awayZone(id: String?) {
+        val s = store ?: return
+        val now = id ?: Store.zone(s).orEmpty()
+        zone = now
+        homeArgs.value = homeArgs.value.first to now
+        NowPlayingService.start(s)
     }
 
     /** A room chosen on a screen: Home's own room too, so Back finds it following that room (item 63); what's playing in the one left offered to move (item 68). */

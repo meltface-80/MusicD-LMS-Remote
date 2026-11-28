@@ -3,6 +3,14 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard away from home plays to the phone itself (Mallard's half of the phone's own player; owner request, as
+  Mandarin): the moment it goes away through its own Tailscale it says hello, the server starts this phone's LMS player,
+  and every screen shows and plays in that player alone ("This phone") — the home rooms leave the picker, and the
+  lock screen follows it. Its sound plays from the server's stream (a background media player, PhoneStreamService, with
+  its own notification and Stop). Home again: goodbye, the stream stops, and the screens are back in the room kept for
+  home, which going away never overwrote. Settings → Away from home → This phone: Stream away as Opus 256 kbps or
+  Lossless (FLAC 24-bit/48 kHz).
+
 - A phone away from home gets an LMS player of its own (server half; Mallard's half follows). On a phone's hello the
   server runs squeezelite for it — a real LMS player named after the phone, its MAC fixed per phone so LMS keeps its
   settings — so LMS plays to it losslessly and every LMS player setting applies: volume, ReplayGain levelling,
