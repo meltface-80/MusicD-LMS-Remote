@@ -1,6 +1,7 @@
 package com.musicd.mallard
 
 import android.content.Context
+import com.musicd.mallard.client.CachePlan
 import com.musicd.mallard.client.PhoneTailscale
 import com.musicd.mallard.client.ServerAddress
 import com.musicd.mallard.client.ServerClient
@@ -61,6 +62,11 @@ object Store {
     fun setUsbFixed(context: Context, on: Boolean) { prefs(context).edit().putBoolean("usb_fixed", on).apply() }
     fun usbLimit(context: Context): Int = prefs(context).getInt("usb_limit", 80).coerceIn(1, 100)
     fun setUsbLimit(context: Context, pct: Int) { prefs(context).edit().putInt("usb_limit", pct.coerceIn(1, 100)).apply() }
+    /** This phone's cache (Mandarin's): tracks kept ahead on Wi-Fi and on mobile data, and its size in GB (CachePlan's choices). */
+    fun cacheWifi(context: Context): Int = CachePlan.pick(prefs(context).getInt("cache_wifi", 0), CachePlan.WIFI_CHOICES, CachePlan.WIFI_DEFAULT)
+    fun cacheMobile(context: Context): Int = CachePlan.pick(prefs(context).getInt("cache_mobile", 0), CachePlan.MOBILE_CHOICES, CachePlan.MOBILE_DEFAULT)
+    fun cacheGb(context: Context): Int = CachePlan.pick(prefs(context).getInt("cache_gb", 0), CachePlan.SIZE_CHOICES_GB, CachePlan.SIZE_DEFAULT_GB)
+    fun setCache(context: Context, key: String, value: Int) { prefs(context).edit().putInt(key, value).apply() }
     fun usbDevice(context: Context): String? = prefs(context).getString("usb_device", null)
     fun setUsbDevice(context: Context, key: String?) { prefs(context).edit().apply { if (key.isNullOrBlank()) remove("usb_device") else putString("usb_device", key) }.apply() }
 

@@ -1018,7 +1018,7 @@ const notConnected = (res) => res.status(503).json({ error: "Not connected to Ly
 // ---- status / zones ----
 
 const tailscale = require("./lib/tailscale-routes").mountTailscale(app, { port: PORT, dataDir: DATA_DIR, log: log.child("tailscale") });   // away from home
-require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected });   // a phone away: its own LMS player
+require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected, cacheDir: path.join(DATA_DIR, "cache", "phone-opus") });   // a phone away: its own LMS player
 app.get("/api/status", (req, res) => {
   res.json({
     // Names the server (for Mallard's address sweep), and its tailnet address once the built-in Tailscale serves.

@@ -29,6 +29,12 @@ object PhoneStream {
 
     /** The player's commands for [playerId] (Server-Sent Events). */
     fun eventsPath(playerId: String): String = "/api/phone/events?player_id=" + enc(playerId)
+    /** A track by its LMS id (lib/phonefiles.js): the file itself, or ([opus]) its Opus — the address the phone's cache keeps it under. */
+    fun filePath(trackId: String, opus: Boolean): String = "/api/phone/file?id=" + enc(trackId) + if (opus) "&q=opus" else ""
+    /** The cache's name for a [filePath] address (CachePlan.key), or null for any other. */
+    fun cacheKey(path: String): String? =
+        Regex("/api/phone/file\\?id=(\\d+)(&q=opus)?$").find(path)?.let { CachePlan.key(it.groupValues[1], it.groupValues[2].isNotEmpty()) }
+
     /** One track: the file itself, or ([opus]) its Opus 256 kbps. */
     fun trackPath(playerId: String, seq: Int, opus: Boolean = false): String =
         "/api/phone/track?player_id=" + enc(playerId) + "&seq=" + seq + if (opus) "&q=opus" else ""
@@ -38,13 +44,15 @@ object PhoneStream {
 /**
  * A command from the server's relay player (its event channel), as the phone acts on it:
  *   add     a track to play: [seq], its type; [fresh] the first of a new start (what was queued goes), [play] start at once,
- *           [gainDb] LMS's ReplayGain for it (null: none), applied on the phone as Mandarin's phone does
+ *           [gainDb] LMS's ReplayGain for it (null: none), applied on the phone as Mandarin's phone does;
+ *           [trackId] its LMS id when it is the library's own and starts at its beginning (null otherwise): then the
+ *           phone plays it by id, from its cache when it has it (PhoneStream.filePath)
  *   drop    the queued track [seq] let go (the playlist changed)
  *   stop / pause / resume
  * (No volume: LMS has this player fixed at 100%, and its volume is the phone's own — ThisPhone.)
  */
 data class RelayCommand(val cmd: String, val seq: Int = 0, val mime: String = "", val fresh: Boolean = false, val play: Boolean = false,
-                        val gainDb: Double? = null) {
+                        val gainDb: Double? = null, val trackId: String? = null) {
     companion object {
         /** A `data:` line's JSON, or null for anything that isn't a command the phone knows. */
         fun parse(json: String): RelayCommand? {
@@ -53,7 +61,8 @@ data class RelayCommand(val cmd: String, val seq: Int = 0, val mime: String = ""
             if (cmd !in setOf("add", "drop", "stop", "pause", "resume")) return null
             if ((cmd == "add" || cmd == "drop") && j.optInt("seq", 0) <= 0) return null
             return RelayCommand(cmd, j.optInt("seq", 0), j.optString("mime"), j.optBoolean("fresh"), j.optBoolean("play"),
-                if (!j.has("gain_db") || j.isNull("gain_db")) null else j.optDouble("gain_db"))
+                if (!j.has("gain_db") || j.isNull("gain_db")) null else j.optDouble("gain_db"),
+                j.optString("track_id").takeIf { !j.isNull("track_id") && it.matches(Regex("\\d+")) })
         }
 
     }
@@ -69,4 +78,11 @@ fun ServerClient.phoneBye(playerId: String) { post("/api/phone/bye", JSONObject(
 /** What the phone plays, for the relay: [ev] started / pos / drained / failed, of track [seq], [ms] into it. */
 fun ServerClient.phoneReport(playerId: String, ev: String, seq: Int, ms: Long, playing: Boolean) {
     post("/api/phone/report", JSONObject().put("player_id", playerId).put("ev", ev).put("seq", seq).put("ms", ms).put("playing", playing), 10_000)
+}
+
+/** The next [count] tracks of this phone's queue after the one playing, by LMS id (for its cache ahead). */
+fun ServerClient.phoneAhead(playerId: String, count: Int): List<String> {
+    val a = getJson("/api/phone/ahead?player_id=" + java.net.URLEncoder.encode(playerId, "UTF-8") + "&count=" + count, 15_000).optJSONArray("tracks")
+        ?: return emptyList()
+    return (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("id")?.takeIf { id -> id.isNotEmpty() } }
 }

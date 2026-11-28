@@ -114,5 +114,7 @@ dependencies {
     // (float out: Android's own gives 16-bit), builds on Media3's decoder base classes.
     implementation("androidx.media3:media3-decoder:1.8.0")
     implementation("androidx.media3:media3-extractor:1.8.0")
+    // This phone's cache of tracks kept ahead (StreamCache, Mandarin's): its index in a database.
+    implementation("androidx.media3:media3-database:1.8.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }

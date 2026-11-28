@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.MediaSource
 import com.musicd.mallard.client.PhoneStream
 import com.musicd.mallard.client.RelayCommand
 import com.musicd.mallard.client.ServerClient
@@ -25,7 +26,10 @@ import java.util.concurrent.Executors
  * ReplayGain for each comes with it and is applied on the phone (TrackGain). The sound goes where PhoneStreamService's
  * sinks send it: the USB DAC with USB direct on. The volume is the phone's own (PhoneVolume).
  */
-internal class PhoneRelay(private val player: ExoPlayer, private val client: ServerClient, private val playerId: String, private val opus: () -> Boolean) {
+internal class PhoneRelay(
+    private val player: ExoPlayer, private val client: () -> ServerClient?, private val playerId: String, private val opus: () -> Boolean,
+    private val files: MediaSource.Factory, private val bytes: MediaSource.Factory, private val ahead: PhoneAhead
+) {
     private val main = Handler(Looper.getMainLooper())
     private val reports = Executors.newSingleThreadExecutor()
     @Volatile private var running = true
@@ -38,7 +42,7 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
     private val gainDb = HashMap<Int, Double?>()
 
     private val listener = object : Player.Listener {
-        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { gains(); if (player.isPlaying) startedNow() }
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { gains(); ahead.soon(); if (player.isPlaying) startedNow() }
         override fun onIsPlayingChanged(isPlaying: Boolean) { if (isPlaying) startedNow(); pos() }
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_ENDED) { val s = seq(); report("drained", s, 0, false) }
@@ -71,6 +75,7 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
         main.removeCallbacks(ticker)
         player.removeListener(listener)
         reports.shutdownNow()
+        ahead.stop()
     }
 
     private fun seq(): Int = player.currentMediaItem?.mediaId?.toIntOrNull() ?: 0
@@ -97,14 +102,16 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
 
     private fun report(ev: String, s: Int, ms: Long, playing: Boolean) {
         if (!running) return
-        runCatching { reports.execute { runCatching { client.phoneReport(playerId, ev, s, ms, playing) } } }
+        runCatching { reports.execute { runCatching { client()?.phoneReport(playerId, ev, s, ms, playing) } } }
     }
 
     /** The relay's event channel, held open; taken up again after a moment if it drops. */
     private fun listen() {
         while (running) {
             runCatching {
-                val c = URL(client.address.baseUrl + PhoneStream.eventsPath(playerId)).openConnection() as HttpURLConnection
+                // Where the server is now (home, or away through the phone's Tailscale): looked up again at each connection.
+                val base = client()?.address?.baseUrl ?: throw IllegalStateException("no server")
+                val c = URL(base + PhoneStream.eventsPath(playerId)).openConnection() as HttpURLConnection
                 conn = c
                 c.connectTimeout = 10_000; c.readTimeout = 45_000   // the server pings every 15 s
                 c.setRequestProperty("Accept", "text/event-stream")
@@ -128,18 +135,23 @@ internal class PhoneRelay(private val player: ExoPlayer, private val client: Ser
         when (c.cmd) {
             "add" -> {
                 val asOpus = opus()
-                val item = MediaItem.Builder().setUri(client.address.baseUrl + PhoneStream.trackPath(playerId, c.seq, asOpus)).setMediaId(c.seq.toString())
+                // The library's own track from its start: by its id, through the phone's cache (kept, and fetched ahead);
+                // else the player's own bytes for it. Relative addresses: sent where the server is now (PhoneStreamService).
+                val path = c.trackId?.let { PhoneStream.filePath(it, asOpus) } ?: PhoneStream.trackPath(playerId, c.seq, asOpus)
+                val item = MediaItem.Builder().setUri(path).setMediaId(c.seq.toString())
                     .apply { val m = if (asOpus) "audio/ogg" else c.mime; if (m.isNotEmpty()) setMimeType(m) }.build()
+                val source = (if (c.trackId != null) files else bytes).createMediaSource(item)
                 gainDb[c.seq] = c.gainDb
                 if (c.fresh) {
-                    player.setMediaItem(item)
+                    player.setMediaSource(source)
                     player.prepare()
                     player.playWhenReady = c.play
                 } else {
-                    player.addMediaItem(item)
+                    player.addMediaSource(source)
                     if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) { player.prepare(); if (c.play) player.play() }
                 }
                 gains()
+                ahead.soon()
             }
             "drop" -> for (i in player.mediaItemCount - 1 downTo 0) {
                 if (i != player.currentMediaItemIndex && player.getMediaItemAt(i).mediaId == c.seq.toString()) player.removeMediaItem(i)

@@ -17,6 +17,16 @@ class PhonePlayerTest {
         assertEquals("/api/phone/track?player_id=x&seq=7&q=opus", PhoneStream.trackPath("x", 7, opus = true))
     }
 
+    @Test fun `a track by id, and its name in the phone's cache`() {
+        assertEquals("/api/phone/file?id=42&q=opus", PhoneStream.filePath("42", opus = true))
+        assertEquals("/api/phone/file?id=42", PhoneStream.filePath("42", opus = false))
+        assertEquals("t42:opus", PhoneStream.cacheKey("/api/phone/file?id=42&q=opus"))
+        assertEquals("t42:orig", PhoneStream.cacheKey("/api/phone/file?id=42"))
+        assertNull(PhoneStream.cacheKey("/api/phone/track?player_id=x&seq=7"))   // the player's one-off bytes: not kept
+        assertEquals("42", RelayCommand.parse("""{"cmd":"add","seq":1,"track_id":"42"}""")!!.trackId)
+        assertNull(RelayCommand.parse("""{"cmd":"add","seq":1,"track_id":null}""")!!.trackId)
+    }
+
     @Test fun `two choices, and Opus only away (at home always the file)`() {
         assertEquals(listOf("opus", "exact"), PhoneStream.QUALITIES.map { it.first })
         assertEquals("opus", PhoneStream.quality(null)); assertEquals("opus", PhoneStream.quality("flac")); assertEquals("exact", PhoneStream.quality("exact"))
