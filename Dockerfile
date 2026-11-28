@@ -17,9 +17,15 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 # No native builds here — the LMS port depends only on express + compression
-# (no better-sqlite3, no music-metadata, no ffmpeg/squeezelite). The heavy
-# lifting (scanning, transcoding, playback) is done by the Lyrion Music Server
-# this talks to over the network.
+# (no better-sqlite3, no music-metadata). The heavy lifting (scanning,
+# transcoding for the rooms, playback) is done by the Lyrion Music Server this
+# talks to over the network. Two programs are installed for a PHONE AWAY FROM
+# HOME (lib/phoneplayers.js): squeezelite, the phone's own LMS player (to
+# stdout, resampled to 48 kHz by libsoxr, which Debian's build has), and
+# ffmpeg, which makes its sound Opus 256 kbps or FLAC for the phone.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends squeezelite ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 RUN npm install --omit=dev --no-audit --no-fund --loglevel=error

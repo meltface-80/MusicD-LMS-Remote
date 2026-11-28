@@ -1013,13 +1013,12 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, "public")));
 
-const notConnected = (res) => res.status(503).json({
-  error: "Not connected to Lyrion Music Server yet" + (state.lastError ? " (" + state.lastError + ")" : "")
-});
+const notConnected = (res) => res.status(503).json({ error: "Not connected to Lyrion Music Server yet" + (state.lastError ? " (" + state.lastError + ")" : "") });
 
 // ---- status / zones ----
 
 const tailscale = require("./lib/tailscale-routes").mountTailscale(app, { port: PORT, dataDir: DATA_DIR, log: log.child("tailscale") });   // away from home
+require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected });   // a phone away: its own LMS player
 app.get("/api/status", (req, res) => {
   res.json({
     // Names the server (for Mallard's address sweep), and its tailnet address once the built-in Tailscale serves.
