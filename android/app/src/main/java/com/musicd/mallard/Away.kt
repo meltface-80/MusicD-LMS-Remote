@@ -21,12 +21,14 @@ import java.util.concurrent.Executors
  * talks to 127.0.0.1:PORT, which the engine forwards to the server over the tailnet. Looked at when the network
  * changes and whenever the app comes back on screen; [changed] then tells the app (ServerReach looks again).
  *
- * At home the engine is stopped (nothing at home uses it), except while Settings → This phone is open ([holding]).
+ * At home the engine is kept joined while the app is on screen or this phone plays, so going away is at once (Mandarin's
+ * keepReady); otherwise stopped, except while Settings → This phone is open ([holding]).
  * Away and on screen, the engine's lease is renewed every minute; off screen it is let go, and stops itself once
  * nothing passes through it.
  */
 internal object Away {
     private val work = Executors.newSingleThreadExecutor { r -> Thread(r, "away").apply { isDaemon = true } }
+    private val warming = Executors.newSingleThreadExecutor { r -> Thread(r, "away-warm").apply { isDaemon = true } }
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var app: Context? = null
     @Volatile private var wasAway = false
@@ -48,8 +50,18 @@ internal object Away {
         lookSoon(0)
     }
 
-    private val look = Runnable { work.execute { check() } }
-    fun lookSoon(ms: Long) { main.removeCallbacks(look); main.postDelayed(look, ms) }
+    private val look = Runnable { lookAt = 0L; work.execute { check() } }
+    @Volatile private var lookAt = 0L
+    /** Looked at in [ms] — or sooner, if a look is already due sooner (the Wi-Fi lost, then the mobile data come, must not wait longer). */
+    fun lookSoon(ms: Long) {
+        val at = android.os.SystemClock.uptimeMillis() + ms
+        if (lookAt != 0L && lookAt <= at) return
+        lookAt = at
+        main.removeCallbacks(look); main.postAtTime(look, at)
+    }
+    /** A look is under way or due: the way may be about to change (ServerReach waits for it before saying it can't reach). */
+    val busy: Boolean get() = checking || lookAt != 0L
+    @Volatile private var checking = false
 
     /** The Wi-Fi (or Ethernet) network the phone is on, if any: not a VPN. */
     @Suppress("DEPRECATION")
@@ -83,6 +95,11 @@ internal object Away {
     }
 
     private fun check() {
+        checking = true
+        try { checkNow() } finally { checking = false }
+    }
+
+    private fun checkNow() {
         val c = app ?: return
         if (Store.server(c) == null) { set(false); return }
         val net = wifi(c)
@@ -102,7 +119,12 @@ internal object Away {
             if (up) lease()
         } else {
             set(false)
-            if (!holding && PhoneEngine.alive()) PhoneEngine.stop()
+            // At home: kept joined and forwarding while the app is on screen or this phone plays, so that the moment the
+            // Wi-Fi goes the way away is already there (Mandarin's keepReady, item 202); else stopped.
+            val warm = target != null && PhoneEngine.signedIn(c) && (NativeShell.onScreen.value || PhoneZone.id != null)
+            // On its own thread: joining can take a few seconds, and the next look (the Wi-Fi gone) mustn't wait for it.
+            if (warm && target != null) { if (!PhoneEngine.forwarding()) warming.execute { runCatching { PhoneEngine.connectAway(c, target) } } }
+            else if (!holding && PhoneEngine.alive()) PhoneEngine.stop()
         }
     }
 
@@ -133,5 +155,5 @@ internal object Away {
     }
 
     /** Off screen: the lease let go (the engine stops itself once nothing uses it; the next look starts it again). */
-    fun paused() { main.post { lease() } }
+    fun paused() { main.post { lease() }; lookSoon(1_000) }   // at home, off screen and not playing: the engine let go
 }

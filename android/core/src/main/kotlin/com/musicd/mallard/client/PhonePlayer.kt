@@ -4,68 +4,64 @@ import org.json.JSONObject
 import java.net.URLEncoder
 
 /*
- * Away from home the phone is an LMS player of its own (the server's lib/phoneplayers.js; Mandarin's phone zone): the
- * phone says hello, the server runs its player and the app shows and plays in that player alone ("This phone"). Two
- * ways it reaches the phone: squeezelite's sound made into a stream (Opus 256 kbps or FLAC 24-bit/48 kHz), or —
- * "Untouched", for a USB DAC — the server's own relay player (lib/relayplayer.js), which hands the phone each track as
- * the file's own bytes, to play as a playlist and report on (PhoneRelay).
+ * This phone as an LMS player of its own (the server's lib/phoneplayers.js + lib/relayplayer.js), as Mandarin's phone
+ * zone: the phone says hello, the server runs its player, LMS streams each track to it as the file's own bytes, and the
+ * phone plays them ONE ITEM PER TRACK (PhoneRelay), reporting back. Each track is the file itself — bit-perfect, at home
+ * always — or, away from home with Opus chosen (the default, as Mandarin's), its Opus 256 kbps, made by the server per
+ * track and played at 24-bit/48 kHz. Its volume is the phone's own (ThisPhone); LMS's ReplayGain is applied on the phone.
  */
-data class PhoneHello(val playerId: String, val name: String, val away: Boolean, val mode: String) {
-    companion object { fun parse(j: JSONObject) = PhoneHello(j.optString("player_id"), j.optString("name"), j.optBoolean("away"), j.optString("mode").ifEmpty { "pcm" }) }
+data class PhoneHello(val playerId: String, val name: String, val away: Boolean) {
+    companion object { fun parse(j: JSONObject) = PhoneHello(j.optString("player_id"), j.optString("name"), j.optBoolean("away")) }
 }
 
 object PhoneStream {
-    /** How the phone's player reaches it away (Settings → Away from home → This phone), its value and its words. */
-    val QUALITIES = listOf("opus" to "Opus 256 kbps", "flac" to "Lossless (FLAC 24-bit/48 kHz)", "exact" to "Untouched (bit-perfect)")
+    /** How this phone's tracks come away from home (Settings → Away from home → This phone): its value and its words. */
+    val QUALITIES = listOf("opus" to "Opus 256 kbps · 24-bit/48 kHz", "exact" to "Bit-perfect (untouched)")
     const val DEFAULT = "opus"
-    const val NOTE = "Opus and Lossless: Lyrion plays to this phone's own player losslessly, so its volume levelling and player settings " +
-        "apply, and the server sends it on as Opus 256 kbps (about a quarter of a CD's data) or FLAC 24-bit/48 kHz. Untouched: each " +
-        "track reaches the phone as its own file, bit for bit, at its own rate and depth — for a USB DAC with USB direct on. Lyrion's " +
-        "volume then moves the DAC's own volume control; nothing is done to the samples, so no volume levelling."
-    fun quality(v: String?): String = when (v) { "flac" -> "flac"; "exact" -> "exact"; else -> DEFAULT }
-    /** The server's player for [q]: "exact" (the relay) for Untouched, else "pcm" (squeezelite). */
-    fun mode(q: String?): String = if (quality(q) == "exact") "exact" else "pcm"
+    const val NOTE = "Away from home, each track comes as Opus 256 kbps, made from the file by the server and played at 24-bit/48 kHz — " +
+        "the rate Android's audio runs at, about a quarter of a CD's data — or bit-perfect: the file itself, untouched, at its own rate " +
+        "and depth (for a USB DAC with USB direct on). At home it is always bit-perfect. Lyrion's volume levelling is applied on the " +
+        "phone, and the volume is the phone's own: Lyrion has this player fixed at 100%."
+    /** The setting as kept: "exact" (bit-perfect) or "opus" — an older "flac" (no longer offered) is Opus. */
+    fun quality(v: String?): String = if (v == "exact") "exact" else DEFAULT
+    /** Whether a track queued now comes as Opus: away from home with Opus chosen (Mandarin's rule; at home always the file). */
+    fun opus(away: Boolean, q: String?): Boolean = away && quality(q) == "opus"
 
-    /** The stream's path on the server, for [playerId] made as [q] (Opus or FLAC). */
-    fun path(playerId: String, q: String): String = "/api/phone/stream?player_id=" + enc(playerId) + "&q=" + quality(q)
-    /** The relay's commands for [playerId] (Server-Sent Events). */
+    /** The player's commands for [playerId] (Server-Sent Events). */
     fun eventsPath(playerId: String): String = "/api/phone/events?player_id=" + enc(playerId)
-    /** One relayed track's own bytes. */
-    fun trackPath(playerId: String, seq: Int): String = "/api/phone/track?player_id=" + enc(playerId) + "&seq=" + seq
+    /** One track: the file itself, or ([opus]) its Opus 256 kbps. */
+    fun trackPath(playerId: String, seq: Int, opus: Boolean = false): String =
+        "/api/phone/track?player_id=" + enc(playerId) + "&seq=" + seq + if (opus) "&q=opus" else ""
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 }
 
 /**
  * A command from the server's relay player (its event channel), as the phone acts on it:
- *   add     a track to play: [seq], its type; [fresh] the first of a new start (what was queued goes), [play] start at once
+ *   add     a track to play: [seq], its type; [fresh] the first of a new start (what was queued goes), [play] start at once,
+ *           [gainDb] LMS's ReplayGain for it (null: none), applied on the phone as Mandarin's phone does
  *   drop    the queued track [seq] let go (the playlist changed)
  *   stop / pause / resume
- *   volume  Lyrion's volume, [db] (null: silence), for the DAC's own control
+ * (No volume: LMS has this player fixed at 100%, and its volume is the phone's own — ThisPhone.)
  */
 data class RelayCommand(val cmd: String, val seq: Int = 0, val mime: String = "", val fresh: Boolean = false, val play: Boolean = false,
-                        val db: Double? = null, val muted: Boolean = false) {
+                        val gainDb: Double? = null) {
     companion object {
         /** A `data:` line's JSON, or null for anything that isn't a command the phone knows. */
         fun parse(json: String): RelayCommand? {
             val j = runCatching { JSONObject(json) }.getOrNull() ?: return null
             val cmd = j.optString("cmd")
-            if (cmd !in setOf("add", "drop", "stop", "pause", "resume", "volume")) return null
+            if (cmd !in setOf("add", "drop", "stop", "pause", "resume")) return null
             if ((cmd == "add" || cmd == "drop") && j.optInt("seq", 0) <= 0) return null
             return RelayCommand(cmd, j.optInt("seq", 0), j.optString("mime"), j.optBoolean("fresh"), j.optBoolean("play"),
-                if (j.isNull("db") || !j.has("db")) null else j.optDouble("db"), j.optBoolean("muted"))
+                if (!j.has("gain_db") || j.isNull("gain_db")) null else j.optDouble("gain_db"))
         }
 
-        /**
-         * Lyrion's volume in dB as a level for the DAC's own control (UsbDriver.setVolume, whose curve is
-         * 60·log10(level/100) dB below the top): the level that gives the same dB. Silence is 0; above 0 dB is 100.
-         */
-        fun level(db: Double?): Int = if (db == null) 0 else Math.round(100.0 * Math.pow(10.0, db.coerceAtMost(0.0) / 60.0)).toInt().coerceIn(0, 100)
     }
 }
 
-/** Hello: this phone's player, started if it isn't, as [mode] ("pcm" or "exact"); [maxRate] the highest rate its DAC takes. */
-fun ServerClient.phoneHello(deviceId: String, name: String, mode: String = "pcm", maxRate: Int = 192000): PhoneHello =
-    PhoneHello.parse(post("/api/phone/hello", JSONObject().put("device_id", deviceId).put("name", name).put("mode", mode).put("max_rate", maxRate), 30_000))
+/** Hello: this phone's player, started if it isn't; [maxRate] the highest rate it (its USB DAC) takes. */
+fun ServerClient.phoneHello(deviceId: String, name: String, maxRate: Int = 192000): PhoneHello =
+    PhoneHello.parse(post("/api/phone/hello", JSONObject().put("device_id", deviceId).put("name", name).put("max_rate", maxRate), 30_000))
 
 /** Home again: its player stopped. */
 fun ServerClient.phoneBye(playerId: String) { post("/api/phone/bye", JSONObject().put("player_id", playerId), 15_000) }

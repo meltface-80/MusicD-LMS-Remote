@@ -22,6 +22,17 @@ class MusicDApp : Application() {
         CrashLog.watchMainThread(this)
         // The USB port watched (a DAC plugged in or pulled out) for the phone's own player away from home.
         UsbDac.start(this)
+        // This phone as a player: its id goes with every request (the server lists it as "This phone" at home too), and
+        // its volume is the phone's own (Mandarin's rule; ThisPhone in core).
+        com.musicd.mallard.client.ThisPhone.deviceId = Store.deviceId(this)
+        com.musicd.mallard.client.ThisPhone.volume = PhoneVolume(this).also { phoneVolume = it }
+        // Away, every screen's room is this phone's (Mandarin's AwayRoom): a screen opened on a room at home follows the phone.
+        com.musicd.mallard.client.ThisPhone.awayRoom = { if (Store.awayVia) PhoneZone.id else null }
+    }
+
+    companion object {
+        /** This phone's own volume (the volume buttons on its own player). */
+        @Volatile internal var phoneVolume: PhoneVolume? = null
     }
 }
 

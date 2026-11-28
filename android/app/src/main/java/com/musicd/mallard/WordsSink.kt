@@ -17,6 +17,9 @@ import java.nio.ByteOrder
  *
  * The sink is wrapped rather than an AudioProcessor added, because Media3's DefaultAudioSink runs its processors only on
  * 16-bit input, and a decoder's 24-bit or float output would bypass them.
+ *
+ * LMS's ReplayGain for the track (TrackGain) is applied here, as Mandarin's DspSink applies it: on the sample's word, in
+ * double. At 1 (no gain) nothing is touched, so a USB DAC still gets each sample bit for bit.
  */
 @UnstableApi
 class WordsSink(private val inner: AudioSink) : ForwardingAudioSink(inner) {
@@ -69,6 +72,7 @@ class WordsSink(private val inner: AudioSink) : ForwardingAudioSink(inner) {
         out.clear()
         val big = encoding == C.ENCODING_PCM_16BIT_BIG_ENDIAN || encoding == C.ENCODING_PCM_24BIT_BIG_ENDIAN || encoding == C.ENCODING_PCM_32BIT_BIG_ENDIAN
         val src = buffer.duplicate().order(if (big) ByteOrder.BIG_ENDIAN else if (encoding == C.ENCODING_PCM_FLOAT) ByteOrder.nativeOrder() else ByteOrder.LITTLE_ENDIAN)
+        val gain = TrackGain.gain
         for (i in 0 until samples) {
             val w = when (encoding) {
                 C.ENCODING_PCM_FLOAT -> PcmWords.of(src.getFloat().toDouble())
@@ -80,11 +84,15 @@ class WordsSink(private val inner: AudioSink) : ForwardingAudioSink(inner) {
                 C.ENCODING_PCM_8BIT -> PcmWords.of8(src.get().toInt())
                 else -> src.getInt()
             }
-            if (words) out.putInt(w) else out.putFloat(PcmWords.value(w).toFloat())
+            val g = PcmWords.scaled(w, gain)
+            if (words) out.putInt(g) else out.putFloat(PcmWords.value(g).toFloat())
         }
         out.flip()
         return out
     }
+
+    /** The decoders have moved on to the next track (gapless): its ReplayGain from here. */
+    override fun handleDiscontinuity() { TrackGain.streamChanged(); inner.handleDiscontinuity() }
 
     override fun flush() { inner.flush(); pending = null; pendingFor = null }
     override fun reset() { inner.reset(); pending = null; pendingFor = null }
@@ -93,4 +101,25 @@ class WordsSink(private val inner: AudioSink) : ForwardingAudioSink(inner) {
         val PCM = setOf(C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN, C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN,
             C.ENCODING_PCM_32BIT, C.ENCODING_PCM_32BIT_BIG_ENDIAN, C.ENCODING_PCM_FLOAT, C.ENCODING_PCM_8BIT)
     }
+}
+
+/**
+ * LMS's ReplayGain on what is being decoded now (Mandarin's DspEngine.gains): a multiplier, 1 for none. The decoders run
+ * ahead of what is heard, so the next track's gain is taken up when they move on to it (WordsSink's discontinuity), not
+ * when it is heard. PhoneRelay sets the track heard now and the one after it at each change.
+ */
+object TrackGain {
+    @Volatile var gain: Double = 1.0
+        private set
+    private var upcoming = 1.0
+    private var armed = false
+
+    /** dB as a multiplier (null: none). */
+    fun of(db: Double?): Double = if (db == null) 1.0 else Math.pow(10.0, db / 20.0)
+
+    /** The track heard now and the one after it. */
+    @Synchronized fun gains(current: Double, next: Double) { gain = current; upcoming = next; armed = true }
+    /** The decoders moved on: the next track's gain, once per change. */
+    @Synchronized fun streamChanged() { if (armed) { gain = upcoming; armed = false } }
+    @Synchronized fun reset() { gain = 1.0; upcoming = 1.0; armed = false }
 }

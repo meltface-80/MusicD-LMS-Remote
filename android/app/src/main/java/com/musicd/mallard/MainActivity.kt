@@ -125,14 +125,19 @@ class MainActivity : androidx.activity.ComponentActivity() {
     /**
      * The volume buttons move the chosen player's volume while the app is on screen (LMS's own relative step, so quick
      * presses never race). With no player chosen, the phone's own volume as usual. Off screen, the media session's
-     * remote volume does the same from the lock screen (NowPlayingService). Away from home through a USB DAC whose level
-     * isn't fixed, they step the DAC's level instead (Mandarin's USB direct) — except Untouched, where Lyrion's own volume
-     * moves the DAC (PhoneRelay), so the buttons stay Lyrion's.
+     * remote volume does the same from the lock screen (NowPlayingService). On this phone's own player they are always
+     * the phone's (PhoneVolume): LMS has it fixed at 100%.
      */
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP || keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN) {
-            if (PhoneZone.id != null && PhoneZone.mode != "exact" && UsbDriver.controlsVolume) { UsbDriver.stepVolume(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP); return true }
             val zone = NativeShell.zone
+            // This phone's own player (fixed at 100% in LMS): the buttons are the phone's own — the DAC's level through USB
+            // direct, else Android's media volume, as with any player app (Mandarin's rule).
+            if (zone.isNotEmpty() && (zone == PhoneZone.id || zone == PhoneZone.ownId(this) || (Store.awayVia && PhoneZone.id != null))) {
+                if (MusicDApp.phoneVolume?.key(keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP) == true) return true
+                volumeControlStream = android.media.AudioManager.STREAM_MUSIC
+                return super.onKeyDown(keyCode, event)
+            }
             if (zone.isNotEmpty()) {
                 val up = keyCode == android.view.KeyEvent.KEYCODE_VOLUME_UP
                 Thread({ runCatching { Store.client(this)?.zoneVolumeStep(zone, if (up) 1 else -1) } }, "volume-key").apply { isDaemon = true; start() }

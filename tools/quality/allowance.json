@@ -2,7 +2,7 @@
   "version": 1,
   "allowance": {
     "android/app/src/main/java/com/musicd/mallard/NowPlayingService.kt": {
-      "lines": 431
+      "lines": 427
     },
     "android/app/src/main/java/com/musicd/mallard/SettingsMallard.kt": {
       "lines": 411
