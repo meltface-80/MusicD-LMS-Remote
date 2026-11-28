@@ -319,7 +319,7 @@ tags, no automatic releases, no cluttered history.
   ONE track ahead, so the phone asks `/api/phone/ahead` (LMS's own play order) and fetches each track by its LMS id from
   `/api/phone/file?id=[&q=opus]` (the file via LMS's `/music/<id>/download`, Range passed through; or Opus made once and
   kept in data/cache/phone-opus, LRU 2 GB) into its own LRU cache keyed `t<id>:orig|opus`. `identify` tells the phone
-  which track each `strm s` is (`track_id`), so it plays it by id from the cache; a streaming service's track or a
+  which track each `strm s` is (`track_id`), so it plays it from its cache WHEN IT HOLDS IT WHOLE (else the player's bytes); a streaming service's track or a
   part-way start (a seek) has none and plays as the player's bytes. Relative addresses, resolved at open: a track
   cached at home plays away.
   THIS PHONE'S VOLUME IS THE PHONE'S (Mandarin's rule): the server sets every phone player fixed at 100%

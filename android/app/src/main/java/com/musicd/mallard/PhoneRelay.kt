@@ -7,6 +7,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.MediaSource
+import com.musicd.mallard.client.CachePlan
 import com.musicd.mallard.client.PhoneStream
 import com.musicd.mallard.client.RelayCommand
 import com.musicd.mallard.client.ServerClient
@@ -30,7 +31,8 @@ import java.util.concurrent.Executors
  */
 internal class PhoneRelay(
     private val player: ExoPlayer, private val client: () -> ServerClient?, private val playerId: String, private val opus: () -> Boolean,
-    private val files: MediaSource.Factory, private val bytes: MediaSource.Factory, private val ahead: PhoneAhead
+    private val files: MediaSource.Factory, private val bytes: MediaSource.Factory, private val ahead: PhoneAhead,
+    private val kept: (String) -> Boolean
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val reports = Executors.newSingleThreadExecutor()
@@ -163,15 +165,17 @@ internal class PhoneRelay(
         when (c.cmd) {
             "add" -> {
                 val asOpus = opus()
+                // A track the phone already holds whole (kept, or fetched ahead): from its cache, by its id. Any other: the
+                // bytes LMS is sending its player now (owner report: a track fetched by id from LMS's download stalled, and
+                // nothing played). Relative addresses: sent where the server is now (PhoneStreamService).
+                val byId = c.trackId?.takeIf { kept(CachePlan.key(it, asOpus)) }
                 note("add #${c.seq}: ${if (c.fresh) "fresh" else "next"}, ${if (c.play) "play" else "hold"}, " +
-                    (c.trackId?.let { "track $it by its id" } ?: "the player's bytes") + (if (asOpus) " as Opus" else "") + ", ${c.mime}, gain ${c.gainDb} dB")
-                // The library's own track from its start: by its id, through the phone's cache (kept, and fetched ahead);
-                // else the player's own bytes for it. Relative addresses: sent where the server is now (PhoneStreamService).
-                val path = c.trackId?.let { PhoneStream.filePath(it, asOpus) } ?: PhoneStream.trackPath(playerId, c.seq, asOpus)
+                    (if (byId != null) "track $byId from the phone's cache" else "the player's bytes" + (c.trackId?.let { " (track $it, not cached yet)" } ?: "")) + (if (asOpus) " as Opus" else "") + ", ${c.mime}, gain ${c.gainDb} dB")
+                val path = byId?.let { PhoneStream.filePath(it, asOpus) } ?: PhoneStream.trackPath(playerId, c.seq, asOpus)
                 val item = MediaItem.Builder().setUri(path).setMediaId(c.seq.toString())
                     .apply { val m = if (asOpus) "audio/ogg" else c.mime; if (m.isNotEmpty()) setMimeType(m) }.build()
-                val source = (if (c.trackId != null) files else bytes).createMediaSource(item)
-                if (c.trackId != null) fallback[c.seq] = bytes.createMediaSource(item.buildUpon().setUri(PhoneStream.trackPath(playerId, c.seq, asOpus)).build())
+                val source = (if (byId != null) files else bytes).createMediaSource(item)
+                if (byId != null) fallback[c.seq] = bytes.createMediaSource(item.buildUpon().setUri(PhoneStream.trackPath(playerId, c.seq, asOpus)).build())
                 gainDb[c.seq] = c.gainDb
                 if (c.fresh) {
                     player.setMediaSource(source)

@@ -24,8 +24,11 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheKeyFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -75,13 +78,15 @@ class PhoneStreamService : Service() {
         // Opus only away with Opus chosen (Mandarin's rule): at home always the file itself. Asked as each track is queued.
         val opus = { PhoneStream.opus(Store.awayVia, Store.awayQuality(this)) }
         val ahead = PhoneAhead(this, p, cached, client, playerId, opus)
-        relay = PhoneRelay(p, client, playerId, opus, DefaultMediaSourceFactory(cached), DefaultMediaSourceFactory(routed), ahead).also { it.start() }
+        relay = PhoneRelay(p, client, playerId, opus, DefaultMediaSourceFactory(cached).setLoadErrorHandlingPolicy(retrying),
+            DefaultMediaSourceFactory(routed).setLoadErrorHandlingPolicy(retrying), ahead) { StreamCache.complete(this, it) }.also { it.start() }
     }
 
     /** The one player, built once: its audio through WordsSink and UsbAudioSink, so a USB DAC can take it. */
     private fun ensurePlayer(): ExoPlayer {
         player?.let { return it }
-        val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(5_000).setReadTimeoutMs(15_000).setAllowCrossProtocolRedirects(true)
+        // Mandarin's: a connection gone quiet (the Wi-Fi gone as you leave) is given up on in seconds, and fetched again.
+        val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(5_000).setReadTimeoutMs(8_000).setAllowCrossProtocolRedirects(true)
         val resolving = ResolvingDataSource.Factory(http) { spec ->
             val u = spec.uri.toString()
             if (u.startsWith("/")) spec.withUri(Uri.parse((Store.client(this)?.address?.baseUrl ?: "") + u)) else spec
@@ -99,7 +104,11 @@ class PhoneStreamService : Service() {
         }.setEnableAudioFloatOutput(true)
             // The app's own Opus decoder (libopus, float out) ahead of Android's, which gives 16-bit: Opus 256 at 24/48.
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        return ExoPlayer.Builder(this, renderers)
+        // Mandarin's: the playing track fetched whole as fast as the network allows (up to 5 minutes or 48 MB ahead), so
+        // leaving the house is heard from what's on the phone.
+        val load = DefaultLoadControl.Builder().setBufferDurationsMs(AHEAD_MS, AHEAD_MS, 1_500, 3_000)
+            .setTargetBufferBytes(AHEAD_BYTES).setPrioritizeTimeOverSizeThresholds(false).build()
+        return ExoPlayer.Builder(this, renderers).setLoadControl(load)
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -116,6 +125,17 @@ class PhoneStreamService : Service() {
             .setContentIntent(open).setOngoing(true)
             .addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(this, android.R.drawable.ic_media_pause), "Stop", stop).build()).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) else startForeground(ID, n)
+    }
+
+    /**
+     * Mandarin's: a fetch that fails (no network for a moment) is tried again quickly and for a good while, from where it
+     * stopped, while the music plays on from what's held.
+     */
+    private val retrying = object : DefaultLoadErrorHandlingPolicy(RETRIES) {
+        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
+            val d = super.getRetryDelayMsFor(info)
+            return if (d == C.TIME_UNSET) d else minOf(500L * info.errorCount, 2_000L)
+        }
     }
 
     /** The sink, once the player is built: whether the DAC is what plays. */
@@ -162,6 +182,9 @@ class PhoneStreamService : Service() {
 
     companion object {
         private const val CHANNEL = "away"
+        private const val AHEAD_MS = 5 * 60 * 1000
+        private const val AHEAD_BYTES = 48 * 1024 * 1024
+        private const val RETRIES = 40
         private const val ID = 4207
         private const val EXTRA_NAME = "name"
         private const val EXTRA_PLAYER = "relay"
