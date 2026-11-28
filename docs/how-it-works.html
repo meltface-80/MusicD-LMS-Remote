@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How it works · MusicD LMS Remote</title>
+<title>How it works · Mallard</title>
 <meta name="description" content="Lyrion, the server, the apps and Tailscale, in brief.">
 <link rel="icon" href="mallard-mark.png">
 <link rel="stylesheet" href="site.css">
@@ -13,7 +13,7 @@
 <header class="pagehead">
   <div class="wrap">
     <a class="back" href="index.html">← Contents</a>
-    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>Mallard</span></a>
     <span class="spacer"></span>
     <a class="pill solid" href="downloads.html">Downloads</a>
   </div>
@@ -27,12 +27,12 @@
     <li><b>The server</b> (this project, in Docker) reads Lyrion's library once into an index of its own, kept between
         restarts, and adds what Lyrion doesn't keep: play history, favourites, album edits, merges, rescued artwork, label
         and Smart Picks data — all in its data volume, never in your files or in Lyrion.</li>
-    <li><b>The web app, the wall display and Mallard</b> are its screens. They ask the server; the server asks Lyrion. Play,
+    <li><b>The web app, the wall display and the Android app</b> are its screens. They ask the server; the server asks Lyrion. Play,
         queue and the transport go to whichever Lyrion player you choose.</li>
     <li><b>This phone</b>: for each phone the server runs a Lyrion player of its own. Lyrion streams it each track, and the
         server hands the phone the file, or its Opus, to play; the phone says what it is playing, and Lyrion sees an
         ordinary player.</li>
-    <li><b>Tailscale</b> is built into the server and Mallard: away from home they find each other over your own private
+    <li><b>Tailscale</b> is built into the server and the Android app: away from home they find each other over your own private
         network, and only your own devices get in.</li>
   </ul>
   <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="logs.html">Next: Logs and reporting a problem →</a></nav>
@@ -40,7 +40,7 @@
 
 <footer>
   <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
-  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+  <p>Mallard · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
      Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
      independent project, affiliated with none of them.</p>
 </footer>

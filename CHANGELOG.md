@@ -5,6 +5,11 @@ changed. Work merged into `dev` goes under `## Unreleased` until the owner says 
 renamed to the version and the Release workflow's notes are taken from it. Lines start Added / Changed / Fixed /
 Removed. Versions before v1.0.86 are described in their GitHub releases.
 
+## Unreleased
+
+- Changed - The README and the website call the whole thing by its name, Mallard: a different interface for Lyrion Music Server, with advanced features — the server, Mallard for Android, the web app and the wall display. The site's home page leads with the name in Young Serif and "for Lyrion Music Server" in brass capitals, as Mandarin's banner does, above a smaller mark, and the README opens with the same banner. The Docker image and the repository keep their name, `musicd-lms-remote`.
+- Changed - Mallard's test builds are 0.3.0-tN (versionCode 3000+N), above the v0.2.0 release (2999), so a test build installs over the release.
+
 ## v1.0.87
 
 The first release of MusicD LMS Remote as it is now: the server, the web app, the wall display and Mallard v0.2.0 for

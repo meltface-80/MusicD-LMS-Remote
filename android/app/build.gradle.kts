@@ -22,12 +22,12 @@ android {
         targetSdk = 36
         // versionCode must rise with every published build or Android refuses to install over the previous one.
         // A dev test build (.github/workflows/mallard.yml) passes MALLARD_TEST_BUILD, the workflow's run number:
-        // it is named 0.2.0-tN and coded base*1000+N, so each installs over the last, and the release of the same
+        // it is named <versionName>-tN and coded base*1000+N, so each installs over the last, and the release of the same
         // version (base*1000+999) installs over all of them. Raise mallardBase with each Mallard release.
-        val mallardBase = 2
+        val mallardBase = 3
         val testBuild = System.getenv("MALLARD_TEST_BUILD")?.toIntOrNull()?.takeIf { it in 1..998 }
         versionCode = mallardBase * 1000 + (testBuild ?: 999)
-        versionName = "0.2.0" + (testBuild?.let { "-t$it" } ?: "")
+        versionName = "0.3.0" + (testBuild?.let { "-t$it" } ?: "")
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
     }
