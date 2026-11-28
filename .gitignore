@@ -3,3 +3,4 @@ package-lock.json
 data/
 *.log
 !tools/lint/package-lock.json
+android/app/src/main/jniLibs/

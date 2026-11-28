@@ -3,6 +3,14 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard has its own Tailscale (owner request: "No Mallard android app tailscale login yet"), as Mandarin's phone
+  does: Settings → Away from home → This phone signs the phone in to Tailscale (the same engine as the server's,
+  `musicdnet/`, built into the APK for 64-bit ARM by `mallard.yml`). Away from home — the saved address not answering
+  over the Wi-Fi, or no Wi-Fi — Mallard then reaches the server through it by itself, at the server's tailnet address,
+  which the server says in `/api/status` and Mallard remembers; at home the engine is stopped. It uses its own local
+  port (34390), not Mandarin's, so both apps can be away on one phone. The server answers `/api/ping`, the engine's
+  probe.
+
 - The Shelf's switch lives in Settings → Wall display in both apps (owner: "Shelf isn't in wall display"); its own
   Settings row is gone, which saves a row. In Mallard, switching it on also puts Shelf in the bottom bar between
   Library and Search, as Mandarin's row does (`NavShelf`), as well as in the menu. The web app has no bottom bar, so

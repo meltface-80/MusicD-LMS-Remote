@@ -6,7 +6,7 @@ import org.json.JSONObject
  * What /api/status says about a MusicD LMS Remote server — enough to know it is the right one: [connected] whether it
  * reaches its Lyrion Music Server, [lms] that server's name, [rooms] its players.
  */
-data class Health(val version: String, val connected: Boolean, val lms: String, val rooms: Int) {
+data class Health(val version: String, val connected: Boolean, val lms: String, val rooms: Int, val tailscale: String? = null) {
     companion object {
         fun parse(j: JSONObject): Health {
             // Every MusicD LMS Remote answers with "paired"; newer ones also name themselves.
@@ -15,7 +15,9 @@ data class Health(val version: String, val connected: Boolean, val lms: String, 
                 version = j.optString("version", "?"),
                 connected = j.optBoolean("paired", false),
                 lms = j.optString("core_name", "").takeIf { !j.isNull("core_name") } ?: "",
-                rooms = j.optInt("zone_count", 0)
+                rooms = j.optInt("zone_count", 0),
+                // The server's own address on the tailnet ("http://100.x.y.z:3390") while its built-in Tailscale serves.
+                tailscale = if (!j.has("tailscale") || j.isNull("tailscale")) null else j.optString("tailscale").ifEmpty { null }
             )
         }
     }

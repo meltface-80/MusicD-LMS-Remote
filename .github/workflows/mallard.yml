@@ -23,9 +23,9 @@ name: Mallard (Android)
 
 on:
   push:
-    paths: ["android/**", ".github/workflows/mallard.yml"]
+    paths: ["android/**", "musicdnet/**", ".github/workflows/mallard.yml"]
   pull_request:
-    paths: ["android/**", ".github/workflows/mallard.yml"]
+    paths: ["android/**", "musicdnet/**", ".github/workflows/mallard.yml"]
   workflow_dispatch:
     inputs:
       stable:
@@ -66,6 +66,20 @@ jobs:
 
       - name: Core tests (plain JVM)
         run: ./gradlew :core:test --no-daemon --stacktrace
+
+      # Tailscale on the phone (PhoneEngine.kt): the server's own engine (musicdnet/, the same program as Mandarin's
+      # android/musicdnet) built for Android on 64-bit ARM, as Mandarin's android.yml builds it. Plain Go, no NDK.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: musicdnet/go.mod
+          cache-dependency-path: musicdnet/go.sum
+      - name: Build the phone's Tailscale engine
+        working-directory: musicdnet
+        run: |
+          mkdir -p ../android/app/src/main/jniLibs/arm64-v8a
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" \
+            -o ../android/app/src/main/jniLibs/arm64-v8a/libmusicdnet.so .
+          ls -la ../android/app/src/main/jniLibs/arm64-v8a/
 
       # NEVER PUBLISHED SIGNED WITH THE COMMITTED DEBUG KEY (Mandarin's rule, its item 364). That key is public —
       # anyone can sign with it — so an APK signed with it, asking to install updates (REQUEST_INSTALL_PACKAGES), is
