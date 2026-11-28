@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,10 +40,13 @@ import com.musicd.mallard.client.Failure
 import com.musicd.mallard.client.LmsPlugin
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.PluginList
+import com.musicd.mallard.client.PluginRepos
 import com.musicd.mallard.client.ServerClient
 import com.musicd.mallard.client.acceptPluginRisk
+import com.musicd.mallard.client.addPluginRepo
 import com.musicd.mallard.client.changePlugin
 import com.musicd.mallard.client.plugins
+import com.musicd.mallard.client.removePluginRepo
 import com.musicd.mallard.client.restartLms
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -51,7 +55,8 @@ import kotlinx.coroutines.withContext
 
 /*
  * Settings → LMS server → Plugins: LMS's plugins — installed, offered by its repositories, updates — with Install,
- * Update, Remove, Enable / Disable, the plugin's own settings (in the app, LmsSettingsLink.kt), and Restart LMS to apply. The twin of the web app's
+ * Update, Remove, Enable / Disable, the plugin's own settings (in the app, LmsSettingsLink.kt), Restart LMS to apply, and
+ * Repositories (PluginReposTab.kt), the extra .xml addresses LMS reads plugins from. The twin of the web app's
  * Plugins sheet (public/lms-plugins.js); both draw /api/lms/plugins, which drives LMS's own plugin page, and the server
  * says which buttons each plugin gets (core's LmsPlugin.can), so the two apps can't offer different things.
  */
@@ -116,6 +121,17 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
             toast("LMS hasn't come back yet — try again in a minute")
         }
     }
+    fun repo(add: String?, remove: String?) {
+        val c = client() ?: return
+        if (add != null && !PluginRepos.valid(add)) { toast(PluginRepos.BAD); return }
+        busy = "repos"
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { if (add != null) c.addPluginRepo(add) else c.removePluginRepo(remove!!) } }.fold(
+                { list = it; if (add != null) toast(PluginRepos.ADDED) },
+                { toast(Failure.said(it, "LMS didn't take that")) })
+            busy = ""
+        }
+    }
     fun open(url: String) { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
 
     page?.let { p -> LmsPage(p.settings, p.title, client) { page = null }; return }
@@ -134,18 +150,22 @@ internal fun PluginsPane(client: () -> ServerClient?, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TabPill(l.installedTab(), tab == "installed", Modifier.weight(1f)) { tab = "installed" }
                     TabPill("Available", tab == "available", Modifier.weight(1f)) { tab = "available" }
+                    TabPill(PluginRepos.TAB, tab == "repos", Modifier.weight(1f)) { tab = "repos" }
                 }
-                FindField(query) { query = it }
-                if (l.restart || restarting) RestartBlock(restarting) { asking = "Restart LMS now? Music stops for a moment while it starts again." to { restart() } }
-                val groups = if (tab == "installed") l.installed(query) else l.availableByRepo(query)
-                if (groups.isEmpty()) SetupNote(when {
-                    query.isNotBlank() -> "Nothing matches."
-                    tab == "installed" -> "No plugins installed."
-                    else -> "LMS's repositories offer nothing more to install."
-                }, Modifier)
-                for ((title, ps) in groups) {
-                    Text(title.uppercase(), Modifier.padding(top = 16.dp, bottom = 4.dp), color = paletteColor(Palette.TEXT_FAINT), fontSize = 12.sp, fontWeight = FontWeight.W700, letterSpacing = 0.7.sp)
-                    for (p in ps) PluginRow(p, client, busy, restarting, { a -> ask(p, a) }, { if (p.settings != null) page = p }, { p.homepage?.let { open(it) } })
+                if (tab == "repos") ReposTab(l.repos, busy == "repos", { u -> repo(u, null) }, { u -> asking = PluginRepos.REMOVE to { repo(null, u) } })
+                else {
+                    FindField(query) { query = it }
+                    if (l.restart || restarting) RestartBlock(restarting) { asking = "Restart LMS now? Music stops for a moment while it starts again." to { restart() } }
+                    val groups = if (tab == "installed") l.installed(query) else l.availableByRepo(query)
+                    if (groups.isEmpty()) SetupNote(when {
+                        query.isNotBlank() -> "Nothing matches."
+                        tab == "installed" -> "No plugins installed."
+                        else -> "LMS's repositories offer nothing more to install."
+                    }, Modifier)
+                    for ((title, ps) in groups) {
+                        Text(title.uppercase(), Modifier.padding(top = 16.dp, bottom = 4.dp), color = paletteColor(Palette.TEXT_FAINT), fontSize = 12.sp, fontWeight = FontWeight.W700, letterSpacing = 0.7.sp)
+                        for (p in ps) PluginRow(p, client, busy, restarting, { a -> ask(p, a) }, { if (p.settings != null) page = p }, { p.homepage?.let { open(it) } })
+                    }
                 }
             }
         }
@@ -158,7 +178,7 @@ private fun TabPill(words: String, on: Boolean, modifier: Modifier, onTap: () ->
     val shape = RoundedCornerShape(999.dp)
     Box(modifier.heightIn(min = 38.dp).clip(shape).background(paletteColor(if (on) Palette.ACCENT else Palette.BG_ELEV))
         .border(1.dp, paletteColor(if (on) Palette.ACCENT else Palette.BORDER), shape).clickable(onClick = onTap), contentAlignment = Alignment.Center) {
-        Text(words, color = paletteColor(if (on) Palette.ON_ACCENT else Palette.TEXT_DIM), fontSize = 14.sp, fontWeight = FontWeight.W600, maxLines = 1)
+        Text(words, Modifier.padding(horizontal = 6.dp, vertical = 4.dp), color = paletteColor(if (on) Palette.ON_ACCENT else Palette.TEXT_DIM), fontSize = 13.sp, fontWeight = FontWeight.W600, maxLines = 2, lineHeight = 16.sp, textAlign = TextAlign.Center)
     }
 }
 
@@ -176,7 +196,7 @@ private fun RiskBlock(onAccept: () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Plugins are third-party software", color = paletteColor(Palette.TEXT), fontSize = 16.sp, fontWeight = FontWeight.W700)
         Text(RISK_WORDS, color = paletteColor(Palette.TEXT_DIM), fontSize = 14.sp, lineHeight = 20.sp)
-        PillButton("I understand — show plugins", true, Modifier.clickable(onClick = onAccept))
+        PluginPill("I understand — show plugins", true, Modifier.clickable(onClick = onAccept))
     }
 }
 
@@ -184,14 +204,14 @@ private fun RiskBlock(onAccept: () -> Unit) {
 private fun RestartBlock(restarting: Boolean, onRestart: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (restarting) "LMS is restarting…" else "LMS applies plugin changes when it restarts.", color = paletteColor(Palette.TEXT_DIM), fontSize = 14.sp)
-        if (!restarting) PillButton("Restart LMS", true, Modifier.clickable(onClick = onRestart))
+        if (!restarting) PluginPill("Restart LMS", true, Modifier.clickable(onClick = onRestart))
     }
     SettingsDivider(4, 4)
 }
 
 /** A button of the plugin list's: brass for what adds (Install, Update, Restart), the raised ground for the rest. */
 @Composable
-private fun PillButton(words: String, primary: Boolean, modifier: Modifier) {
+internal fun PluginPill(words: String, primary: Boolean, modifier: Modifier) {
     val shape = RoundedCornerShape(999.dp)
     Box(Modifier.clip(shape).background(paletteColor(if (primary) Palette.ACCENT else Palette.BG_ELEV_2))
         .border(1.dp, paletteColor(if (primary) Palette.ACCENT else Palette.BORDER), shape).then(modifier).heightIn(min = 34.dp)
@@ -220,8 +240,8 @@ private fun PluginRow(p: LmsPlugin, client: () -> ServerClient?, busy: String, r
             if (busy == p.name) Text("Working…", Modifier.padding(top = 6.dp), color = paletteColor(Palette.TEXT_FAINT), fontSize = 12.sp)
             else FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 val idle = busy.isEmpty() && !restarting
-                for (a in p.can) PillButton(LmsPlugin.ACTIONS[a] ?: a, a == "install" || a == "update", if (idle) Modifier.clickable { onAction(a) } else Modifier)
-                if (p.settings != null && p.state == "enabled") PillButton("Settings", false, Modifier.clickable(onClick = onSettings))
+                for (a in p.can) PluginPill(LmsPlugin.ACTIONS[a] ?: a, a == "install" || a == "update", if (idle) Modifier.clickable { onAction(a) } else Modifier)
+                if (p.settings != null && p.state == "enabled") PluginPill("Settings", false, Modifier.clickable(onClick = onSettings))
                 if (p.homepage != null) Box(Modifier.heightIn(min = 34.dp).clickable(onClick = onAbout).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
                     Text("About", color = paletteColor(Palette.ACCENT_TEXT), fontSize = 13.sp)
                 }

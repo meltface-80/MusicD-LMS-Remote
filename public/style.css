@@ -4733,6 +4733,14 @@ body.show-quality .album-quality.hidden { display: none; }
 .plugin-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .plugin-btns .action-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 13px; }
 .plugin-link { font-size: 13px; color: var(--accent-text); text-decoration: none; padding: 6px 4px; }
+/* Repositories tab: the note, the address box beside Add, then each repository with Remove (Mallard's ReposTab). */
+.plugins-repo-note { margin: 0 0 10px; color: var(--text-dim); font-size: 14px; line-height: 1.45; }
+.plugins-repo-add { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.plugins-repo-add .plugins-filter { flex: 1; min-width: 0; margin: 0; }
+.plugins-repo-add .action-btn { flex: 0 0 auto; padding: 8px 18px; }
+.plugin-repo { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.plugin-repo-url { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-weight: 500; }
+.plugin-repo .action-btn { flex: 0 0 auto; padding: 6px 14px; font-size: 13px; }
 
 /* Settings → Away from home (away-settings.js): a warning in the danger colour. */
 .away-error { color: var(--danger, #e57373); }

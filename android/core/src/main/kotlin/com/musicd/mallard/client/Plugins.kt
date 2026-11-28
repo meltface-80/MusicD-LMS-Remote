@@ -47,7 +47,7 @@ data class LmsPlugin(
  */
 data class PluginList(
     val risk: Boolean, val restart: Boolean, val enabled: List<LmsPlugin>, val disabled: List<LmsPlugin>, val available: List<LmsPlugin>,
-    val updates: Int
+    val updates: Int, val repos: List<String> = emptyList()
 ) {
     /** The Installed tab's groups, updates first among the active ones (they are what needs doing), filtered by [query]. */
     fun installed(query: String): List<Pair<String, List<LmsPlugin>>> {
@@ -71,8 +71,27 @@ data class PluginList(
         fun parse(j: JSONObject) = PluginList(
             j.optBoolean("risk"), j.optBoolean("restart"),
             j.optJSONArray("enabled").objs().map(LmsPlugin::parse), j.optJSONArray("disabled").objs().map(LmsPlugin::parse),
-            j.optJSONArray("available").objs().map(LmsPlugin::parse), j.optJSONArray("updates")?.length() ?: 0)
+            j.optJSONArray("available").objs().map(LmsPlugin::parse), j.optJSONArray("updates")?.length() ?: 0,
+            j.optJSONArray("repos").let { a -> if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } })
     }
+}
+
+/**
+ * Plugin repositories (owner request: a developer's .xml addresses, to try their plugins): LMS's rule for an address
+ * (Slim/Web/Settings/Server/Plugins.pm keeps only ^https?://.*\.xml, trailing non-word characters cut) and the words
+ * both apps use, as the web app's Repositories tab (public/lms-plugins.js) says them.
+ */
+object PluginRepos {
+    private val PATTERN = Regex("^https?://\\S*\\.xml", RegexOption.IGNORE_CASE)
+    fun trim(url: String): String = url.trim().replace(Regex("\\W*$"), "")
+    fun valid(url: String): Boolean = PATTERN.containsMatchIn(trim(url))
+    const val TAB = "Repositories"
+    const val NOTE = "A repository is a list of plugins LMS can install. Paste a repository's address — the link to its .xml file — and its plugins show under Available."
+    const val HINT = "https://…/repo.xml"
+    const val NONE = "No repositories added. LMS's own are always there."
+    const val BAD = "A repository is the address of its .xml file (http:// or https://, ending .xml)"
+    const val ADDED = "Repository added — its plugins show under Available once LMS has read it"
+    const val REMOVE = "Remove this repository? Plugins installed from it stay installed."
 }
 
 /** LMS's plugin page, read. */
@@ -84,6 +103,12 @@ fun ServerClient.acceptPluginRisk(): PluginList = PluginList.parse(post("/api/lm
 /** One thing done to one plugin, by name; LMS waits for a download before it answers, so this can take half a minute. */
 fun ServerClient.changePlugin(name: String, action: String): PluginList =
     PluginList.parse(post("/api/lms/plugins", JSONObject().put("name", name).put("action", action), 60_000))
+
+/** A repository address added to LMS's list (LMS reads its .xml; the answer comes a moment later, with its plugins). */
+fun ServerClient.addPluginRepo(url: String): PluginList = PluginList.parse(post("/api/lms/plugins/repos", JSONObject().put("add", url), 60_000))
+
+/** A repository address taken off LMS's list. */
+fun ServerClient.removePluginRepo(url: String): PluginList = PluginList.parse(post("/api/lms/plugins/repos", JSONObject().put("remove", url), 60_000))
 
 /** LMS restarted, to apply plugin changes. */
 fun ServerClient.restartLms() { post("/api/lms/restart", JSONObject(), 20_000) }
