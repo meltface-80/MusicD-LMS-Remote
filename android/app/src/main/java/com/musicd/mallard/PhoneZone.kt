@@ -21,12 +21,17 @@ internal object PhoneZone {
     @Volatile private var name = ""
     private val work = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-    /** What LMS calls this phone: its maker and model ("Google Pixel 8"). */
-    fun phoneName(): String = listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL).distinct().joinToString(" ").trim().ifEmpty { "Mallard phone" }
+    /**
+     * What LMS and the screens call this phone (owner request: "adopt the phone's name, model if easier"): the name given
+     * it in Android's settings (About phone → Device name), else its maker and model ("Google Pixel 8").
+     */
+    fun phoneName(c: Context): String =
+        runCatching { android.provider.Settings.Global.getString(c.contentResolver, android.provider.Settings.Global.DEVICE_NAME) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: listOf(Build.MANUFACTURER.replaceFirstChar { it.uppercase() }, Build.MODEL).distinct().joinToString(" ").trim().ifEmpty { "Mallard phone" }
 
     fun goAway(c: Context) {
         val client = Store.client(c) ?: return
-        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName(), maxRate(c)) }.getOrElse {
+        val h = runCatching { client.phoneHello(Store.deviceId(c), phoneName(c), maxRate(c)) }.getOrElse {
             AppLog.line("AWAY", "the server didn't start this phone's player: ${it.message}", anomaly = true); return
         }
         id = h.playerId; name = h.name
@@ -53,7 +58,7 @@ internal object PhoneZone {
         work.execute {
             if (id != null) return@execute
             val client = Store.client(app) ?: return@execute
-            val h = runCatching { client.phoneHello(Store.deviceId(app), phoneName(), maxRate(app)) }.getOrElse {
+            val h = runCatching { client.phoneHello(Store.deviceId(app), phoneName(app), maxRate(app)) }.getOrElse {
                 AppLog.line("PHONE", "the server didn't start this phone's player: ${it.message}", anomaly = true); return@execute
             }
             id = h.playerId; name = h.name
