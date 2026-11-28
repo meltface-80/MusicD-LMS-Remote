@@ -228,7 +228,7 @@ const labels = require("./lib/labels").makeLabels({
   getDiscogsToken:     () => discogsToken,
   getFanartKey:        () => fanartKey,
   getLabelFolderDepth: () => labelFolderDepth,
-  lmsLabels: (...a) => (state.lms ? require("./lib/lmslabels").makeLmsLabels({ request: (p, w) => state.lms.request(p, w), log: log.child("labels") }).labelsFor(...a) : null),
+  lmsLabels: require("./lib/lmslabels").lmsLabelsHook(() => state.lms, () => !!(state.server && state.server.scanning), path.join(DATA_DIR, "cache", "lms-labels-tried.json"), log.child("labels")),
   debug:               DEBUG
 });
 
@@ -524,8 +524,7 @@ function rebuildAdapter() {
   return state.lms;
 }
 
-// Try to establish/refresh the connection. Called on boot and on a timer.
-let refreshing = false;
+let refreshing = false;   // refreshConnection: establish/refresh the connection, on boot and on a timer
 async function refreshConnection() {
   // The poll interval (2.5s) is shorter than the RPC timeout (8s); against a
   // slow/wedged LMS, overlapping runs would pile up per-player status sockets.
@@ -590,10 +589,11 @@ async function refreshConnectionInner() {
       if (DEBUG) console.log("[lms] connected to", state.lms.cfg.host + ":" + state.lms.cfg.port);
       ensureIndex();   // build the search index on (re)connect
       invalidateServices();
+    } else if (ss.scanning) {
+      // LMS is scanning: its library isn't read until lastScan moves at the end (one rebuild then). Rebuilding on each count change mid-import re-read every track every 5 min (owner: stutter).
     } else if (scanChangedSinceIndex() && !indexBuilding) {
-      // LMS finished a scan we didn't start. Rebuild once, here, rather than
-      // waiting for a request to notice — merges, edits and artwork are all
-      // re-layered by buildIndex, so this is the one place that heals them.
+      // LMS finished a scan we didn't start. Rebuild once, here, rather than waiting for a request to notice —
+      // merges, edits and artwork are all re-layered by buildIndex, so this is the one place that heals them.
       log.info("lms: library rescan detected (lastScan changed) — rebuilding the index");
       libraryViewCache.clear();
       ensureIndex();
