@@ -13,8 +13,10 @@ class SettingsTest {
     }
 
     @Test fun `the sections in the server page's order`() {
-        assertEquals(listOf("playback", "player", "labels", "metadata", "homescreen", "smartpicks", "lms", "away", "display", "appearance", "system"),
+        assertEquals(listOf("playback", "labels", "metadata", "homescreen", "smartpicks", "lms", "away", "display", "appearance", "system"),
             SettingsLists.HOME.map { it.pane })
+        // Playback and Player settings are one page, Audio Devices, as Mandarin's (owner request).
+        assertEquals("Audio Devices", SettingsLists.HOME.first().title)
         assertEquals("", SettingsLists.RESCAN_MODES[0].first)
     }
 }

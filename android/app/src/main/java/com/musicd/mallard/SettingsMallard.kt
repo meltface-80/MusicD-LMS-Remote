@@ -1,6 +1,5 @@
 package com.musicd.mallard
 
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import com.musicd.mallard.client.Choice
 import com.musicd.mallard.client.Failure
 import com.musicd.mallard.client.Palette
-import com.musicd.mallard.client.Room
 import com.musicd.mallard.client.ServerClient
 import com.musicd.mallard.client.SetupSettings
 import kotlinx.coroutines.Dispatchers
@@ -55,8 +53,7 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
     val showInfo = { t: String -> info = t }
     Box(Modifier.fillMaxSize()) {
         when (pane) {
-            "playback" -> PlaybackPane(client, onBack, showInfo)
-            "player" -> PlayerPane(client, onBack, showInfo)
+            "playback" -> AudioDevicesPane(client, onBack, showInfo)   // SettingsAudio.kt: Audio Devices, as Mandarin's
             "labels" -> LabelsPane(client, onBack, showInfo)
             "metadata" -> MetadataPane(client, onBack, showInfo)
             "homescreen" -> HomeScreenPane(client, onBack)
@@ -75,181 +72,6 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
 @Composable
 internal fun PaneHead(title: String, onBack: () -> Unit) {
     SettingsHead(Modifier.clip(CircleShape).clickable(onClick = onBack), R.drawable.np_back, title, Modifier)
-}
-
-/** The players, as the server lists them; none until it answers. */
-@Composable
-private fun rememberRooms(client: () -> ServerClient?): List<Room> {
-    var rooms by remember { mutableStateOf<List<Room>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        val c = client() ?: return@LaunchedEffect
-        withContext(Dispatchers.IO) { runCatching { c.rooms() }.getOrNull() }?.let { rooms = it }
-    }
-    return rooms
-}
-
-// ---- Playback ----------------------------------------------------------------------------------------------------
-
-@Composable
-private fun PlaybackPane(client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val rooms = rememberRooms(client)
-    var zone by remember { mutableStateOf(NativeShell.zone.ifEmpty { Store.zone(context).orEmpty() }) }
-    var radio by remember { mutableStateOf(false) }
-    var known by remember { mutableStateOf(false) }
-    LaunchedEffect(zone) {
-        val c = client() ?: return@LaunchedEffect
-        if (zone.isEmpty()) return@LaunchedEffect
-        withContext(Dispatchers.IO) { runCatching { c.getJson("/api/radio?zone=" + Uri.encode(zone)) }.getOrNull() }?.let { radio = it.optBoolean("enabled"); known = true }
-    }
-    SettingsFrame {
-        PaneHead("Playback", onBack)
-        Block {
-            val choices = rooms.map { Choice(it.id, it.name) }
-            SetupRow("Player", Modifier, Modifier.clickable { info("Choose which Lyrion player Play, Queue and the transport controls send to.") }) {
-                SelectBox(choiceWords(choices, zone).ifEmpty { "None" }, choices, Modifier, Modifier.clickable {
-                    if (choices.isNotEmpty()) pickChoice(context, choices, zone) { v -> zone = v; NativeShell.roomChosen(v) }
-                })
-            }
-        }
-        SettingsDivider()
-        Block {
-            SetupRow("Random album radio", Modifier, Modifier.clickable { info("When this player's queue runs out, keep it going by queueing whole random albums from your library rather than shuffling single tracks. It stands down on its own while LMS's own Don't Stop The Music is on for the player, so the two never fight over the queue. Per player — it follows the player chosen above.") }) {
-                Toggle(radio, Modifier.clickable(enabled = zone.isNotEmpty()) {
-                    val c = client() ?: return@clickable
-                    val was = radio; radio = !radio
-                    scope.launch {
-                        val r = withContext(Dispatchers.IO) { runCatching { c.radio(zone, radio) } }
-                        r.onFailure { radio = was; setupToast(context, Failure.said(it, "Couldn't change radio")) }
-                    }
-                }, known)
-            }
-            SetupNote("Applies to the player chosen above.", Modifier)
-        }
-    }
-}
-
-// ---- Player settings ---------------------------------------------------------------------------------------------
-
-/** One of a player's prefs as a list: its name, the help, its choices; saved as LMS's own value. */
-private class PrefRow(val pref: String, val name: String, val info: String, val choices: List<Choice>)
-
-private val PREF_ROWS = listOf(
-    PrefRow("transitionType", "Crossfade", "How one track blends into the next.",
-        listOf(Choice("0", "None"), Choice("1", "Crossfade"), Choice("2", "Fade in"), Choice("3", "Fade out"), Choice("4", "Fade in & out"))),
-    PrefRow("transitionDuration", "Crossfade seconds", "Length of the crossfade or fade.", (0..10).map { Choice("$it", "$it s") }),
-    PrefRow("transitionSmart", "Smart crossfade", "Skip the crossfade between consecutive tracks of the same album (gapless stays gapless).",
-        listOf(Choice("0", "Off"), Choice("1", "On"))),
-    PrefRow("replayGainMode", "Volume levelling", "Use ReplayGain tags to even out loudness between tracks or albums.",
-        listOf(Choice("0", "Off"), Choice("1", "Track gain"), Choice("2", "Album gain"), Choice("3", "Smart gain"))),
-    PrefRow("digitalVolumeControl", "Volume control", "Fix the output at 100% if your amplifier or DAC controls loudness, or you need perfect digital passthrough.",
-        listOf(Choice("0", "Fixed at 100%"), Choice("1", "Volume adjusts outputs"))),
-    PrefRow("powerOnResume", "On power on", "What playback does when the player is switched off and back on.",
-        listOf(Choice("PauseOff-PlayOn", "Pause · resume"), Choice("PauseOff-NoneOn", "Pause · stay paused"), Choice("StopOff-PlayOn", "Stop · play"),
-            Choice("StopOff-NoneOn", "Stop · do nothing"), Choice("StopOff-ResetPlayOn", "Reset · play"), Choice("StopOff-ResetOn", "Reset · do nothing"))),
-    PrefRow("syncVolume", "Sync volume", "Volume changes apply to the whole sync group.", listOf(Choice("0", "Off"), Choice("1", "On"))),
-    PrefRow("syncPower", "Sync power", "Power state follows the sync group.", listOf(Choice("0", "Off"), Choice("1", "On"))))
-
-@Composable
-private fun PlayerPane(client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val rooms = rememberRooms(client)
-    var player by remember { mutableStateOf(NativeShell.zone.ifEmpty { Store.zone(context).orEmpty() }) }
-    var settings by remember { mutableStateOf<JSONObject?>(null) }
-    var reads by remember { mutableStateOf(0) }
-    LaunchedEffect(player, reads) {
-        val c = client() ?: return@LaunchedEffect
-        if (player.isEmpty()) return@LaunchedEffect
-        settings = withContext(Dispatchers.IO) { runCatching { c.playerSettings(player) }.getOrNull() }
-    }
-    fun act(said: String, block: (ServerClient) -> Unit) {
-        val c = client() ?: return
-        scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { block(c) } }
-            setupToast(context, r.fold({ said }, { Failure.said(it, "Couldn't save") }))
-            reads++
-        }
-    }
-    SettingsFrame {
-        PaneHead("Player settings", onBack)
-        Block {
-            val choices = rooms.map { Choice(it.id, it.name) }
-            SetupRow("Player", Modifier, null) {
-                SelectBox(choiceWords(choices, player).ifEmpty { "None" }, choices, Modifier, Modifier.clickable {
-                    if (choices.isNotEmpty()) pickChoice(context, choices, player) { v -> player = v; settings = null }
-                })
-            }
-            settings?.optString("model")?.takeIf { it.isNotEmpty() }?.let { SetupNote(it, Modifier) }
-        }
-        val s = settings ?: return@SettingsFrame
-        SettingsDivider()
-        Block {
-            val power = if (s.isNull("power")) null else s.optBoolean("power")
-            SetupRow("Power", Modifier, null) {
-                Toggle(power == true, Modifier.clickable { act(if (power == true) "Switched off" else "Switched on") { it.power(player, power != true) } }, power != null)
-            }
-            val modes = s.optJSONObject("modes")
-            if (modes != null) {
-                val shuffles = listOf(Choice("0", "Off"), Choice("1", "By song"), Choice("2", "By album"))
-                SetupRow("Shuffle", Modifier, Modifier.clickable { info("Shuffle mode for this player's queue.") }) {
-                    val v = modes.optInt("shuffle", 0).toString()
-                    SelectBox(choiceWords(shuffles, v), shuffles, Modifier, Modifier.clickable {
-                        pickChoice(context, shuffles, v) { n -> act("Saved ✓") { it.zoneSettings(player, shuffleMode = n.toInt()) } }
-                    })
-                }
-                val repeats = listOf(Choice("0", "Off"), Choice("1", "One song"), Choice("2", "All"))
-                SetupRow("Repeat", Modifier, Modifier.clickable { info("Repeat mode for this player's queue.") }) {
-                    val v = modes.optInt("repeat", 0).toString()
-                    SelectBox(choiceWords(repeats, v), repeats, Modifier, Modifier.clickable {
-                        pickChoice(context, repeats, v) { n -> act("Saved ✓") { it.zoneSettings(player, loop = when (n) { "2" -> "loop"; "1" -> "loop_one"; else -> "disabled" }) } }
-                    })
-                }
-            }
-            val dstm = s.optJSONObject("dstm")
-            val opts = dstm?.optJSONArray("options")
-            if (opts != null && opts.length() > 0) {
-                val choices = (0 until opts.length()).mapNotNull { opts.optJSONObject(it) }.map { Choice(it.optString("key"), it.optString("text")) }
-                val v = dstm.optString("current", "0")
-                SetupRow("Don't Stop The Music", Modifier, Modifier.clickable { info("When the queue runs out, LMS keeps playing using the mix chosen here. This is LMS's own feature.") }) {
-                    SelectBox(choiceWords(choices, v), choices, Modifier, Modifier.clickable {
-                        pickChoice(context, choices, v) { n -> act("Saved ✓") { it.playerDstm(player, n) } }
-                    }, width = 170.dp)
-                }
-            }
-        }
-        val prefs = s.optJSONObject("prefs") ?: JSONObject()
-        val shown = PREF_ROWS.filter { prefs.has(it.pref) && !prefs.isNull(it.pref) }
-        if (shown.isNotEmpty()) {
-            SettingsDivider()
-            Block {
-                for (row in shown) {
-                    val v = prefs.optString(row.pref)
-                    SetupRow(row.name, Modifier, Modifier.clickable { info(row.info) }) {
-                        SelectBox(choiceWords(row.choices, v), row.choices, Modifier, Modifier.clickable {
-                            pickChoice(context, row.choices, v) { n -> act("Saved ✓") { it.playerPref(player, row.pref, n) } }
-                        }, width = 170.dp)
-                    }
-                }
-            }
-        }
-        val sync = s.optJSONObject("sync")
-        val others = sync?.optJSONArray("others")
-        if (others != null && others.length() > 0) {
-            SettingsDivider()
-            Block {
-                val choices = listOf(Choice("", "Not synced")) + (0 until others.length()).mapNotNull { others.optJSONObject(it) }.map { Choice(it.optString("id"), it.optString("name")) }
-                val members = sync.optJSONArray("members")
-                val v = members?.optString(0).orEmpty()
-                SetupRow("Sync with", Modifier, Modifier.clickable { info("Group this player with another for synchronous playback.") }) {
-                    SelectBox(choiceWords(choices, v), choices, Modifier, Modifier.clickable {
-                        pickChoice(context, choices, v) { n -> act(if (n.isEmpty()) "Unsynced ✓" else "Synced ✓") { it.playerSync(player, n.ifEmpty { null }) } }
-                    }, width = 170.dp)
-                }
-            }
-        }
-    }
 }
 
 // ---- Artwork & metadata ------------------------------------------------------------------------------------------
