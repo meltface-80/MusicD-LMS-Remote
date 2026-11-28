@@ -3,6 +3,13 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- The web page has Mallard's bottom bar (owner: the two apps are exact copies): Menu, Home, Library, Shelf while it is
+  on, and Search, evenly across the foot of the screen on a phone or a tablet (never with a mouse), with the mini
+  player lifted above it and the top bar's menu button moved into it. It steps aside for an album's page and Now
+  playing, and while the side menu is open, as the mini player does. Geometry: the mini player's lift is a variable
+  inside its one `bottom`, so the home-indicator inset is still applied once (`lib/safearea.test.js`); nothing here
+  touches a top inset.
+
 - Mallard has its own Tailscale (owner request: "No Mallard android app tailscale login yet"), as Mandarin's phone
   does: Settings → Away from home → This phone signs the phone in to Tailscale (the same engine as the server's,
   `musicdnet/`, built into the APK for 64-bit ARM by `mallard.yml`). Away from home — the saved address not answering

@@ -806,6 +806,32 @@
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- Mini transport (now-playing bar) — Roon-style layout -->
+  <!-- The row along the foot of the screen on a phone or a tablet (touch-nav.js; Mallard's TouchNav.kt): Menu, Home,
+       Library, Shelf while it is switched on, and Search, evenly across, under the mini player. A desktop (a mouse)
+       never shows it (style.css, "touch layout"). -->
+  <nav id="touch-nav" class="touch-nav" aria-label="Main">
+    <button id="tnav-menu" class="tnav-btn" type="button" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <span>Menu</span>
+    </button>
+    <button id="tnav-home" class="tnav-btn" type="button" aria-label="Home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9v11h4.5v-6h4v6h4.5V9"/></svg>
+      <span>Home</span>
+    </button>
+    <button id="tnav-library" class="tnav-btn" type="button" aria-label="Library">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="4" x2="5" y2="20"/><line x1="10" y1="4" x2="10" y2="20"/><path d="m14.5 4.6 4.6 14.8"/></svg>
+      <span>Library</span>
+    </button>
+    <button id="tnav-shelf" class="tnav-btn feature-off" type="button" aria-label="Shelf">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 5v13M7.5 5v13M15 5v13M18.5 5v13"/><rect x="9.5" y="4" width="4" height="15" rx=".8"/><path d="M2 21h20"/></svg>
+      <span>Shelf</span>
+    </button>
+    <button id="tnav-search" class="tnav-btn" type="button" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+      <span>Search</span>
+    </button>
+  </nav>
+
   <div id="mini-transport" class="mini-transport hidden" aria-label="Now playing">
     <div class="mt-progress" aria-hidden="true">
       <div class="mt-progress-fill" id="mt-progress-fill"></div>
@@ -1484,13 +1510,13 @@
         <!-- The Shelf's switch (owner: "Shelf isn't in wall display"), read by both apps (shelf-entry.js, Mallard's ShelfBlock). -->
         <div class="settings-block">
           <div class="settings-row">
-            <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and while it is on, in both apps' menus and Mallard's bottom bar." aria-label="Info">ⓘ</button></span>
+            <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and while it is on, in the bottom bar and the menu of both apps." aria-label="Info">ⓘ</button></span>
             <label class="switch">
               <input type="checkbox" id="shelf-enabled" aria-label="Shelf">
               <span class="switch-track"><span class="switch-thumb"></span></span>
             </label>
           </div>
-          <div class="settings-note" id="shelf-enabled-note">Off. Switch it on to add Shelf to the menu.</div>
+          <div class="settings-note" id="shelf-enabled-note">Off. Switch it on to add Shelf to the bottom bar and the menu.</div>
         </div>
 
       </div>
@@ -1733,6 +1759,7 @@
   <script src="/app.js"></script>
   <script src="/share-sheet.js"></script>
   <script src="/shelf-entry.js"></script>
+  <script src="/touch-nav.js"></script>
   <script src="/apps-browser.js"></script>
   <script src="/lms-plugins.js"></script>
   <script src="/home-head.js"></script>
