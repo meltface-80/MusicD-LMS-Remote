@@ -1,5 +1,7 @@
 package com.musicd.mallard
 
+import android.content.Intent
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -28,6 +30,7 @@ import org.json.JSONObject
 internal fun SystemPane(client: () -> ServerClient?, onBack: () -> Unit) {
     SettingsFrame {
         PaneHead("System", onBack)
+        ServerAddressRow(client)   // this phone's server (it was Settings → Mallard's own pane; owner: one fewer row)
         Block { ServerUpdateRow(client) }
         Block { AppUpdateRow() }
     }
@@ -100,4 +103,16 @@ private fun AppUpdateRow() {
         else -> ""
     }, Modifier)
     offer?.notes?.let { SetupNote(it.take(1200), Modifier.padding(top = 8.dp)) }
+}
+
+/** The server this phone talks to, as an address and port, and Change (the connect screen). */
+@Composable
+private fun ServerAddressRow(client: () -> ServerClient?) {
+    val context = LocalContext.current
+    Block {
+        SetupRow("Server address", Modifier, null) {
+            SetupButton("Change", false, Modifier.clickable { context.startActivity(Intent(context, ConnectActivity::class.java)) })
+        }
+        SetupNote(client()?.address?.toString() ?: "None chosen", Modifier)
+    }
 }
