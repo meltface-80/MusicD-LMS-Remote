@@ -42,7 +42,7 @@ tags, no automatic releases, no cluttered history.
   publishes the server image `:dev` + `:<test version>` (`server-dev.yml`;
   `tools/test-version.js` gives e.g. `1.0.87-t3`) and Mallard's
   `mallard-test.apk` on the rolling `mallard-test` PRE-release (`mallard.yml`,
-  `0.2.0-tN`). Neither is ever "latest". A `:dev` server knows it is one
+  `0.3.0-tN`). Neither is ever "latest". A `:dev` server knows it is one
   (`APP_CHANNEL=dev`, `lib/build.js`) and its updater says "pull :dev again"
   instead of offering a release.
 

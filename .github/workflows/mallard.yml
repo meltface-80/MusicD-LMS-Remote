@@ -8,7 +8,7 @@ name: Mallard (Android)
 # MALLARD UPDATES ITSELF (AppUpdate.kt, core's MallardRelease.kt) from what is
 # published here: beside every APK goes `mallard.json` = {version, code, url,
 # sha256, notes}, read from releases/download/<tag>/mallard.json. Two channels:
-#   mallard-test    every dev push (versionName 0.2.0-tN, code base*1000+N)
+#   mallard-test    every dev push (versionName 0.3.0-tN, code base*1000+N)
 #   mallard-latest  a Mallard RELEASE, by hand: Run workflow on main with
 #                   "stable" ticked (code base*1000+999), also kept as an
 #                   immutable mallard-v<version>.
