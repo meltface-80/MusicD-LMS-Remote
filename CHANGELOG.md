@@ -7,6 +7,8 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Fixed - Genres were missing everywhere (the Shelf's Genres tab, the Library's genre filter): LMS's album list carries no genre, so each album's genre is now its first track's, read in the background sweep that already reads dates and formats
+- Added - Record labels for Qobuz albums come straight from LMS's own album info (the Qobuz plugin's "Music Label", as Material shows it), so Labels and the Shelf's Labels tab fill in minutes rather than after hours of web lookups
 - Changed - The web app's Home starts as Mallard's: the date and "Good evening", then Random Album beside the Album of the Day, then Not played in 6 months with its albums only. In the Mallard theme every Home row is a single row on tablets too
 - Fixed - Artist biographies (and reviews) from LMS's Music & Artist Information plugin broke mid-sentence at every line of the source text, in both apps; their lines are joined back into paragraphs
 - Added - Away from home, built in: Tailscale is part of the server's Docker image. Settings → Away from home (web app and Mallard) signs it in once (or set `TS_AUTHKEY`), and the server is on your tailnet by itself — nothing to install on the machine, no ports opened, ordinary bridge networking. Only your own devices on the tailnet are let in. `TS_HOSTNAME` names it, `TAILSCALE=off` leaves it out

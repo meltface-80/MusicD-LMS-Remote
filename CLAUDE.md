@@ -722,10 +722,12 @@ tags, no automatic releases, no cluttered history.
   / 5000 rows, so "Most played" / "Last played" are approximations over recent
   history, NOT all-time, and two albums sharing a title share a bucket. The
   Library sort notes say so — keep any new UI equally honest.
-- Album genre comes from LMS tags g/G via `albumGenre()` (both letters sent,
-  as with e/E, because which one carries genre varies by LMS version; a
-  multi-genre album keeps its FIRST genre). An album LMS gives no genre for
-  simply drops out of the genre facet — never throws.
+- Album genre is its FIRST TRACK's, read in the background track sweep (`albumAddedTimes`, `titles … tags:…g`) beside
+  its format. LMS's `albums` query has NO genre tag (verified in Slim/Control/Queries.pm albumsQuery) — the old belief
+  that tags g/G carried it left every album genre-less, the Shelf's Genres tab and the genre facet empty. The
+  added-times cache marks `withGenre`, so an older cache re-sweeps. An album LMS gives no genre drops out of the facet.
+- Qobuz albums' RECORD LABELS come from LMS's own album info first (`lib/lmslabels.js`: `albuminfo items` → the Qobuz
+  plugin's "On Qobuz" section → "Music Label: …"), owner request; the public qobuz.com scrape stays the fallback.
 - Live Playlists (`lib/liveplaylists.js`) store a saved LIBRARY VIEW, never a
   track list — opening one re-runs `libraryView()`, so there is no second query
   engine. The rule vocabulary is INJECTED from `LIB_SORTS` so a saved rule can

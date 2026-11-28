@@ -221,14 +221,14 @@ let indexProgress = 0;
 // normaliser, and the persisted Discogs/FanArt/folder-depth settings (read via
 // getters so it always sees the current values after a Settings change).
 // ---------------------------------------------------------------------------
-const { makeLabels } = require("./lib/labels");
-const labels = makeLabels({
+const labels = require("./lib/labels").makeLabels({
   dataDir:             DATA_DIR,
   getAlbums:           () => index.records,
   normalize:           search.normalize,
   getDiscogsToken:     () => discogsToken,
   getFanartKey:        () => fanartKey,
   getLabelFolderDepth: () => labelFolderDepth,
+  lmsLabels: (...a) => (state.lms ? require("./lib/lmslabels").makeLmsLabels({ request: (p, w) => state.lms.request(p, w), log: log.child("labels") }).labelsFor(...a) : null),
   debug:               DEBUG
 });
 
@@ -768,10 +768,9 @@ function readAddedCache(sig) {
   try {
     const j = JSON.parse(fs.readFileSync(ADDED_CACHE_FILE, "utf8"));
     if (!j || j.sig !== sig || !j.added) return null;
-    // `format` arrived later than `added`; a cache written by an older build has
-    // no formats and simply re-sweeps for them rather than being thrown away.
+    // `format` (with each album's genre, `withGenre`) came later than `added`: an older cache re-sweeps for them.
     return { added: new Map(Object.entries(j.added)),
-             format: j.format ? new Map(Object.entries(j.format)) : null };
+             format: j.format && j.withGenre ? new Map(Object.entries(j.format)) : null };
   } catch (e) { return null; }
 }
 function writeAddedCache(sig, added, format) {
@@ -781,7 +780,7 @@ function writeAddedCache(sig, added, format) {
     const tmp = ADDED_CACHE_FILE + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify({ sig, at: Date.now(),
       added: Object.fromEntries(added),
-      format: format ? Object.fromEntries(format) : undefined }));
+      format: format ? Object.fromEntries(format) : undefined, withGenre: true }));
     fs.renameSync(tmp, ADDED_CACHE_FILE);
   } catch (e) { if (DEBUG) console.error("[index] added-time cache write failed:", e.message); }
 }
@@ -834,6 +833,7 @@ function stampAlbumFormats(map) {
     // one release and share it.
     const f = map.get(String(rec.id));
     if (!f) continue;
+    if (f.genre && !rec.genre) rec.genre = f.genre;   // LMS's albums query has no genre: the first track's (lib/lms.js)
     const q = albumQualityLabel(f);
     if (!q) continue;
     rec.quality = q;
