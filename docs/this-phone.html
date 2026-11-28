@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>This phone and away from home · MusicD LMS Remote</title>
+<meta name="description" content="Mallard as a Lyrion player of its own: Opus 24/48 or bit-perfect, a USB DAC, the phone's own volume, tracks kept ahead, and Tailscale built in.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>This phone and away from home <span class="badge">New — help test it</span></h1>
+  <p class="lead">Mallard can be a Lyrion player itself, named after the phone. At home it is one of your rooms; away from home it is
+     the only one, and Mallard switches to it on its own when you leave and back to your rooms when you return. Lyrion
+     plays to it like any other player — your queue, your settings, volume levelling — and the phone plays the music.</p>
+  <h2 id="tailscale">Away from home: Tailscale, built in</h2>
+  <p>Away, Mallard reaches the server through <a href="https://tailscale.com">Tailscale</a>, a free private network between
+     your own devices: nothing is opened to the internet and no router ports are forwarded. It is built into both the
+     server and Mallard, so neither needs the Tailscale app.</p>
+  <ol class="steps">
+    <li><b>Sign the server in</b><span>In Mallard: Settings → Away from home → Sign in to Tailscale (or set
+        <code>TS_AUTHKEY</code> in the container). It joins your tailnet as <code>musicd-lms</code>.</span></li>
+    <li><b>Sign the phone in</b><span>Settings → Away from home → This phone → Sign in to Tailscale, with the same account.</span></li>
+    <li><b>Leave the house</b><span>That's all: on mobile data, Mallard finds the server through Tailscale and plays on the phone.</span></li>
+  </ol>
+  <p>Only your own devices are let in: those signed in as the server's own Tailscale user. Any other device — a laptop, or
+     the web app on a phone — uses the Tailscale app and the server's tailnet address.</p>
+  <h2 id="quality">The sound</h2>
+  <ul class="plain">
+    <li><b>At home, always the file itself</b> — bit-perfect, at its own rate and depth.</li>
+    <li><b>Away, Opus 256 kbps at 24-bit/48 kHz</b> (the default) — made from the file by the server, resampled with soxr from
+        float, and decoded by Mallard's own libopus to 24-bit at 48 kHz, the rate Android's audio runs at. About a quarter of
+        a CD's data.</li>
+    <li><b>Or away, Bit-perfect (untouched)</b> — the file itself, for a USB DAC or a good connection.</li>
+    <li><b>Gapless</b>, and Lyrion's volume levelling (ReplayGain) applied on the phone.</li>
+  </ul>
+  <p>Now playing says which: "FLAC 24/96" for the file itself, "Opus 256 kbps · 24/48" away, with the volume levelling
+     applied when it is on.</p>
+  <p>Choose in Settings → Audio Devices → This phone → Stream away as.</p>
+  <h2 id="volume">Volume</h2>
+  <p>This phone's volume is the phone's own: its buttons, the lock screen, or the slider in Mallard. Lyrion keeps this
+     player fixed at 100%, so nothing is lost before the phone.</p>
+  <h2 id="usb">A USB DAC</h2>
+  <p>With a DAC on the phone's USB port, Settings → Away from home → USB DAC → USB direct sends the sound to it through
+     Mallard's own USB audio driver, past Android's mixer: each sample as it is in the file, at the track's own rate.
+     Unplugged mid-song, the music stops rather than jump to the loudspeaker.</p>
+  <h2 id="ahead">Tracks kept ahead</h2>
+  <p>Mallard keeps the next tracks of the queue on the phone, so they play through a dead spot, or on mobile data without
+     using any: 20 on Wi-Fi and 10 on mobile data unless you choose otherwise, in a cache of 2 GB, and a track played again
+     is already there. Settings → Audio Devices → This phone shows what it holds, and Clear.</p>
+  <div class="note"><b>Which tracks.</b> Your own music files, read from the music folder mounted into the server's
+     container (<a href="install.html#music">how</a>). Qobuz and TIDAL tracks are held one ahead: Lyrion streams those to
+     its players one track at a time, and they are not files to fetch ahead.</div>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="plugins.html">Next: Plugins, radio and streaming →</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>
