@@ -7,6 +7,7 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Changed - LMS's own settings pages — a plugin's Settings, and Lyrion's classic settings — open in Mallard's look in both apps: the dark ground, Manrope, each setting's name and note as Mallard's rows, Mallard's input boxes, brass radio buttons and a brass Save Settings. Material's pages keep their own look
 - Changed - Mallard's Settings has one row fewer: the server's address (and Change) is now at the top of Settings → System, and the separate Mallard row is gone (its version line was already in System)
 - Fixed - Genres were missing everywhere (the Shelf's Genres tab, the Library's genre filter): LMS's album list carries no genre, so each album's genre is now its first track's, read in the background sweep that already reads dates and formats
 - Added - Record labels for Qobuz albums come straight from LMS's own album info (the Qobuz plugin's "Music Label", as Material shows it), so Labels and the Shelf's Labels tab fill in minutes rather than after hours of web lookups
