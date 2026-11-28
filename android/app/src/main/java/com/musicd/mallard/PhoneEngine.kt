@@ -79,7 +79,7 @@ internal object PhoneEngine {
             if (process === p) {
                 process = null; readyFor = null
                 // 3: stopped itself unused; 4: its CPU guard (Mandarin's EngineExit). Anything else is worth a line.
-                AppLog.line("REACH", "the phone's Tailscale engine ended ($code)" + if (code == 3 || code == 4) "" else ": " + stderrTail.takeLast(3).joinToString(" | "), anomaly = code != 3 && code != 4)
+                AppLog.line("REACH", "the phone's Tailscale engine ended ($code)" + if (code == 3 || code == 4) "" else ": " + stderrTail.toList().takeLast(3).joinToString(" | "), anomaly = code != 3 && code != 4)
             }
         }, "musicdnet-stderr").apply { isDaemon = true; start() }
         AppLog.line("REACH", "the phone's Tailscale engine started")
