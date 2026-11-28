@@ -58,7 +58,8 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          # The NDK and CMake build the USB audio driver's native side (android/app/src/main/cpp).
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1'
 
       - uses: gradle/actions/setup-gradle@v4
         with:

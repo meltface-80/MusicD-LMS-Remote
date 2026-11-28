@@ -2,96 +2,26 @@
 
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
-
-- Web: the search bar no longer shows permanently on a phone or a tablet (owner: "that's what the magnifying glass is
-  for"). The bottom bar's glass opens it with the cursor in it; its ✕ clears the words, and tapped again with none
-  closes it; a tap elsewhere on the screen closes it while it is empty. Home then has no top bar but the status bar's
-  strip, as Mandarin's page. A desktop keeps its field in the bar.
-
-- Mallard away from home plays to the phone itself (Mallard's half of the phone's own player; owner request, as
-  Mandarin): the moment it goes away through its own Tailscale it says hello, the server starts this phone's LMS player,
-  and every screen shows and plays in that player alone ("This phone") — the home rooms leave the picker, and the
-  lock screen follows it. Its sound plays from the server's stream (a background media player, PhoneStreamService, with
-  its own notification and Stop). Home again: goodbye, the stream stops, and the screens are back in the room kept for
-  home, which going away never overwrote. Settings → Away from home → This phone: Stream away as Opus 256 kbps or
-  Lossless (FLAC 24-bit/48 kHz).
-
-- A phone away from home gets an LMS player of its own (server half; Mallard's half follows). On a phone's hello the
-  server runs squeezelite for it — a real LMS player named after the phone, its MAC fixed per phone so LMS keeps its
-  settings — so LMS plays to it losslessly and every LMS player setting applies: volume, ReplayGain levelling,
-  crossfade, Don't Stop The Music. Its sound (to stdout, resampled to 48 kHz) is read at real time and made into one
-  continuous Ogg stream for the phone: Opus 256 kbps, or lossless FLAC 24-bit/48 kHz. Over the tailnet, from the phone
-  that said hello, the zone list is that player alone, as "This phone". The Docker image now installs squeezelite and
-  ffmpeg. Routes: `POST /api/phone/hello`, `GET /api/phone/stream`, `POST /api/phone/bye`.
-
-- Mallard: Qobuz, as the web app's Browse Qobuz — a side-menu row under the plugin's own name while the server's Qobuz
-  plugin is signed in (`/api/services`), walking its menus a level at a time (categories as rows, albums as tiles with
-  the account favourite's ＋ / ✓), and an album's page: Play Now, Add to queue, ＋ Add to Qobuz / ✓ In Qobuz, its
-  tracks (a tap plays that one). Search's Qobuz albums now read this server's answer (they came back with no artist
-  or cover) and open there; their ＋ adds them to the account, where both used to say "open it from the page".
-
-- Mallard: Labels, as the web app has it — a side-menu row (while Record labels is on) to every label as a tile, its
-  logo or its name in words, with its album count and "N merged". A tap opens its albums with Set logo (Discogs'
-  logos, or a pasted address); a long press picks labels to merge ("Merge N into …"), and "N merged" undoes one.
-  While the scan runs it says how far it has got; with none found, Rescan now. Settings → Labels gains the web's
-  Label album order, Minimum albums per label and Force rescan.
-
-- Mallard: save the Library's view as a Dynamic Playlist, and edit one's rules, as the web app does. The Focus sheet's
-  foot is Clear all · Save as Dynamic Playlist · Show albums; Save asks for a name (suggested from the rules on, as the
-  page's) and says what it plays. A Dynamic Playlist's page gains Edit rules: its rules open in the Library's Focus
-  with its Order and Playlist size first, and Save changes writes them back; dismissing the sheet puts your own view
-  back. Unlike the web's Edit, it keeps the playlist's size and order rather than resetting them to 100 / Album order.
-
-- Mallard: Edit album, as the web app has it — the pencil left of Share at an album page's top right opens the same
-  editor: Title, Artist, Year; Artwork (Find artwork lists the covers found, a tap picks one, or paste an address);
-  Remove edits (when it carries some), Cancel, Save. Kept in the app's database; files and LMS never touched. What
-  is saved shows at once on the page and on the walls. `/api/album` now says `edited`, so both apps know when to
-  offer Remove edits.
-
-- Mallard: Add to playlist, as the web app has it — from the albums' multi-select (every track of the picked albums),
-  the tracks' multi-select on an album's page, and (new in both senses) an album's ⋯. The same sheet: what is being
-  added, "+ New playlist…", then Existing; the same toasts ("Added 12 tracks to new playlist “Road”", "existing …"
-  when the name was taken, "(2 skipped)"), and the selection let go whatever came of it.
-
-- The web page has Mallard's bottom bar (owner: the two apps are exact copies): Menu, Home, Library, Shelf while it is
-  on, and Search, evenly across the foot of the screen on a phone or a tablet (never with a mouse), with the mini
-  player lifted above it and the top bar's menu button moved into it. It steps aside for an album's page and Now
-  playing, and while the side menu is open, as the mini player does. Geometry: the mini player's lift is a variable
-  inside its one `bottom`, so the home-indicator inset is still applied once (`lib/safearea.test.js`); nothing here
-  touches a top inset.
-
-- Mallard has its own Tailscale (owner request: "No Mallard android app tailscale login yet"), as Mandarin's phone
-  does: Settings → Away from home → This phone signs the phone in to Tailscale (the same engine as the server's,
-  `musicdnet/`, built into the APK for 64-bit ARM by `mallard.yml`). Away from home — the saved address not answering
-  over the Wi-Fi, or no Wi-Fi — Mallard then reaches the server through it by itself, at the server's tailnet address,
-  which the server says in `/api/status` and Mallard remembers; at home the engine is stopped. It uses its own local
-  port (34390), not Mandarin's, so both apps can be away on one phone. The server answers `/api/ping`, the engine's
-  probe.
-
-- The Shelf's switch lives in Settings → Wall display in both apps (owner: "Shelf isn't in wall display"); its own
-  Settings row is gone, which saves a row. In Mallard, switching it on also puts Shelf in the bottom bar between
-  Library and Search, as Mandarin's row does (`NavShelf`), as well as in the menu. The web app has no bottom bar, so
-  there it is in the menu.
-- Away from home is no longer in the web app's Settings (owner decision): the server's built-in Tailscale is managed
-  from Mallard. The server side is unchanged.
-
-- Plugin repositories (owner request: a developer's own plugins to try). Settings → LMS server → Plugins has a third
-  tab, Repositories, in both apps: LMS's extra repository addresses, each with Remove, and a box to paste a new one's
-  .xml address. The server saves LMS's own plugin page with the list changed (LMS keeps only `http(s)://….xml`, the
-  same rule both apps check before sending), LMS reads the repository, and its plugins appear under Available under
-  the repository's name, ready to install.
-
-- Gentler on LMS (owner report: Lyrion stuttering and restarting). While LMS scans — an online-library import is the
-  heaviest thing it does — this server no longer rebuilds its index on every album-count change (each rebuild re-read
-  the whole track table, every 5 minutes for the length of the import); it rebuilds once when the scan ends. The Qobuz
-  label lookup through LMS's album info now asks one album at a time, 1.5 s apart, never while LMS scans, stops after
-  five failures in a row, and remembers the albums LMS had no label for (asked again after 30 days) instead of
-  re-asking them all on every rebuild.
 renamed to the version and the Release workflow's notes are taken from it. Lines start Added / Changed / Fixed /
 Removed. Versions before v1.0.86 are described in their GitHub releases.
 
 ## Unreleased
 
+- Added - Mallard: a USB DAC away from home (owner request: "support for lossless/bitperfect playback via usb dacs, like Mandarin"). Mandarin's own USB Audio Class driver, ported: with USB direct on (Settings → Away from home → USB DAC) the phone's stream goes to the DAC through it — UAC1 and UAC2, at the stream's own rate and the DAC's deepest depth, paced by the DAC's feedback — with Android's mixer out of the way. Allow (Android asks once), what the DAC says it takes, Fixed volume (the DAC at full), the DAC's level and its limit (the phone's volume buttons step it too), what it is fed now, and Copy diagnostics. The DAC pulled out mid-song stops the sound rather than move it to the loudspeaker. The untouched (bit-perfect) stream from the server follows; until then the lossless stream is FLAC 24-bit/48 kHz.
+- Changed - Web: the search bar no longer shows permanently on a phone or a tablet (owner: "that's what the magnifying glass is for"). The bottom bar's glass opens it with the cursor in it; its ✕ clears the words, and tapped again with none closes it; a tap elsewhere on the screen closes it while it is empty. Home then has no top bar but the status bar's strip, as Mandarin's page. A desktop keeps its field in the bar.
+- Added - Mallard away from home plays to the phone itself (Mallard's half of the phone's own player; owner request, as Mandarin): the moment it goes away through its own Tailscale it says hello, the server starts this phone's LMS player, and every screen shows and plays in that player alone ("This phone") — the home rooms leave the picker, and the lock screen follows it. Its sound plays from the server's stream (a background media player, PhoneStreamService, with its own notification and Stop). Home again: goodbye, the stream stops, and the screens are back in the room kept for home, which going away never overwrote. Settings → Away from home → This phone: Stream away as Opus 256 kbps or Lossless (FLAC 24-bit/48 kHz).
+- Added - A phone away from home gets an LMS player of its own (server half; Mallard's half follows). On a phone's hello the server runs squeezelite for it — a real LMS player named after the phone, its MAC fixed per phone so LMS keeps its settings — so LMS plays to it losslessly and every LMS player setting applies: volume, ReplayGain levelling, crossfade, Don't Stop The Music. Its sound (to stdout, resampled to 48 kHz) is read at real time and made into one continuous Ogg stream for the phone: Opus 256 kbps, or lossless FLAC 24-bit/48 kHz. Over the tailnet, from the phone that said hello, the zone list is that player alone, as "This phone". The Docker image now installs squeezelite and ffmpeg. Routes: `POST /api/phone/hello`, `GET /api/phone/stream`, `POST /api/phone/bye`.
+- Added - Mallard: Qobuz, as the web app's Browse Qobuz — a side-menu row under the plugin's own name while the server's Qobuz plugin is signed in (`/api/services`), walking its menus a level at a time (categories as rows, albums as tiles with the account favourite's ＋ / ✓), and an album's page: Play Now, Add to queue, ＋ Add to Qobuz / ✓ In Qobuz, its tracks (a tap plays that one). Search's Qobuz albums now read this server's answer (they came back with no artist or cover) and open there; their ＋ adds them to the account, where both used to say "open it from the page".
+- Added - Mallard: Labels, as the web app has it — a side-menu row (while Record labels is on) to every label as a tile, its logo or its name in words, with its album count and "N merged". A tap opens its albums with Set logo (Discogs' logos, or a pasted address); a long press picks labels to merge ("Merge N into …"), and "N merged" undoes one. While the scan runs it says how far it has got; with none found, Rescan now. Settings → Labels gains the web's Label album order, Minimum albums per label and Force rescan.
+- Added - Mallard: save the Library's view as a Dynamic Playlist, and edit one's rules, as the web app does. The Focus sheet's foot is Clear all · Save as Dynamic Playlist · Show albums; Save asks for a name (suggested from the rules on, as the page's) and says what it plays. A Dynamic Playlist's page gains Edit rules: its rules open in the Library's Focus with its Order and Playlist size first, and Save changes writes them back; dismissing the sheet puts your own view back. Unlike the web's Edit, it keeps the playlist's size and order rather than resetting them to 100 / Album order.
+- Added - Mallard: Edit album, as the web app has it — the pencil left of Share at an album page's top right opens the same editor: Title, Artist, Year; Artwork (Find artwork lists the covers found, a tap picks one, or paste an address); Remove edits (when it carries some), Cancel, Save. Kept in the app's database; files and LMS never touched. What is saved shows at once on the page and on the walls. `/api/album` now says `edited`, so both apps know when to offer Remove edits.
+- Added - Mallard: Add to playlist, as the web app has it — from the albums' multi-select (every track of the picked albums), the tracks' multi-select on an album's page, and (new in both senses) an album's ⋯. The same sheet: what is being added, "+ New playlist…", then Existing; the same toasts ("Added 12 tracks to new playlist “Road”", "existing …" when the name was taken, "(2 skipped)"), and the selection let go whatever came of it.
+- Changed - The web page has Mallard's bottom bar (owner: the two apps are exact copies): Menu, Home, Library, Shelf while it is on, and Search, evenly across the foot of the screen on a phone or a tablet (never with a mouse), with the mini player lifted above it and the top bar's menu button moved into it. It steps aside for an album's page and Now playing, and while the side menu is open, as the mini player does. Geometry: the mini player's lift is a variable inside its one `bottom`, so the home-indicator inset is still applied once (`lib/safearea.test.js`); nothing here touches a top inset.
+- Added - Mallard has its own Tailscale (owner request: "No Mallard android app tailscale login yet"), as Mandarin's phone does: Settings → Away from home → This phone signs the phone in to Tailscale (the same engine as the server's, `musicdnet/`, built into the APK for 64-bit ARM by `mallard.yml`). Away from home — the saved address not answering over the Wi-Fi, or no Wi-Fi — Mallard then reaches the server through it by itself, at the server's tailnet address, which the server says in `/api/status` and Mallard remembers; at home the engine is stopped. It uses its own local port (34390), not Mandarin's, so both apps can be away on one phone. The server answers `/api/ping`, the engine's probe.
+- Changed - The Shelf's switch lives in Settings → Wall display in both apps (owner: "Shelf isn't in wall display"); its own Settings row is gone, which saves a row. In Mallard, switching it on also puts Shelf in the bottom bar between Library and Search, as Mandarin's row does (`NavShelf`), as well as in the menu. The web app has no bottom bar, so there it is in the menu.
+- Removed - Away from home is no longer in the web app's Settings (owner decision): the server's built-in Tailscale is managed from Mallard. The server side is unchanged.
+- Added - Plugin repositories (owner request: a developer's own plugins to try). Settings → LMS server → Plugins has a third tab, Repositories, in both apps: LMS's extra repository addresses, each with Remove, and a box to paste a new one's .xml address. The server saves LMS's own plugin page with the list changed (LMS keeps only `http(s)://….xml`, the same rule both apps check before sending), LMS reads the repository, and its plugins appear under Available under the repository's name, ready to install.
+- Fixed - Gentler on LMS (owner report: Lyrion stuttering and restarting). While LMS scans — an online-library import is the heaviest thing it does — this server no longer rebuilds its index on every album-count change (each rebuild re-read the whole track table, every 5 minutes for the length of the import); it rebuilds once when the scan ends. The Qobuz label lookup through LMS's album info now asks one album at a time, 1.5 s apart, never while LMS scans, stops after five failures in a row, and remembers the albums LMS had no label for (asked again after 30 days) instead of re-asking them all on every rebuild.
 - Changed - LMS's own settings pages — a plugin's Settings, and Lyrion's classic settings — open in Mallard's look in both apps: the dark ground, Manrope, each setting's name and note as Mallard's rows, Mallard's input boxes, brass radio buttons and a brass Save Settings. Material's pages keep their own look
 - Changed - Mallard's Settings has one row fewer: the server's address (and Change) is now at the top of Settings → System, and the separate Mallard row is gone (its version line was already in System)
 - Fixed - Genres were missing everywhere (the Shelf's Genres tab, the Library's genre filter): LMS's album list carries no genre, so each album's genre is now its first track's, read in the background sweep that already reads dates and formats

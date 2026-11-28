@@ -12,20 +12,30 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 
 /**
  * This phone's sound away from home: the server's stream of what LMS plays to the phone's own player (lib/phoneplayers.js),
  * played for as long as the phone is away. It is one continuous stream — silence while LMS is paused — so it never ends;
  * a dropped connection is taken up again after a moment. LMS does the transport (the app's screens, the lock screen's
  * controls through NowPlayingService); this only plays what arrives, with a small buffer so a tap is heard soon.
+ *
+ * With USB direct on and a DAC on the port (Settings → Away from home → USB DAC) the sound goes to the DAC through the
+ * app's own USB driver (UsbAudioSink), Android's mixer out of the way; the decoders give float, which carries a 16- or
+ * 24-bit sample exactly, and WordsSink hands the DAC each sample's own word.
  */
+@OptIn(UnstableApi::class)
 class PhoneStreamService : Service() {
     private var player: ExoPlayer? = null
     private val main = Handler(Looper.getMainLooper())
@@ -43,7 +53,12 @@ class PhoneStreamService : Service() {
 
     private fun play(u: String) {
         url = u
-        val p = player ?: ExoPlayer.Builder(this)
+        val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                WordsSink(UsbAudioSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(true)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build(), context).also { usbSink = it })
+        }.setEnableAudioFloatOutput(true)
+        val p = player ?: ExoPlayer.Builder(this, renderers)
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1500, 4000, 500, 1000).build())
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true)
@@ -79,9 +94,31 @@ class PhoneStreamService : Service() {
         if (Build.VERSION.SDK_INT >= 29) startForeground(ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK) else startForeground(ID, n)
     }
 
+    /** The sink, once the player is built: whether the DAC is what plays. */
+    @Volatile private var usbSink: UsbAudioSink? = null
+
+    /**
+     * USB direct switched, or the DAC came or went: the sink decides when it is configured, so the stream is taken up
+     * again and takes the new path. The DAC pulled out while playing through it: stopped, never on through the loudspeaker.
+     */
+    private fun usbChanged() {
+        val p = player ?: return
+        val wasUsb = usbSink?.usb == true
+        val want = Store.usbDirect(this) && UsbDac.device() != null
+        if (wasUsb == want && (wasUsb || !UsbDriver.active)) return
+        p.stop()
+        if (!want) UsbDriver.close()
+        if (wasUsb && UsbDac.device() == null) { AppLog.line("USB", "the DAC went: the phone's sound stopped rather than go to the loudspeaker"); stopSelf(); return }
+        url?.let { p.setMediaItem(MediaItem.fromUri(it)); p.prepare(); p.play() }
+    }
+    private val onUsb: () -> Unit = { main.post { usbChanged() } }
+
+    override fun onCreate() { super.onCreate(); UsbDac.listen(onUsb) }
+
     override fun onDestroy() {
+        UsbDac.unlisten(onUsb)
         main.removeCallbacksAndMessages(null)
-        player?.release(); player = null; url = null
+        player?.release(); player = null; url = null; usbSink = null
         super.onDestroy()
     }
 

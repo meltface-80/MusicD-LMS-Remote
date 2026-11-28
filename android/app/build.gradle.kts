@@ -7,9 +7,10 @@ plugins {
 }
 
 /*
- * Mallard: the native Android remote for MusicD LMS Remote. Ported from Mandarin Remote's Compose app; everything
- * Mandarin-only (Tailscale, phone playback, the USB DAC, downloads) is gone, so there is no native code and one APK
- * fits every phone.
+ * Mallard: the native Android remote for MusicD LMS Remote. Ported from Mandarin Remote's Compose app. Its native parts
+ * are for 64-bit ARM phones only, as Mandarin's are: the phone's Tailscale engine (libmusicdnet.so, built by
+ * .github/workflows/mallard.yml) and the USB audio driver (src/main/cpp, built here with the NDK and CMake the workflow
+ * installs).
  */
 android {
     namespace = "com.musicd.mallard"
@@ -27,7 +28,13 @@ android {
         val testBuild = System.getenv("MALLARD_TEST_BUILD")?.toIntOrNull()?.takeIf { it in 1..998 }
         versionCode = mallardBase * 1000 + (testBuild ?: 999)
         versionName = "0.2.0" + (testBuild?.let { "-t$it" } ?: "")
+        ndk { abiFilters += "arm64-v8a" }
+        externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
     }
+
+    // The USB audio driver's native side (usb_jni.cc, Mandarin's): usbdevfs ioctls for the isochronous stream to a DAC.
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
 
     buildFeatures {
         buildConfig = true

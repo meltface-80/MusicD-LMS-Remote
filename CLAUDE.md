@@ -158,8 +158,8 @@ tags, no automatic releases, no cluttered history.
 
 - `android/` is **Mallard**, the native Android remote for this server. It is a
   port of Mandarin Remote's Compose app (meltface-80/Mandarin `android/`), with
-  everything Mandarin-only removed: Tailscale, phone playback, the USB DAC,
-  downloads, shelf, editor and sign-in. Package `com.musicd.mallard`; `:core`
+  everything Mandarin-only removed: downloads, editor and sign-in (Tailscale,
+  phone playback, the Shelf and the USB DAC came back later, as below). Package `com.musicd.mallard`; `:core`
   is pure Kotlin/JVM (API client, models, view logic) and `:app` is Compose.
 - **Look and Settings**: the look is Mandarin's (Palette, Manrope and Young
   Serif). The Settings LAYOUT is this server's page (owner decision), in
@@ -194,6 +194,17 @@ tags, no automatic releases, no cluttered history.
     that the two apps' cards are the same picture: `lib/sharecard.test.js` and
     `ShareCardTest.kt` run the same cases with the same stand-in font, so a
     number changed in one copy alone fails a suite.
+- **USB DAC** (owner request, as Mandarin): Mandarin's own USB Audio Class
+  driver, ported PCM-only — `src/main/cpp/usb_jni.cc` (its JNI names
+  `Java_com_musicd_mallard_*`; built by CMake with NDK 27.2.12479018, which
+  `mallard.yml` installs; arm64 only, like `libmusicdnet.so`), `UsbDac.kt`
+  (find, permission, descriptors), `UsbDriver.kt` (the stream, the DAC's clock
+  and volume), `UsbAudioSink.kt` under `WordsSink.kt` (Mandarin's DspSink
+  without the DSP: each sample's own left-justified word, `PcmWords`) in
+  `PhoneStreamService`'s player. It plays only the phone's own stream away from
+  home; the screens at home are a remote and play nothing. Settings → Away from
+  home → USB DAC. Pulled out mid-song, the sound STOPS rather than move to the
+  loudspeaker. Keep `PcmWords`/`UsbGain` in step with Mandarin's.
 - **Versioning**: Mallard has its own `versionName`/`versionCode` in
   `android/app/build.gradle.kts`, separate from the server's
   `package.json`. `versionCode` is `mallardBase*1000 + N` for test build N
