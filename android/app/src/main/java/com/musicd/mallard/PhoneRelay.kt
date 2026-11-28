@@ -40,6 +40,8 @@ internal class PhoneRelay(
     private val base = HashMap<Int, Long>()
     /** LMS's ReplayGain per track, in dB (null: none). */
     private val gainDb = HashMap<Int, Double?>()
+    /** A track played by its id, as the player's own bytes instead: for when it won't play that way (taken up once). */
+    private val fallback = HashMap<Int, MediaSource>()
 
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { gains(); ahead.soon(); if (player.isPlaying) startedNow() }
@@ -49,7 +51,16 @@ internal class PhoneRelay(
         }
         override fun onPlayerError(error: PlaybackException) {
             val s = seq()
-            AppLog.line("PHONE", "a track couldn't play (${error.errorCodeName}); skipped", anomaly = true)
+            val i = player.currentMediaItemIndex
+            val fb = fallback.remove(s)
+            if (fb != null && i >= 0) {
+                // By its id it wouldn't play (the file, or its Opus, didn't come): the same track as the player's bytes.
+                AppLog.line("PHONE", "track $s didn't play by its id (${error.errorCodeName}: ${error.cause?.message}); playing the player's stream of it", anomaly = true)
+                val at = player.currentPosition.coerceAtLeast(0)
+                player.removeMediaItem(i); player.addMediaSource(i, fb); player.seekTo(i, at); player.prepare()
+                return
+            }
+            AppLog.line("PHONE", "a track couldn't play (${error.errorCodeName}: ${error.cause?.message}); skipped", anomaly = true)
             report("failed", s, 0, false)
             if (player.hasNextMediaItem()) { player.seekToNextMediaItem(); player.prepare(); player.play() }
         }
@@ -91,6 +102,7 @@ internal class PhoneRelay(
         val s = seq()
         if (s <= 0 || !started.add(s)) return
         base[s] = player.currentPosition.coerceAtLeast(0)
+        fallback.keys.removeAll { it < s }
         report("started", s, 0, true)
     }
 
@@ -141,6 +153,7 @@ internal class PhoneRelay(
                 val item = MediaItem.Builder().setUri(path).setMediaId(c.seq.toString())
                     .apply { val m = if (asOpus) "audio/ogg" else c.mime; if (m.isNotEmpty()) setMimeType(m) }.build()
                 val source = (if (c.trackId != null) files else bytes).createMediaSource(item)
+                if (c.trackId != null) fallback[c.seq] = bytes.createMediaSource(item.buildUpon().setUri(PhoneStream.trackPath(playerId, c.seq, asOpus)).build())
                 gainDb[c.seq] = c.gainDb
                 if (c.fresh) {
                     player.setMediaSource(source)
@@ -156,7 +169,7 @@ internal class PhoneRelay(
             "drop" -> for (i in player.mediaItemCount - 1 downTo 0) {
                 if (i != player.currentMediaItemIndex && player.getMediaItemAt(i).mediaId == c.seq.toString()) player.removeMediaItem(i)
             }
-            "stop" -> { player.stop(); player.clearMediaItems(); started.clear(); base.clear(); gainDb.clear(); TrackGain.reset() }
+            "stop" -> { player.stop(); player.clearMediaItems(); started.clear(); base.clear(); gainDb.clear(); fallback.clear(); TrackGain.reset() }
             "pause" -> player.pause()
             "resume" -> player.play()
         }

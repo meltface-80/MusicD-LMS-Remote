@@ -18,6 +18,7 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import android.net.Uri
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSink
@@ -81,10 +82,11 @@ class PhoneStreamService : Service() {
     private fun ensurePlayer(): ExoPlayer {
         player?.let { return it }
         val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(5_000).setReadTimeoutMs(15_000).setAllowCrossProtocolRedirects(true)
-        routed = ResolvingDataSource.Factory(http) { spec ->
+        val resolving = ResolvingDataSource.Factory(http) { spec ->
             val u = spec.uri.toString()
             if (u.startsWith("/")) spec.withUri(Uri.parse((Store.client(this)?.address?.baseUrl ?: "") + u)) else spec
         }
+        routed = DataSource.Factory { Relative(resolving.createDataSource()) }
         val cache = StreamCache.get(this)
         cached = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(routed)
             .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
@@ -145,6 +147,17 @@ class PhoneStreamService : Service() {
         relay?.stop(); relay = null; relayFor = null
         player?.release(); player = null; usbSink = null
         super.onDestroy()
+    }
+
+    /**
+     * Reports the address it was asked for, not where it went: the cache otherwise notes the home (or away) address as a
+     * redirect, and a track kept at home would be fetched from home again away from it.
+     */
+    @OptIn(UnstableApi::class)
+    private class Relative(private val up: DataSource) : DataSource by up {
+        private var asked: Uri? = null
+        override fun open(dataSpec: DataSpec): Long { asked = dataSpec.uri; return up.open(dataSpec) }
+        override fun getUri(): Uri? = up.uri?.let { asked }
     }
 
     companion object {
