@@ -1,6 +1,7 @@
 # CLAUDE.md — working rules for this repo
 
-MusicD LMS Remote: a music-discovery PWA + wall display for Lyrion Music
+Mallard (the project was MusicD LMS Remote: the repository, the Docker image and
+`/api/status`'s `app` id keep that name): a music-discovery PWA + wall display for Lyrion Music
 Server (LMS). Node/Express backend (`index.js`) talks to LMS over JSON-RPC
 (`lib/lms.js`); the frontend is a no-build vanilla PWA (`public/`). Mallard
 (`android/`) is the native Android remote for it; the web page is the remote

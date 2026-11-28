@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// MusicD LMS Remote — server entry point.
+// Mallard — the server entry point (the project was MusicD LMS Remote; the repository, image and /api/status keep that id).
 //
 // This is the Lyrion Music Server (LMS) port of MusicD Remote. It serves the
 // SAME PWA frontend and preserves the SAME /api/* contract as the Roon build,
@@ -5155,7 +5155,7 @@ app.post("/api/settings/label-folder-depth", (req, res) => {
 // Boot
 // ---------------------------------------------------------------------------
 app.listen(PORT, () => {
-  console.log(`MusicD LMS Remote v${build.version} (${build.channel}) listening on :${PORT}`);
+  console.log(`Mallard server v${build.version} (${build.channel}) listening on :${PORT}`);
   log.info("log level:", levelName(),
     "(set DEBUG=1 for diagnostics, DEBUG=trace or LOG_LEVEL=trace for the firehose)");
   refreshConnection();

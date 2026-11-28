@@ -64,7 +64,7 @@ internal fun SettingsScreen(pane: String, client: () -> ServerClient?, onBack: (
 }
 
 /** Settings' foot as last read. */
-private var lastVersion = com.musicd.mallard.client.SettingsKept.last("/api/update/status") { SettingsLists.version(it) } ?: "MusicD LMS Remote"
+private var lastVersion = com.musicd.mallard.client.SettingsKept.last("/api/update/status") { SettingsLists.version(it) } ?: "Mallard server"
 
 @Composable
 private fun SettingsHome(client: () -> ServerClient?, onClose: () -> Unit, open: (String) -> Unit) {

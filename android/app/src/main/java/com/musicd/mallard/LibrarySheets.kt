@@ -168,7 +168,7 @@ internal fun FocusSheet(view: LibraryView, facets: Facets?, onChange: (LibraryVi
         // Listening first: the one facet always there, from this server's own play history.
         Section("played", "Listening", if (view.played != "any") 1 else 0, chips = {
             for (p in LibraryView.PLAYED) Chip(p.label, if (view.played == p.id) "on" else "off") { onChange(view.copy(played = p.id)) }
-        }, notes = if (facets != null && !facets.hasPlays) listOf("MusicD LMS Remote hasn't seen anything play yet, so these use an empty history — everything counts as never played.") else emptyList())
+        }, notes = if (facets != null && !facets.hasPlays) listOf("Mallard hasn't seen anything play yet, so these use an empty history — everything counts as never played.") else emptyList())
         for (f in facets?.facets ?: emptyList()) {
             if (f.id !in LibraryView.FACET_IDS) continue
             val sel = view.facets[f.id] ?: emptyList()

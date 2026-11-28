@@ -1,7 +1,7 @@
 {
-  "name": "MusicD Remote",
-  "short_name": "MusicD",
-  "description": "Music discovery and playback control for Lyrion Music Server.",
+  "name": "Mallard",
+  "short_name": "Mallard",
+  "description": "A different interface for Lyrion Music Server, with more it can do.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

@@ -82,7 +82,7 @@ internal fun NoticeBanners(zoom: Double, client: () -> ServerClient?, onPage: (S
         val shape = RoundedCornerShape(12.dp)
         Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp).clip(shape).background(paletteColor(Palette.ACCENT_SOFT))
             .border(1.dp, MaterialTheme.colorScheme.primary, shape).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("MusicD LMS Remote $v is available", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.W700, fontSize = 15.sp)
+            Text("Mallard server $v is available", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.W700, fontSize = 15.sp)
             Text("Update the server from Settings → System.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Settings", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.W700, fontSize = 14.sp,

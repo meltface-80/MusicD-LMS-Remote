@@ -10,7 +10,7 @@ data class Health(val version: String, val connected: Boolean, val lms: String, 
     companion object {
         fun parse(j: JSONObject): Health {
             // Every MusicD LMS Remote answers with "paired"; newer ones also name themselves.
-            require(j.has("paired") || j.optString("app") == "musicd-lms-remote") { "That isn't a MusicD LMS Remote server" }
+            require(j.has("paired") || j.optString("app") == "musicd-lms-remote") { "That isn't a Mallard server" }
             return Health(
                 version = j.optString("version", "?"),
                 connected = j.optBoolean("paired", false),
