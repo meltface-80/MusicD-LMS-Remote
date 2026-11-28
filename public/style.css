@@ -4828,3 +4828,11 @@ body.show-quality .album-quality.hidden { display: none; }
 .settings-head h2 .beta-tag, .qb-head h2 .beta-tag { font-family: var(--font-sans, inherit); }
 .beta-note { display: flex; align-items: center; gap: 8px; margin: 4px 18px 8px; font-size: 12.5px; line-height: 17px; color: var(--text-faint); }
 .beta-note .beta-tag { margin-left: 0; flex: 0 0 auto; }
+/* ---- Now playing's quality line (np-quality.js; Mandarin's .np-format pill): under the album, the track's format and the
+   ReplayGain applied; This phone's Opus takes the accent edge. Mallard's NowPlaying quality is the same pill. ---- */
+.np-quality {
+  align-self: center; margin: 6px auto 0; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-dim); text-align: center; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: fit-content;
+}
+.np-quality.is-opus { border-color: var(--accent); color: var(--accent-text); }
