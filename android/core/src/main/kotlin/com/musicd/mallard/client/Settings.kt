@@ -4,7 +4,8 @@ import org.json.JSONObject
 
 /*
  * Settings' lists: MusicD LMS Remote's own Settings, section for section in the server page's order (public/index.html,
- * the settings-nav list), each with the line under its name. Mallard draws them in Mandarin's colours; the layout is the
+ * the settings-nav list), each with the line under its name — but Playback and Player settings are one page, Audio
+ * Devices, as Mandarin's (owner request). Mallard draws them in Mandarin's colours; the layout is the
  * server page's, which is the owner's choice.
  */
 
@@ -14,8 +15,7 @@ data class SettingsRow(val pane: String, val title: String, val desc: String = "
 object SettingsLists {
     /** The Settings list, in the server page's order, then Mallard's own (the server it talks to). */
     val HOME = listOf(
-        SettingsRow("playback", "Playback", "Output player & random album radio"),
-        SettingsRow("player", "Player settings", "Rename, crossfade, replay gain & sync"),
+        SettingsRow("playback", "Audio Devices", "Every player: power, radio & Lyrion's settings"),
         SettingsRow("labels", "Labels", "Record labels on Home and in search"),
         SettingsRow("metadata", "Artwork & metadata", "Discogs & FanArt.tv keys"),
         SettingsRow("homescreen", "Home Screen", "Which rows show, and in what order"),

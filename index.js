@@ -1041,7 +1041,7 @@ app.get("/api/zones", (req, res) => {
       zone_id:      p.id,
       display_name: p.name,
       state:        st ? (st.mode === "play" ? "playing" : st.mode === "pause" ? "paused" : "stopped") : "stopped",
-      outputs:      [{ output_id: p.id, display_name: p.name }]
+      outputs:      [{ output_id: p.id, display_name: p.name }], model: p.model, power: p.power, connected: p.connected   // Audio Devices' cards
     };
   }).sort((a, b) => a.display_name.localeCompare(b.display_name));
   res.json({ zones: list });
