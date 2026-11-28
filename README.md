@@ -345,6 +345,9 @@ this flag to either option above:
 ```
 
 The mount is entirely optional and **read-only** — the app never writes to it.
+Mallard's This phone also uses it to keep the next tracks on the phone ahead of
+time (and to make their Opus), reading each file straight from the mount; without
+it those come through Lyrion's own download, which some servers never answer.
 Omit it when the music isn't present on this machine; labels then come from the
 online sources alone and everything else works the same. If your library lives
 somewhere other than `/music` inside the container, set `-e MUSIC_DIR=/that/path`
@@ -428,7 +431,7 @@ Slimproto port isn't 3483 sets `SLIMPROTO_PORT`.)
 | `SLIMPROTO_PORT` | `3483` | LMS's Slimproto port, for the phones' own players away from home |
 | `TAILSCALE` | *(on)* | `off` leaves the built-in Tailscale engine out |
 | `LMS_USER` / `LMS_PASS` | – | LMS HTTP auth, if enabled |
-| `MUSIC_DIR` | `/music` | Where the optional read-only music mount lives inside the container (only used for file-tag label scanning). |
+| `MUSIC_DIR` | `/music` | Where the optional read-only music mount lives inside the container (file-tag label scanning, and This phone's tracks kept ahead). |
 | `DEBUG` | – | `1` for verbose logging |
 
 ## Layout
