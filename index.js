@@ -2947,7 +2947,7 @@ function lmsProxy(req, res) {
         pres.on("data", (c) => chunks.push(c));
         pres.on("end", () => {
           let body = Buffer.concat(chunks).toString("utf8");
-          let inject = LMS_EMBED_CSS;
+          let inject = LMS_EMBED_CSS + (/^\/material\//.test(req.originalUrl) ? "" : '<link rel="stylesheet" href="/lms-embed.css">');   // Mallard's look; Material draws itself
           if (!/name=["']viewport["']/i.test(body)) inject = LMS_EMBED_VIEWPORT + inject;
           if (/<\/head>/i.test(body)) body = body.replace(/<\/head>/i, inject + "</head>");
           else body = inject + body;
