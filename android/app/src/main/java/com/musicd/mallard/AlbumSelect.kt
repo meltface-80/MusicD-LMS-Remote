@@ -66,6 +66,7 @@ internal fun SelectMenu(picks: List<Int>, onAct: (String) -> Unit, modifier: Mod
                 modifier = Modifier.parity("album.select-play-next", Contract.label("album.select-play-next")))
             DropdownMenuItem(text = { Text(Contract.label("album.select-queue"), fontSize = 15.sp) }, onClick = { open = false; onAct("queue") },
                 modifier = Modifier.parity("album.select-queue", Contract.label("album.select-queue")))
+            DropdownMenuItem(text = { Text("Add to playlist", fontSize = 15.sp) }, onClick = { open = false; onAct("playlist") })
             DropdownMenuItem(text = { Text(Contract.label("album.select-clear"), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp) }, onClick = { open = false; onAct("clear") },
                 modifier = Modifier.parity("album.select-clear", Contract.label("album.select-clear")))
         }

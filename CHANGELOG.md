@@ -3,6 +3,11 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard: Add to playlist, as the web app has it — from the albums' multi-select (every track of the picked albums),
+  the tracks' multi-select on an album's page, and (new in both senses) an album's ⋯. The same sheet: what is being
+  added, "+ New playlist…", then Existing; the same toasts ("Added 12 tracks to new playlist “Road”", "existing …"
+  when the name was taken, "(2 skipped)"), and the selection let go whatever came of it.
+
 - The web page has Mallard's bottom bar (owner: the two apps are exact copies): Menu, Home, Library, Shelf while it is
   on, and Search, evenly across the foot of the screen on a phone or a tablet (never with a mouse), with the mini
   player lifted above it and the top bar's menu button moved into it. It steps aside for an album's page and Now

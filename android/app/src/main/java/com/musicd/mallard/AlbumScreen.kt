@@ -233,6 +233,7 @@ internal fun AlbumScreen(offset: Long, zoneId: String, lit: String, client: () -
                 val al = album
                 if (p != null && al != null) SelectMenu(p, onAct = { act ->
                     if (act == "clear") picks = null
+                    else if (act == "playlist") PlaylistAdd.open(com.musicd.mallard.client.PlaylistAdds.tracks(al.album.offset, p.sorted()), com.musicd.mallard.client.PlaylistAdds.describeTracks(p.size)) { picks = null }
                     else {
                         val c = client()
                         if (c == null || zone.isEmpty()) toast("Pick a player first")

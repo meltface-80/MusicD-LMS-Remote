@@ -90,6 +90,11 @@ internal fun AlbumSelectMenu(n: Int, onAct: (String) -> Unit, modifier: Modifier
                 modifier = Modifier.parity("library.select-queue wall.select-queue artist.select-queue", Contract.label("library.select-queue")))
             DropdownMenuItem(text = { Text("Add to Favourites", fontSize = 15.sp) }, onClick = { open = false; onAct("favourite") },
                 modifier = Modifier.parity("library.select-later wall.select-later artist.select-later", Contract.label("library.select-later")))
+            // Add to playlist (the web's albumActPlaylist): every track of the picked albums; the selection let go after.
+            DropdownMenuItem(text = { Text("Add to playlist", fontSize = 15.sp) }, onClick = {
+                open = false
+                PlaylistAdd.open(com.musicd.mallard.client.PlaylistAdds.albums(picks.map { it.offset }), com.musicd.mallard.client.PlaylistAdds.describeAlbums(picks.size)) { onAct("clear") }
+            })
             // Merge albums: two or more of the server's, your own files' alone (item 531); Unmerge: one merged (item 512, the server's AlbumMergeRoutes.cs).
             if (picks.size >= 2 && picks.all { it.offset >= 0 && (it.source == null || it.source == "local") }) DropdownMenuItem(text = { Text(Contract.label("library.select-merge"), fontSize = 15.sp) }, onClick = { open = false; onAct("merge") },
                 modifier = Modifier.parity("library.select-merge wall.select-merge artist.select-merge", Contract.label("library.select-merge")))

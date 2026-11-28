@@ -34,7 +34,7 @@ import com.musicd.mallard.client.Palette
 
 /**
  * ⋯: what the server offers beyond Play Now and Queue (Play Next, as its album answer lists it), and the artist's page.
- * MusicD LMS Remote has no editor, versions, booklets or downloads to offer here.
+ * Add to playlist, every track of it (the web's shared sheet). No versions, booklets or downloads here.
  */
 @Composable
 internal fun MoreMenu(a: Album, onPlay: (String, String) -> Unit, onPage: (String, String?) -> Unit) {
@@ -51,6 +51,8 @@ internal fun MoreMenu(a: Album, onPlay: (String, String) -> Unit, onPage: (Strin
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline), modifier = Modifier.width(186.dp)) {
             if ("play_next" in kinds) DropdownMenuItem(text = { Text(Contract.label("album.play-next"), fontSize = 15.sp, lineHeight = 21.sp) }, contentPadding = PaddingValues(10.dp), modifier = Modifier.parity("album.play-next", Contract.label("album.play-next")),
                 onClick = { open = false; onPlay("play_next", "Playing next") })
+            if (a.album.offset >= 0) DropdownMenuItem(text = { Text("Add to playlist", fontSize = 15.sp, lineHeight = 21.sp) }, contentPadding = PaddingValues(10.dp),
+                onClick = { open = false; PlaylistAdd.open(com.musicd.mallard.client.PlaylistAdds.albums(listOf(a.album.offset)), com.musicd.mallard.client.PlaylistAdds.describeAlbums(1)) })
             val lead = com.musicd.mallard.client.Artists.lead(a.album.subtitle)
             if (lead.isNotEmpty()) DropdownMenuItem(text = { Text("Go to $lead", fontSize = 15.sp, lineHeight = 21.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }, contentPadding = PaddingValues(10.dp),
                 onClick = { open = false; onPage("artist", lead) })
