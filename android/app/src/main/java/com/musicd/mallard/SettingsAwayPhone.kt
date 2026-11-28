@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import com.musicd.mallard.client.Palette
 import com.musicd.mallard.client.PhoneEngineState
-import com.musicd.mallard.client.PhoneStream
 import com.musicd.mallard.client.PhoneTailscale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -79,16 +78,8 @@ internal fun PhoneTailscaleBlock() {
                 })
             }
         }
-        // How the phone's own player is streamed away (the server makes it): Opus 256 kbps, or lossless.
-        var quality by remember { mutableStateOf(Store.awayQuality(context)) }
-        val choices = PhoneStream.QUALITIES.map { (v, w) -> com.musicd.mallard.client.Choice(v, w) }
-        SetupRow("Stream away as", Modifier, null) {
-            SelectBox(choiceWords(choices, quality), choices, Modifier, Modifier.clickable {
-                pickChoice(context, choices, quality) { v -> quality = v; Store.setAwayQuality(context, v) }   // the next track queued takes it (a track keeps the form it started in)
-            })
-        }
-        SetupNote(PhoneStream.NOTE, Modifier)
-        PhoneCacheRows()   // SettingsCache.kt
+        // How this phone streams away and what it keeps ahead live on its own page (owner request): Audio Devices → This phone.
+        SetupNote("How this phone streams away from home, and the tracks it keeps ahead: Settings → Audio Devices → This phone.", Modifier)
         val target = PhoneTailscale.target(Store.awayLearned(context))
         SetupNote(
             "Sign in with the same Tailscale account as the server. Away from home, Mallard then reaches the server through it by itself — no Tailscale app needed. " +

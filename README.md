@@ -404,7 +404,7 @@ with `--network host`, works as before).
 
 Away from home, Mallard plays on the phone itself, as Mandarin does: the server is the phone's own Lyrion player, Lyrion
 sends it each track as the file, and the phone plays them one by one. Away, each track comes as Opus 256 kbps at
-24-bit/48 kHz (the rate Android's audio runs at; made from the file by the server), or — Settings → Away from home → This
+24-bit/48 kHz (the rate Android's audio runs at; made from the file by the server), or — Settings → Audio Devices → This
 phone → Stream away as → **Bit-perfect (untouched)** — as the file itself. At home it is always the file itself. The
 screens then show and play in that player alone, as "This phone"; home again, they are back with your rooms. At home
 "This phone" is one of the rooms: choose it to play on the phone there too. Its player is fixed at 100% in Lyrion: the

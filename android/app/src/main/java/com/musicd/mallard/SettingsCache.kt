@@ -16,18 +16,35 @@ import androidx.compose.ui.unit.sp
 import com.musicd.mallard.client.CachePlan
 import com.musicd.mallard.client.Choice
 import com.musicd.mallard.client.Palette
+import com.musicd.mallard.client.PhoneStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /*
- * Settings → Away from home → This phone: its cache of tracks kept ahead (Mandarin's "Playing on this phone", owner
+ * Settings → Audio Devices → This phone (owner request: this phone's own settings on its own page, not in Away from
+ * home): how it streams away from home, then its cache of tracks kept ahead (Mandarin's "Playing on this phone", owner
  * request "add caching like Mandarin has"): how many on Wi-Fi and on mobile data, the space it may take, what it holds
  * now, and Clear. Read again every two seconds while shown.
  */
 @Composable
-internal fun PhoneCacheRows() {
+internal fun PhoneStreamRows() {
+    val context = LocalContext.current
+    // How the phone's own player is streamed away (the server makes it): Opus 256 kbps, or bit-perfect.
+    var quality by remember { mutableStateOf(Store.awayQuality(context)) }
+    val choices = PhoneStream.QUALITIES.map { (v, w) -> Choice(v, w) }
+    SetupRow("Stream away as", Modifier, null) {
+        SelectBox(choiceWords(choices, quality), choices, Modifier, Modifier.clickable {
+            pickChoice(context, choices, quality) { v -> quality = v; Store.setAwayQuality(context, v) }   // the next track queued takes it (a track keeps the form it started in)
+        })
+    }
+    SetupNote(PhoneStream.NOTE, Modifier)
+    PhoneCacheRows()
+}
+
+@Composable
+private fun PhoneCacheRows() {
     val context = LocalContext.current
     var wifi by remember { mutableIntStateOf(Store.cacheWifi(context)) }
     var mobile by remember { mutableIntStateOf(Store.cacheMobile(context)) }
