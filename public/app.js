@@ -5794,7 +5794,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
     }
 
     if (!npTrack || !onNowPlayingScreen()) return;
-    if (!np) { setNpTrack(null); npArtist.textContent = ""; npAlbum.textContent = ""; return; }
+    if (!np) { setNpTrack(null); npArtist.textContent = ""; npAlbum.textContent = ""; if (window.__npQuality) window.__npQuality(null); return; }
 
     setNpTrack(np.line1);
     // One clickable link per credited artist, the same renderer the album view
@@ -5804,7 +5804,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (window.__artistLinkNodes) npArtist.appendChild(window.__artistLinkNodes(np.line2, "np-artist-link"));
       else npArtist.textContent = np.line2;
     }
-    npAlbum.textContent  = np.line3 || "";
+    npAlbum.textContent  = np.line3 || ""; if (window.__npQuality) window.__npQuality(np.format);   // np-quality.js
     if (npAlbum) npAlbum.setAttribute("aria-label", "Open album: " + (np.line3 || ""));
 
     const playing = currentZone.state === "playing" || currentZone.state === "loading";

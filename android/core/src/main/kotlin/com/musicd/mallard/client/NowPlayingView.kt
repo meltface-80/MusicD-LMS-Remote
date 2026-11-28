@@ -53,13 +53,15 @@ data class NowPlayingView(
     /** What a tap on repeat asks for: off → the queue → the track → off, as the page's does. */
     val loopNext: String get() = LOOPS[(loopState + 1) % LOOPS.size]
 
-    /** The format as the page's badge reads it: an Opus stream is named. */
-    val formatText: String? get() = format?.let { if (it.kind == "opus") "Opus ${it.text}".trim() else it.text.ifEmpty { null } }
+    /**
+     * The format line under the album, the server's own words (lib/nowquality.js): "FLAC 24/96", "MP3 320 kbps", This
+     * phone away "Opus 256 kbps · 24/48", and " · ReplayGain −6.2 dB" while levelling applies. An older Opus text with no
+     * name ("256kbps") is named.
+     */
+    val formatText: String? get() = format?.let { if (it.kind == "opus" && !it.text.startsWith("Opus")) "Opus ${it.text}".trim() else it.text.ifEmpty { null } }
 
-    /** The format as the mini player's kicker reads it, after the room: "Lossless", "Opus 256" (no kbps there). */
-    val formatWord: String? get() = format?.let { f ->
-        (if (f.kind == "opus") "Opus " + f.text.replace(Regex("\\s*kbps$", RegexOption.IGNORE_CASE), "") else f.text).trim().ifEmpty { null }
-    }
+    /** The format as the mini player's kicker reads it, after the room: the format alone, "FLAC 24/96", "Opus 256" (no kbps). */
+    val formatWord: String? get() = formatText?.substringBefore(" \u00b7 ")?.replace(Regex("\\s*kbps$", RegexOption.IGNORE_CASE), "")?.trim()?.ifEmpty { null }
 
     /** A volume a step up ([direction] 1) or down (-1) from where it is, within its scale. */
     fun volumeStep(direction: Int): Double? = volume?.stepped(direction)

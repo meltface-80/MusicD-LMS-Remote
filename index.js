@@ -790,41 +790,8 @@ function writeAddedCache(sig, added, format) {
 // LMS reports format per TRACK; there is no album-level tag. The values ride in
 // on the added-time sweep (one pass over the track table, not two).
 
-// Lossless containers. Everything else describes a DECODER rather than the
-// recording — an MP3 reports 16-bit/44.1k because that is what it decodes to,
-// and printing "16/44.1" on it would claim CD quality for a lossy file.
-const LOSSLESS_TYPES = new Set(["flc", "flac", "alc", "alac", "aif", "aiff", "wav",
-                                "wvp", "wv", "ape", "mpc", "dsf", "dff", "ogf"]);
-const QUALITY_TYPE_LABELS = { flc: "FLAC", flac: "FLAC", alc: "ALAC", alac: "ALAC",
-                              aif: "AIFF", aiff: "AIFF", wav: "WAV", dsf: "DSD", dff: "DSD",
-                              mp3: "MP3", mp4: "AAC", aac: "AAC", ogg: "OGG", ops: "Opus",
-                              wma: "WMA", wv: "WavPack", ape: "APE" };
-
-function rateShort(hz) {
-  if (!hz) return null;
-  const k = hz / 1000;
-  return String(Number.isInteger(k) ? k : Math.round(k * 10) / 10);
-}
-
-function albumQualityLabel(f) {
-  if (!f) return null;
-  const t = String(f.type || "").toLowerCase();
-  const label = QUALITY_TYPE_LABELS[t] || (t ? t.toUpperCase() : null);
-  // Lossy first, for the reason above.
-  if (t && !LOSSLESS_TYPES.has(t)) return label;
-  if (f.bits && f.rate) return f.bits + "/" + rateShort(f.rate);
-  if (f.rate) return rateShort(f.rate) + " kHz";
-  return label;
-}
-
-// Better than CD. There is no room to say so in words, so the badge takes the
-// accent colour instead.
-function albumIsHiRes(f) {
-  if (!f) return false;
-  const t = String(f.type || "").toLowerCase();
-  if (t && !LOSSLESS_TYPES.has(t)) return false;
-  return !!((f.bits && f.bits > 16) || (f.rate && f.rate > 48000));
-}
+// The album badges' words and the format vocabulary live in lib/nowquality.js, beside Now playing's quality line.
+const { QUALITY_TYPE_LABELS, rateShort, albumQualityLabel, albumIsHiRes } = require("./lib/nowquality");
 
 function stampAlbumFormats(map) {
   let hit = 0;
@@ -1018,7 +985,7 @@ const notConnected = (res) => res.status(503).json({ error: "Not connected to Ly
 // ---- status / zones ----
 
 const tailscale = require("./lib/tailscale-routes").mountTailscale(app, { port: PORT, dataDir: DATA_DIR, log: log.child("tailscale") });   // away from home
-require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected, cacheDir: path.join(DATA_DIR, "cache", "phone-opus") });   // a phone away: its own LMS player
+require("./lib/quality-routes").mountQuality(app, { lms: () => state.lms, phones: require("./lib/phone-routes").mountPhones(app, { lms: () => state.lms, log: log.child("phone"), notConnected, cacheDir: path.join(DATA_DIR, "cache", "phone-opus") }) });   // a phone's own LMS player; Now playing's quality line
 app.get("/api/status", (req, res) => {
   res.json({
     // Names the server (for Mallard's address sweep), and its tailnet address once the built-in Tailscale serves.
@@ -2514,7 +2481,7 @@ app.get("/api/zone-state", async (req, res) => {
       }],
       now_playing: t ? {
         line1: t.title || "", line2: t.artist || "", line3: t.album || "",
-        image_key: t.coverId || null, length: st.duration || null, seek_position: st.time || null
+        image_key: t.coverId || null, length: st.duration || null, seek_position: st.time || null, fmt: t.fmt || null   // → quality (lib/quality-routes.js)
       } : null
     }
   });

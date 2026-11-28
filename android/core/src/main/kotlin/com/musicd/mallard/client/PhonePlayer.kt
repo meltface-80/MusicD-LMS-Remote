@@ -76,8 +76,10 @@ fun ServerClient.phoneHello(deviceId: String, name: String, maxRate: Int = 19200
 fun ServerClient.phoneBye(playerId: String) { post("/api/phone/bye", JSONObject().put("player_id", playerId), 15_000) }
 
 /** What the phone plays, for the relay: [ev] started / pos / drained / failed, of track [seq], [ms] into it. */
-fun ServerClient.phoneReport(playerId: String, ev: String, seq: Int, ms: Long, playing: Boolean) {
-    post("/api/phone/report", JSONObject().put("player_id", playerId).put("ev", ev).put("seq", seq).put("ms", ms).put("playing", playing), 10_000)
+fun ServerClient.phoneReport(playerId: String, ev: String, seq: Int, ms: Long, playing: Boolean, form: String? = null) {
+    // [form]: what a started track plays as — "opus" or "orig" (the file) — for Now playing's quality line.
+    post("/api/phone/report", JSONObject().put("player_id", playerId).put("ev", ev).put("seq", seq).put("ms", ms).put("playing", playing)
+        .apply { if (form != null) put("form", form) }, 10_000)
 }
 
 /** What this phone's player saw (an error, a fallback), for the server's log, where the owner can read it. */

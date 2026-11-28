@@ -44,6 +44,8 @@ internal class PhoneRelay(
     private val base = HashMap<Int, Long>()
     /** LMS's ReplayGain per track, in dB (null: none). */
     private val gainDb = HashMap<Int, Double?>()
+    /** What each track plays as, "opus" or "orig", said with its start (Now playing's quality line). */
+    private val forms = HashMap<Int, String>()
     /** A track played by its id, as the player's own bytes instead: for when it won't play that way (taken up once). */
     private val fallback = HashMap<Int, MediaSource>()
 
@@ -114,8 +116,8 @@ internal class PhoneRelay(
         val s = seq()
         if (s <= 0 || !started.add(s)) return
         base[s] = player.currentPosition.coerceAtLeast(0)
-        fallback.keys.removeAll { it < s }
-        report("started", s, 0, true)
+        fallback.keys.removeAll { it < s }; forms.keys.removeAll { it < s }
+        report("started", s, 0, true, forms[s])
     }
 
     private fun pos() {
@@ -130,9 +132,9 @@ internal class PhoneRelay(
         if (running) runCatching { reports.execute { runCatching { client()?.phoneNote(playerId, msg) } } }
     }
 
-    private fun report(ev: String, s: Int, ms: Long, playing: Boolean) {
+    private fun report(ev: String, s: Int, ms: Long, playing: Boolean, form: String? = null) {
         if (!running) return
-        runCatching { reports.execute { runCatching { client()?.phoneReport(playerId, ev, s, ms, playing) } } }
+        runCatching { reports.execute { runCatching { client()?.phoneReport(playerId, ev, s, ms, playing, form) } } }
     }
 
     /** The relay's event channel, held open; taken up again after a moment if it drops. */
@@ -177,6 +179,7 @@ internal class PhoneRelay(
                 val source = (if (byId != null) files else bytes).createMediaSource(item)
                 if (byId != null) fallback[c.seq] = bytes.createMediaSource(item.buildUpon().setUri(PhoneStream.trackPath(playerId, c.seq, asOpus)).build())
                 gainDb[c.seq] = c.gainDb
+                forms[c.seq] = if (asOpus) "opus" else "orig"
                 if (c.fresh) {
                     player.setMediaSource(source)
                     player.prepare()
@@ -191,7 +194,7 @@ internal class PhoneRelay(
             "drop" -> for (i in player.mediaItemCount - 1 downTo 0) {
                 if (i != player.currentMediaItemIndex && player.getMediaItemAt(i).mediaId == c.seq.toString()) player.removeMediaItem(i)
             }
-            "stop" -> { player.stop(); player.clearMediaItems(); started.clear(); base.clear(); gainDb.clear(); fallback.clear(); TrackGain.reset() }
+            "stop" -> { player.stop(); player.clearMediaItems(); started.clear(); base.clear(); gainDb.clear(); fallback.clear(); forms.clear(); TrackGain.reset() }
             "pause" -> player.pause()
             "resume" -> player.play()
         }
