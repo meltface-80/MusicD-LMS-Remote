@@ -1686,7 +1686,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
                  () => { libView.played = p.id; });
           }
           if (!f.hasPlays) {
-            note(sec, "MusicD Remote hasn't seen anything play yet, so these use an " +
+            note(sec, "Mallard hasn't seen anything play yet, so these use an " +
                       "empty history \u2014 everything counts as never played.");
           } else {
             note(sec, "Based on plays this app has seen, matched by album title.");
@@ -6498,7 +6498,7 @@ else document.addEventListener("DOMContentLoaded", applyShowQuality);
       if (r.ok) {
         const s = await r.json();
         if (s && s.current) {
-          versionEl.textContent = "MusicD LMS Remote v" + s.current;   // Mallard's words (core SettingsLists.version)
+          versionEl.textContent = "Mallard server v" + s.current;   // Mallard's words (core SettingsLists.version)
           versionLoaded = true;
         }
       }

@@ -7,7 +7,7 @@ import org.junit.Test
 
 class SettingsTest {
     @Test fun `the version at the list's foot`() {
-        assertEquals("MusicD LMS Remote v1.0.85", SettingsLists.version(JSONObject("""{"current": "1.0.85", "available": false}""")))
+        assertEquals("Mallard server v1.0.85", SettingsLists.version(JSONObject("""{"current": "1.0.85", "available": false}""")))
         assertNull(SettingsLists.version(JSONObject("""{"current": null}""")))
         assertNull(SettingsLists.version(null))
     }

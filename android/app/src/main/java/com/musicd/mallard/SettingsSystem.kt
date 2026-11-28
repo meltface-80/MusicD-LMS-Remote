@@ -74,8 +74,8 @@ private fun ServerUpdateRow(client: () -> ServerClient?) {
     }
     SetupNote(when {
         current.isEmpty() -> "…"
-        dev -> "MusicD LMS Remote v$current · a test build"
-        else -> "MusicD LMS Remote v$current" + if (available) " · v${s!!.optString("latest")} is available" else " · up to date"
+        dev -> "Mallard server v$current · a test build"
+        else -> "Mallard server v$current" + if (available) " · v${s!!.optString("latest")} is available" else " · up to date"
     }, Modifier)
     s?.optString("notes")?.takeIf { (available || dev) && it.isNotEmpty() && !s.isNull("notes") }?.let { SetupNote(it.take(1200), Modifier.padding(top = 8.dp)) }
 }

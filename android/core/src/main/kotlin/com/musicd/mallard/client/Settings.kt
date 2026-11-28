@@ -32,9 +32,9 @@ object SettingsLists {
     val RESCAN_MODES = listOf("" to "Look for new and changed media files", "full" to "Clear library and rescan everything",
         "playlists" to "Only rescan playlists", "onlinelibrary" to "Only rescan online music library")
 
-    /** The version at the list's foot, from /api/update/status: "MusicD LMS Remote v1.0.85"; null when there is none to say. */
+    /** The version at the list's foot, from /api/update/status: "Mallard server v1.0.85"; null when there is none to say. */
     fun version(j: JSONObject?): String? {
         val current = j?.optString("current").orEmpty().takeIf { it.isNotEmpty() && !j!!.isNull("current") } ?: return null
-        return "MusicD LMS Remote v$current"
+        return "Mallard server v$current"
     }
 }

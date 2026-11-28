@@ -63,7 +63,7 @@ class ConnectActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         })
         col.addView(TextView(this).apply {
-            text = "Connect to your MusicD LMS Remote server (port 3390 unless you changed it). " +
+            text = "Connect to your Mallard server (port 3390 unless you changed it). " +
                 "Leave the address empty and this phone will look for it on your Wi-Fi."
             setTextColor(0xFFBFC7CE.toInt())
             textSize = 15f
@@ -167,7 +167,7 @@ class ConnectActivity : Activity() {
                         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK))
                     finish()
                 }.onFailure { e ->
-                    setBusy(false, "Couldn't reach MusicD LMS Remote at $address.\n\n" +
+                    setBusy(false, "Couldn't reach the Mallard server at $address.\n\n" +
                         (e.message ?: e.javaClass.simpleName) +
                         "\n\nCheck the address and port, that the server is running, and that this phone is on the same network.")
                 }
@@ -181,7 +181,7 @@ class ConnectActivity : Activity() {
             status.text = "This phone isn't on a local network. Join your Wi-Fi, or type the server's address."
             return
         }
-        setBusy(true, "Looking for MusicD LMS Remote on port $port…")
+        setBusy(true, "Looking for the Mallard server on port $port…")
         work.execute {
             val hosts = mine.take(2).flatMap { runCatching { Finder.candidates(it) }.getOrDefault(emptyList()) }.distinct()
             val hits = Finder.find(hosts, onFound = { h -> main.post { addFound(ServerAddress(h, port)) } }) { h ->
@@ -190,7 +190,7 @@ class ConnectActivity : Activity() {
             main.post {
                 if (isFinishing) return@post
                 when (hits.size) {
-                    0 -> setBusy(false, "No MusicD LMS Remote answered on port $port. Type its address instead.")
+                    0 -> setBusy(false, "No Mallard server answered on port $port. Type its address instead.")
                     1 -> tryConnect(ServerAddress(hits[0], port))
                     else -> setBusy(false, "Found ${hits.size} servers — pick one.")
                 }
