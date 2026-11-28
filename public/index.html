@@ -1623,6 +1623,23 @@
           </div>
           <div id="settings-release-notes" class="settings-release-notes hidden"></div>
         </div>
+
+        <!-- The diagnostic log (diag-log.js, lib/diagnostics.js; Mallard's Settings → System): off unless switched on. -->
+        <div class="settings-divider"></div>
+        <div class="settings-block">
+          <div class="settings-row">
+            <span class="settings-label">Diagnostic logging <button class="settings-info-btn" data-info="Off unless you switch it on. While it is on, the server logs in detail, and Mallard and this page send it what they do and every error, so a problem can be found. Switch it on if something isn't working, use the app until it happens, then download the log and send it. Passwords, keys, emails and internet addresses are left out." aria-label="Info">ⓘ</button></span>
+            <label class="switch">
+              <input type="checkbox" id="diag-toggle" aria-label="Diagnostic logging">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <span class="settings-label">Log</span>
+            <a class="settings-update-btn" id="diag-download" href="/api/diagnostics/log" download>Download</a>
+          </div>
+          <div class="settings-note">One file: this server's log, with Mallard's and this page's lines while logging is on, and Lyrion's own server and scanner logs. Look through it before you send it.</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1729,6 +1746,7 @@
   <script src="/apps-browser.js"></script>
   <script src="/audio-devices.js"></script>
   <script src="/np-quality.js"></script>
+  <script src="/diag-log.js"></script>
   <script src="/lms-plugins.js"></script>
   <script src="/home-head.js"></script>
 </body>

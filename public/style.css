@@ -2853,6 +2853,8 @@ main { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 }
 .settings-update-btn:hover:not(:disabled) { color: var(--text); background: var(--glass-fill-strong); }
 .settings-update-btn:disabled { opacity: .6; cursor: default; }
+/* The diagnostic log's Download is a link (the browser saves it), dressed as the button above it. */
+a.settings-update-btn { display: inline-flex; align-items: center; text-decoration: none; }
 /* When a check has found an update, the button IS the install action —
    accent it so it reads as tappable. The :hover restatement out-ranks the
    generic hover rule above (0,3,0 beats 0,2,0) so the accent text survives

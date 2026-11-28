@@ -62,7 +62,7 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
             "display" -> DisplayPane(client, onBack, showInfo)
             "away" -> AwayPane(client, onBack, showInfo)   // SettingsAway.kt
             "appearance" -> AppearancePane(onBack, showInfo)
-            else -> SystemPane(client, onBack)   // "system"; the server's address is here too (owner: Mallard's own pane folded in)
+            else -> SystemPane(client, onBack, showInfo)   // "system"; the server's address is here too (owner: Mallard's own pane folded in)
         }
         info?.let { InfoTip(it, Modifier) }
     }

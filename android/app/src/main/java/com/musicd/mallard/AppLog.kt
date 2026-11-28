@@ -4,7 +4,10 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
+import com.musicd.mallard.client.LogSend
 import com.musicd.mallard.client.ServerClient
+import com.musicd.mallard.client.diagnostics
+import com.musicd.mallard.client.sendLog
 import com.musicd.mallard.client.Transport
 import com.musicd.mallard.client.UiTrace
 import org.json.JSONObject
@@ -41,6 +44,7 @@ internal object AppLog {
         if (!on) return
         val text = "[$cat] $msg"
         if (anomaly) Log.w(TAG, text) else Log.i(TAG, text)
+        if (shipping) outbox.line(cat, msg, if (anomaly) "WARN" else "INFO")   // the diagnostic log, while it is on
         synchronized(recent) {
             recent.addLast(text)
             while (recent.size > KEEP) recent.removeFirst()
@@ -48,7 +52,34 @@ internal object AppLog {
     }
 
     /** A crash: its trace, as an error line. */
-    fun crash(text: String) { if (on) Log.e(TAG, text) }
+    fun crash(text: String) { if (on) Log.e(TAG, text); if (shipping) outbox.line("CRASH", text, "ERROR") }
+
+    /*
+     * The diagnostic log (owner request: off by default, switched on when something is wrong; the server's
+     * lib/diagnostics.js): while the server's switch is on, every line here also waits in [outbox] (LogSend, without what
+     * is the owner's alone) and is sent to the server's one log every 3 s, as "[app <the phone's name>]". The switch is
+     * read once a minute (it is shared with the web app's), and at once when it is changed here.
+     */
+    @Volatile var shipping = false
+    private val outbox = LogSend()
+    @Volatile private var following = false
+
+    /** Follows the server's switch, and sends what waits while it is on. Once, from the app's start. */
+    fun follow(c: Context) {
+        if (following) return
+        following = true
+        val app = c.applicationContext
+        Thread({
+            var tick = 0
+            while (true) {
+                val client = Store.client(app)
+                if (client != null && tick % 20 == 0) runCatching { shipping = client.diagnostics() }
+                if (client != null && shipping && outbox.count > 0) runCatching { outbox.send { client.sendLog(PhoneZone.phoneName(app), it) } }
+                tick++
+                runCatching { Thread.sleep(3_000) }
+            }
+        }, "diagnostic-log").apply { isDaemon = true; start() }
+    }
 
     /** The newest lines, oldest first (for a report). */
     fun lines(): List<String> = synchronized(recent) { recent.toList() }
