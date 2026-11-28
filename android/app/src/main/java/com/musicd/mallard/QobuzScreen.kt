@@ -175,7 +175,7 @@ private fun QobuzAlbumPage(a: QobuzItem, zone: String, client: () -> ServerClien
         when {
             failed != null -> ListNote(failed!!, error = true)
             d == null -> ListNote("Loading…")
-            d.notice != null && d.tracks.isEmpty() -> ListNote(d.notice)
+            d.notice != null && d.tracks.isEmpty() -> ListNote(d.notice.orEmpty())
             else -> for ((i, t) in d.tracks.withIndex()) {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { play(t.token, "play_now") }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${i + 1}", Modifier.padding(end = 12.dp), color = paletteColor(Palette.TEXT_FAINT), fontSize = 13.sp)
