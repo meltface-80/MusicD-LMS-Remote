@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting · MusicD LMS Remote</title>
+<meta name="description" content="Symptom by symptom: what to check when MusicD LMS Remote doesn't do what you expect.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>Troubleshooting</h1>
+  <p class="lead">Symptom by symptom. Not here? <a href="logs.html">Send the log</a>.</p>
+  <div class="info-cards"><div class="info-card"><h3>The app can't find Lyrion</h3><p>Set <code>LMS_HOST</code> to Lyrion's address (and <code>LMS_PORT</code> if it isn't 9000): finding Lyrion by itself works only on the same network, and not from Docker's bridge network. Settings → LMS server can change it without restarting.</p></div><div class="info-card"><h3>Mallard doesn't find the server</h3><p>Type its address in Mallard, e.g. <code>192.168.1.20:3390</code>. Phone and server must be on the same network at home; away, sign both in to Tailscale.</p></div><div class="info-card"><h3>Nothing plays on This phone</h3><p>Update both the server and Mallard to the same release, then send the log lines from <a href="logs.html#server">the phone's grep</a>: they show each track handed to the phone and what its player did.</p></div><div class="info-card"><h3>Tracks aren't kept ahead</h3><p>Mount your music folder into the container (<a href="install.html#music">how</a>). Qobuz and TIDAL tracks are held one ahead only.</p></div><div class="info-card"><h3>My Qobuz albums aren't in the Library</h3><p>Settings → LMS server says why: usually Lyrion's Online Music Library is off, or its Qobuz switch is, or the albums were browsed but not favourited.</p></div><div class="info-card"><h3>Saving a playlist fails</h3><p>Lyrion needs a Playlists folder it can write to: Lyrion's Settings → Basic Settings.</p></div><div class="info-card"><h3>The wall display is blank</h3><p>Switch it on in Settings → Wall display, and choose a player for it to follow.</p></div></div>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

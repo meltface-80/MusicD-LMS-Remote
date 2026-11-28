@@ -5,8 +5,21 @@ changed. Work merged into `dev` goes under `## Unreleased` until the owner says 
 renamed to the version and the Release workflow's notes are taken from it. Lines start Added / Changed / Fixed /
 Removed. Versions before v1.0.86 are described in their GitHub releases.
 
-## Unreleased
+## v1.0.87
 
+The first release of MusicD LMS Remote as it is now: the server, the web app, the wall display and Mallard v0.2.0 for
+Android, one design across all of them — and a new [website](https://meltface-80.github.io/MusicD-LMS-Remote/) and README.
+New and least tested, so please try them and report what you find: **This phone** (Mallard as a Lyrion player of its own,
+at home and away — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, gapless, volume levelling on the phone), **going away
+and coming home** (Mallard follows from Wi-Fi to mobile data and back on its own), **tracks kept ahead** on the phone
+(your own music files, from the music folder mounted into the container), **a USB DAC** on the phone, and **Tailscale
+built in** to the server and Mallard. Known limits: a Qobuz or TIDAL track is held one ahead on the phone, as Lyrion hands
+its players one track ahead; without the music folder mounted, tracks ahead come through Lyrion's download, which some
+servers never answer.
+
+### Changes
+
+- Changed - The README and the [website](https://meltface-80.github.io/MusicD-LMS-Remote/) are new, written for this release: the site in Mandarin's style — a contents page and a page per topic (downloads, install with the Docker configurator, the apps, configuration, features, This phone and away from home, plugins, how it works, logs, troubleshooting), in Mallard's graphite and brass.
 - Changed - The web app's Settings → Playback and → Player settings are one page, Audio Devices, as Mallard's and Mandarin's (owner: the two apps are copies). At the top the zone the screens play in; under it every Lyrion player as a card — its icon, name, model and Playing / Paused / Idle / Off / Offline — and a tap opens its own page: On, random album radio, its name (renamed in Lyrion), About, then Lyrion's settings for it (shuffle, repeat, Don't Stop The Music, crossfade, volume levelling, volume control, on power on, sync).
 - Fixed - This phone's tracks kept ahead hung on Lyrion's download, which on the owner's server never answers (`curl` to `/music/<id>/download`: no status, no byte in 30 s), and each try could leave an Opus encode waiting for ever. The server now reads them from the music folder mounted into the container (`MUSIC_DIR`, read-only, the mount the label scan already uses), finding each track by the tail of the path Lyrion has for it; without a mount it still asks Lyrion's download, but gives it 6 s to answer and, when it doesn't, stops asking for 10 minutes and says so at once. An Opus made from Lyrion's address gives up when its input goes quiet. A track from a streaming service's album in the library (Qobuz's online library: an ordinary id, a `qobuz://` address) is never fetched by id or kept ahead — there is no file, and Lyrion's download never answers for one; it plays as the stream Lyrion sends the phone's player, the playing track and the next one.
 - Fixed - This phone stayed silent, buffering, with each track's fetch ending after 15 s (owner report, both qualities): it fetched each track by its id through Lyrion's download, which never delivered, while the same track had reached the phone's player in a second. The phone now plays the bytes Lyrion sends its player (or their Opus), and plays a track by its id only when it already holds the whole track in its cache. The server's log says how many bytes Lyrion sent for each fetch. The phone's player takes Mandarin's settings for it: an 8 s read timeout, the playing track held whole ahead (up to 5 minutes or 48 MB), and 40 quick retries of a fetch that fails.
@@ -76,6 +89,14 @@ Removed. Versions before v1.0.86 are described in their GitHub releases.
 - Changed - Releases are cut only when asked for (a `v*.*.*` tag on main, or Run workflow), never by a merge
 - Changed - Quality gates from Mandarin: a file-length ratchet, `@ts-check` + `tsc`, and ESLint against a shrink-only baseline, run by a pre-commit hook and by CI on every push and pull request
 - Changed - The online-library explanation (`/api/library/online`) and the build stamp moved into modules of their own (`lib/onlinelib.js`, `lib/build.js`)
+
+## Mallard v0.2.0
+
+- Added - Mallard v0.2.0, the first release of the Android app for MusicD LMS Remote: every screen of the web app, controls on the lock screen and in the notification, and a home-screen widget.
+- Added - This phone: Mallard as a Lyrion player of its own, at home and away from home — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, gapless, Lyrion's volume levelling on the phone, the phone's own volume, and the next tracks kept on the phone.
+- Added - Away from home over Tailscale, built into the app: no Tailscale app needed, and Mallard follows from Wi-Fi to mobile data and back on its own.
+- Added - A USB DAC on the phone, bit-perfect through Mallard's own USB audio driver.
+- Added - Audio Devices, the Shelf, Apps & radio, installing Lyrion plugins, Share cards, and updates offered on Home and in Settings → System.
 
 ## v1.0.86
 

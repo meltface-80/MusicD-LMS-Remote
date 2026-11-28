@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logs and reporting a problem · MusicD LMS Remote</title>
+<meta name="description" content="Where MusicD LMS Remote's logs are, and what to send so a problem can be fixed.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>Logs and reporting a problem</h1>
+  <p class="lead">A report with what you did, what happened, and the log from that moment is usually enough to fix it.
+     Open an issue on <a href="https://github.com/meltface-80/MusicD-LMS-Remote/issues">GitHub</a>.</p>
+  <h2 id="server">The server's log</h2>
+  <div class="codebox"><button class="copy-btn" type="button" data-copy>Copy</button><pre>docker logs --since 30m musicd-lms-remote</pre></div>
+  <p>The same lines are kept in a rotating file in the data volume, <code>logs/musicd.log</code>. For more detail, set
+     <code>LOG_LEVEL=debug</code> on the container. Mallard's This phone sends its own player's events here too, so a
+     problem playing on the phone shows in this log:</p>
+  <div class="codebox"><button class="copy-btn" type="button" data-copy>Copy</button><pre>docker logs --since 10m musicd-lms-remote 2>&amp;1 | grep -iE "relay|phone"</pre></div>
+  <h2 id="lyrion">When Lyrion stops answering</h2>
+  <p>The server notes every time Lyrion stops answering and comes back — how long it was gone, and what the server was
+     asking it at that moment. Open <code>http://&lt;server&gt;:3390/api/lms/outages</code> after it happens and send what
+     it shows, with Lyrion's own <code>server.log</code>.</p>
+  <h2 id="send">What to include</h2>
+  <ul class="plain">
+    <li>The version: Settings → System (server), and Mallard's in its Settings → System.</li>
+    <li>What you did and what you expected, and when (the time helps find the log lines).</li>
+    <li>The log lines from that time, and a screenshot if it's something you see.</li>
+  </ul>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="troubleshooting.html">Next: Troubleshooting →</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

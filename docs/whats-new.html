@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What's in v1.0.87 · MusicD LMS Remote</title>
+<meta name="description" content="What MusicD LMS Remote v1.0.87 and Mallard v0.2.0 do, and what to help test.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>What's in v1.0.87</h1>
+  <p class="lead">The first release of MusicD LMS Remote as it is now — the server, the web app, the wall display and
+     Mallard v0.2.0 for Android, one design across all of them. More people using it is the best way to find what
+     still needs work: <a href="logs.html">how to report a problem</a>.</p>
+  <h2>Help test these</h2>
+  <div class="note"><b>New in this release, and least tried.</b> Please use them and say what you find:
+    <ul class="plain">
+      <li><b><a href="this-phone.html">This phone</a></b> — Mallard as a Lyrion player of its own, at home and away from
+          home: Opus 256 kbps at 24-bit/48 kHz or bit-perfect, gapless, Lyrion's volume levelling on the phone, the
+          phone's own volume.</li>
+      <li><b>Going away and coming home</b> — from Wi-Fi to mobile data and back, Mallard follows on its own.</li>
+      <li><b>Tracks kept ahead</b> on the phone, for a dead spot or to save data (your own music files; see
+          <a href="this-phone.html#ahead">which tracks</a>).</li>
+      <li><b>A USB DAC</b> on the phone, bit-perfect.</li>
+      <li><b>Tailscale built in</b> — in the server and in Mallard; no app to install, no ports to open.</li>
+    </ul>
+  </div>
+  <h2>In this release</h2>
+  <ul class="plain">
+    <li><b>Mallard v0.2.0</b> — the Android app: every screen of the web app, lock-screen and notification controls, a
+        widget, Audio Devices, the Shelf, every Lyrion plugin, installing plugins, This phone, a USB DAC, and updates
+        offered in the app.</li>
+    <li><b>One look</b> — Mallard's graphite and brass, Young Serif and Manrope, in the app, the web app and this site;
+        four other themes in Settings → Appearance.</li>
+    <li><b><a href="features.html#discover">Discovery</a></b> — album of the day, label of the week, Random Album, not
+        played in six months, recently played, Smart Picks, random album radio.</li>
+    <li><b><a href="features.html#library">The Library</a></b> — the whole collection, sorted and focused (genre, decade,
+        label, format, sample rate, bit depth, listening history), saved as Dynamic Playlists.</li>
+    <li><b><a href="features.html#shelf">The Shelf</a></b> — the library as a record shop's racks.</li>
+    <li><b>Audio Devices</b> — every Lyrion player with its power, random album radio, name and Lyrion's own settings, in
+        both apps.</li>
+    <li><b><a href="plugins.html">Plugins</a></b> — every Lyrion plugin's menus in the app, and installing, updating and
+        removing plugins.</li>
+    <li><b><a href="apps.html#wall">The wall display</a></b> — a TV or tablet as a now-playing screen.</li>
+    <li><b>Kind to Lyrion</b> — it reads less while Lyrion scans, and logs what it was asking whenever Lyrion stops
+        answering (<code>/api/lms/outages</code>), to help find why a server restarts.</li>
+  </ul>
+  <h2>Known limits</h2>
+  <ul class="plain">
+    <li>A Qobuz or TIDAL track can be held ahead on the phone only one track at a time: Lyrion hands its players one track
+        ahead, and those tracks are not files to fetch. Your own music files are kept twenty ahead.</li>
+    <li>Keeping your own files ahead reads them from the music folder mounted into the server's container
+        (<a href="install.html#music">how</a>); without it the server asks Lyrion's download, which some servers never
+        answer.</li>
+  </ul>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="install.html">Next: Install the server →</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>

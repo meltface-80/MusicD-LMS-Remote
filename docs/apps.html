@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>On your phone, browser and TV · MusicD LMS Remote</title>
+<meta name="description" content="Mallard for Android, the web app on an iPhone or any browser, and the wall display.">
+<link rel="icon" href="mallard-mark.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="pagehead">
+  <div class="wrap">
+    <a class="back" href="index.html">← Contents</a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <span class="spacer"></span>
+    <a class="pill solid" href="downloads.html">Downloads</a>
+  </div>
+</header>
+
+<main class="wrap page">
+<h1>On your phone, browser and TV</h1>
+  <p class="lead">One server, three ways in, one design: Mallard on Android, the web app in any browser (installed on an
+     iPhone's home screen, it looks and works as Mallard does), and the wall display on a TV or tablet.</p>
+  <h2 id="mallard">Mallard, for Android</h2>
+  <p>The native app: every screen of the web app, controls on the lock screen and in the notification, a home-screen
+     widget, and your phone as a Lyrion player of its own (<a href="this-phone.html">This phone</a>). A 64-bit phone with
+     Android 8.0 or later.</p>
+  <ol class="steps">
+    <li><b>Install</b><span><a href="https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-latest/mallard.apk">Download Mallard</a> on the phone and open it; Android asks once to allow
+        installing from your browser.</span></li>
+    <li><b>Find the server</b><span>Mallard looks for it on your Wi-Fi by itself. If it doesn't appear, type its address
+        (<code>192.168.1.20:3390</code>).</span></li>
+    <li><b>Updates</b><span>A newer Mallard is offered on Home and in Settings → System; Update opens the download in your
+        browser, and Android installs it over the old one, keeping your settings.</span></li>
+  </ol>
+  <h2 id="web">The web app — an iPhone, or any browser</h2>
+  <p>Open <code>http://&lt;server&gt;:3390</code>. On an iPhone or iPad, Safari's Share → <b>Add to Home Screen</b>
+     installs it full screen with Mallard's mark, no browser bars. It has Mallard's screens and Settings, and its own
+     bottom bar: Menu, Home, Library, Search, Now playing. (Playing <i>on</i> the phone itself is Mallard's; the web app
+     plays to your Lyrion players.)</p>
+  <h2 id="wall">The wall display</h2>
+  <p>Open <code>http://&lt;server&gt;:3390/display</code> on a TV, a tablet or an old laptop: what is playing, huge, with the
+     artist's photograph, biography and the album review, related albums, and the track's music video when a YouTube key is
+     set (<a href="configuration.html#keys">free</a>). It rotates through them by itself. Switch it on in Settings → Wall display, which also
+     chooses what it shows and can put the Shelf on it instead.</p>
+  <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="configuration.html">Next: Settings for the server →</a></nav>
+</main>
+
+<footer>
+  <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
+  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+     Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
+     independent project, affiliated with none of them.</p>
+</footer>
+<script src="site.js"></script>
+</body>
+</html>
