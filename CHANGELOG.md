@@ -3,6 +3,12 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard: save the Library's view as a Dynamic Playlist, and edit one's rules, as the web app does. The Focus sheet's
+  foot is Clear all · Save as Dynamic Playlist · Show albums; Save asks for a name (suggested from the rules on, as the
+  page's) and says what it plays. A Dynamic Playlist's page gains Edit rules: its rules open in the Library's Focus
+  with its Order and Playlist size first, and Save changes writes them back; dismissing the sheet puts your own view
+  back. Unlike the web's Edit, it keeps the playlist's size and order rather than resetting them to 100 / Album order.
+
 - Mallard: Edit album, as the web app has it — the pencil left of Share at an album page's top right opens the same
   editor: Title, Artist, Year; Artwork (Find artwork lists the covers found, a tap picks one, or paste an address);
   Remove edits (when it carries some), Cancel, Save. Kept in the app's database; files and LMS never touched. What

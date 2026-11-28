@@ -49,6 +49,9 @@ import com.musicd.mallard.client.Contract
 import com.musicd.mallard.client.Facets
 import com.musicd.mallard.client.LibraryClient
 import com.musicd.mallard.client.LibraryView
+import com.musicd.mallard.client.LiveEdit
+import com.musicd.mallard.client.LiveSaves
+import com.musicd.mallard.client.saveLivePlaylist
 import com.musicd.mallard.client.NavItem
 import com.musicd.mallard.client.NavList
 import com.musicd.mallard.client.Palette
@@ -99,6 +102,22 @@ internal fun LibraryScreen(viewQuery: String, prefs: WallPrefs, zoneId: String, 
     fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
     // The view changed: the wall afresh, and the page told.
     fun change(v: LibraryView) { if (v != view) { view = v; onView(v.query()) } }
+    // A Dynamic Playlist's rules being edited (its Edit rules, LiveEditing): shown here without being kept as the Library's
+    // own view, which comes back when the sheet is dismissed without Save or Show (the page's openLibFocusSheet(editTarget)).
+    var editing by remember { mutableStateOf<LiveEdit?>(null) }
+    var before by remember { mutableStateOf<LibraryView?>(null) }
+    var naming by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { LiveEditing.take()?.let { e -> before = view; view = e.view; editing = e; focusOpen = true } }
+    fun saveLive(name: String) {
+        val c = client() ?: return
+        val e = editing
+        scope.launch {
+            withContext(Dispatchers.IO) { runCatching { c.saveLivePlaylist(LiveSaves.body(name, view, e)) } }.fold({ j ->
+                toast(LiveSaves.said(name, j)); focusOpen = false
+                if (e != null) { editing = null; onView(view.query()) }
+            }, { toast(com.musicd.mallard.client.Failure.said(it, "Couldn't save it")) })
+        }
+    }
     // Back: a sheet, the field or the selection closes first; then the screen.
     BackHandler { when { focusOpen -> focusOpen = false; sortOpen -> sortOpen = false; filtering -> { filtering = false; typed = ""; change(view.copy(prefix = "")) }; selecting -> { selecting = false; picks = emptyList() }; else -> onBack() } }
     fun more() { val c = client() ?: return; scope.launch { wall.more(c) } }
@@ -167,7 +186,12 @@ internal fun LibraryScreen(viewQuery: String, prefs: WallPrefs, zoneId: String, 
                 }
             })
         }
-        if (focusOpen) FocusSheet(view, facets, onChange = ::change, onShow = { focusOpen = false }, onClose = { focusOpen = false })
+        if (focusOpen) FocusSheet(view, facets, onChange = { v -> if (editing != null) view = v else change(v) }, edit = editing, onEdit = { editing = it },
+            onShow = { focusOpen = false; if (editing != null) { editing = null; onView(view.query()) } },
+            onClose = { focusOpen = false; if (editing != null) { editing = null; before?.let { view = it } } },
+            onSave = { naming = true })
+        if (naming) NameDialog(if (editing != null) "Rename this Dynamic Playlist" else "Name this Dynamic Playlist", editing?.name ?: LiveSaves.suggest(view),
+            onCancel = { naming = false }) { name -> naming = false; if (name.isBlank()) toast("Give it a name first") else saveLive(name) }
         // A sort chosen closes the sheet; the one on, tapped again, reverses in place (Random reshuffles and closes), as the page's.
         if (sortOpen) SortSheet(view, onChoose = { id -> val same = id == view.sort; val v = view.choose(id); change(v); if (!same || !v.sortOption.hasDir) sortOpen = false }, onClose = { sortOpen = false })
     }
