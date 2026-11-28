@@ -74,6 +74,9 @@ android {
     }
 
     packaging {
+        // The phone's Tailscale engine (libmusicdnet.so, PhoneEngine.kt) is RUN, not loaded: Android runs files only from
+        // the extracted native-library folder, so it must be unpacked on install.
+        jniLibs.useLegacyPackaging = true
         resources.excludes += setOf(
             "META-INF/*.kotlin_module",
             "META-INF/DEPENDENCIES",

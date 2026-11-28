@@ -69,6 +69,7 @@ internal class ServerReach(private val a: MainActivity) {
                     else -> Reach.Up
                 }
                 if (h == null) AppLog.line("REACH", "the server didn't answer: " + (health.exceptionOrNull()?.message ?: "?"), anomaly = true)
+                if (h == null) Away.lookSoon(0) else Store.setAwayLearned(a, h.tailscale)   // home or away again; its tailnet address kept
                 if (state.value != Reach.Up && onScreen) lookSoon(20_000)
             }
         }, "reach").apply { isDaemon = true; start() }

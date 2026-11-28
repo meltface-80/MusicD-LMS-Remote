@@ -58,6 +58,8 @@ class MainActivity : androidx.activity.ComponentActivity() {
         askForNotificationPermission()
         reach = ServerReach(this)
         reach.start()
+        Away.changed = { reach.lookNow() }   // home or away through the phone's Tailscale (Away.kt): the server looked at again
+        Away.watch(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -72,13 +74,14 @@ class MainActivity : androidx.activity.ComponentActivity() {
         AppLog.onScreenAt = SystemClock.elapsedRealtime()
         AppLog.line("APP", "on screen")
         reach.resumed()
+        Away.resumed()
         NowPlayingService.start(this)
     }
 
     override fun onPause() {
         NativeShell.onScreen.value = false
         AppLog.line("APP", "off screen")
-        if (::reach.isInitialized) reach.paused()
+        if (::reach.isInitialized) { reach.paused(); Away.paused() }
         super.onPause()
     }
 

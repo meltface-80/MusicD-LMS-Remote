@@ -282,6 +282,9 @@ tags, no automatic releases, no cluttered history.
   with a per-start secret; it exits when its stdin closes. The tailnet reaches the app ONLY through a loopback port of
   its own, and a request there is let in only from the owner's own nodes (`own_ips`) — this server has no sign-in, so
   never route tailnet traffic to the LAN port. `TS_AUTHKEY` is passed through the engine's API, never inherited.
+  The web app has no Away pane (owner decision); Mallard manages the server's engine AND runs the same engine on the
+  phone (`PhoneEngine.kt`/`Away.kt`, built by `mallard.yml` for arm64): away, it forwards 127.0.0.1:34390 (never
+  Mandarin's 34500) to the tailnet address `/api/status` names; `/api/ping` is that engine's probe.
 
 ## Gotchas worth remembering
 

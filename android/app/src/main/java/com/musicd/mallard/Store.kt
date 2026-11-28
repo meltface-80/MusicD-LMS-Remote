@@ -1,6 +1,7 @@
 package com.musicd.mallard
 
 import android.content.Context
+import com.musicd.mallard.client.PhoneTailscale
 import com.musicd.mallard.client.ServerAddress
 import com.musicd.mallard.client.ServerClient
 
@@ -53,9 +54,24 @@ object Store {
     fun menuKept(context: Context): String? = prefs(context).getString("menu_kept", null)
     fun setMenuKept(context: Context, kept: String) { prefs(context).edit().putString("menu_kept", kept).apply() }
 
-    /** The server's client, or null before a server has been chosen. */
-    fun client(context: Context): ServerClient? = server(context)?.let { ServerClient(it) }
+    /**
+     * The server's address on its tailnet ("http://100.x.y.z:3390"), as it last said it (/api/status `tailscale`): where
+     * Mallard's own Tailscale goes away from home (Away.kt). Kept, so it is known when the phone is already out.
+     */
+    fun awayLearned(context: Context): String? = prefs(context).getString("away_learned", null)
+    fun setAwayLearned(context: Context, address: String?) {
+        if (address != null && address != awayLearned(context)) prefs(context).edit().putString("away_learned", address).apply()
+    }
 
-    /** The client the screens use (the same server: Mallard has no away route). */
+    /** Away from home over Mallard's own Tailscale, and its engine forwarding (Away.kt): then the server is at 127.0.0.1. */
+    @Volatile var awayVia: Boolean = false
+
+    /** The address the app talks to the server on now: through the phone's Tailscale away, the saved one at home. */
+    fun active(context: Context): ServerAddress? = server(context)?.let { if (awayVia) PhoneTailscale.AWAY else it }
+
+    /** The server's client, or null before a server has been chosen. */
+    fun client(context: Context): ServerClient? = active(context)?.let { ServerClient(it) }
+
+    /** The client the screens use (the same: at home the saved address, away the phone's Tailscale). */
     fun screenClient(context: Context): ServerClient? = client(context)
 }
