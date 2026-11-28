@@ -1,10 +1,8 @@
 <div align="center">
 
-<img width="800" alt="MusicD LMS Remote" src="docs/IMG_8974.jpeg" />
+<img width="640" alt="Mallard, for Lyrion Music Server" src="docs/mallard-banner.png" />
 
-# MusicD LMS Remote
-
-**Your Lyrion library, rediscovered — on your phone, your browser and your wall.**
+**A different face for Lyrion Music Server, with more it can do — on your phone, your browser and your wall.**
 
 [Website & docs](https://meltface-80.github.io/MusicD-LMS-Remote/) ·
 [Install](https://meltface-80.github.io/MusicD-LMS-Remote/install.html) ·
@@ -15,16 +13,17 @@
 
 </div>
 
-MusicD LMS Remote is a companion for [Lyrion Music Server](https://lyrion.org). It runs beside Lyrion in Docker and
-turns your library into something to browse and rediscover — album of the day, label of the week, Smart Picks, a
-record-shop Shelf — plays it to any of your Lyrion players, and puts it everywhere:
+Mallard is a new way to use [Lyrion Music Server](https://lyrion.org): its own interface, with features Lyrion doesn't
+have — album of the day, label of the week, Smart Picks, a record-shop Shelf, merged box sets, dynamic playlists — and
+your phone as a Lyrion player of its own. The Mallard server runs beside Lyrion in Docker, plays to any of your Lyrion
+players, and puts it everywhere:
 
-- **Mallard**, the Android app — every screen, lock-screen and notification controls, a widget, and your phone as a
+- **Mallard for Android** — every screen, lock-screen and notification controls, a widget, and your phone as a
   Lyrion player of its own.
-- **The web app**, in any browser; added to an iPhone's home screen it looks and works as Mallard does.
+- **The web app**, in any browser; added to an iPhone's home screen it looks and works as the Android app does.
 - **The wall display**, a TV or tablet as a now-playing screen.
 
-Away from home, Mallard plays on the phone itself — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, with a USB DAC if
+Away from home, the Android app plays on the phone itself — Opus 256 kbps at 24-bit/48 kHz or bit-perfect, with a USB DAC if
 you like — over Tailscale, which is built into both the server and the app. Nothing is installed in Lyrion, and your
 music files are never written to.
 
@@ -36,7 +35,8 @@ music files are never written to.
 
 ## Install
 
-The [configurator](https://meltface-80.github.io/MusicD-LMS-Remote/install.html) writes the command for your setup. On a
+The [configurator](https://meltface-80.github.io/MusicD-LMS-Remote/install.html) writes the command for your setup. (The
+Docker image and this repository keep the project's earlier name, `musicd-lms-remote`.) On a
 machine other than Lyrion's, it comes to this:
 
 ```bash
@@ -48,15 +48,15 @@ docker run -d --name musicd-lms-remote --restart unless-stopped --pull always \
   ghcr.io/meltface-80/musicd-lms-remote:latest
 ```
 
-Then open `http://<this machine>:3390`, or install [Mallard](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-latest/mallard.apk)
+Then open `http://<this machine>:3390`, or install [Mallard for Android](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-latest/mallard.apk)
 (a 64-bit phone, Android 8.0 or later), which finds the server by itself. The image is built for x86-64, 64-bit ARM and
 32-bit ARM, and needs Docker 20.10 or later. A [`docker-compose.yml`](docker-compose.yml) is included.
 
-- **The music folder** (`-v …:/music:ro`) is optional: with it, Mallard keeps the next tracks of your own music on the
+- **The music folder** (`-v …:/music:ro`) is optional: with it, the Android app keeps the next tracks of your own music on the
   phone, and the record-label scan reads each file's tags. It is mounted read-only.
 - **Everything the app keeps** — settings, favourites, play history, caches, its Tailscale identity — is in the
   `musicd-lms-remote-data` volume.
-- **Updates** are offered in Settings → System, one tap; Mallard offers its own.
+- **Updates** are offered in Settings → System, one tap; the Android app offers its own.
 
 ## What it does
 
@@ -76,7 +76,7 @@ Then open `http://<this machine>:3390`, or install [Mallard](https://github.com/
   updating and removing plugins.
 - **Your Qobuz and TIDAL albums** beside your own files, through Lyrion's Online Music Library.
 - **Playlists, favourites, share cards**, and four more themes.
-- **A diagnostic log**, off unless you switch it on: the server's, Mallard's and Lyrion's own logs in one file, without
+- **A diagnostic log**, off unless you switch it on: the server's, the Android app's and Lyrion's own logs in one file, without
   your passwords, keys or addresses.
 
 The [features page](https://meltface-80.github.io/MusicD-LMS-Remote/features.html) has the detail, and
@@ -86,7 +86,7 @@ The [features page](https://meltface-80.github.io/MusicD-LMS-Remote/features.htm
 
 | Variable | Default | What it does |
 |---|---|---|
-| `PORT` | `3390` | The port the web app, the wall display and Mallard use |
+| `PORT` | `3390` | The port the web app, the wall display and the Android app use |
 | `LMS_HOST` | *(found on the network)* | Lyrion's address — needed when the server runs on another machine or network than Lyrion |
 | `LMS_PORT` | `9000` | Lyrion's web port |
 | `LMS_USER` / `LMS_PASS` | – | Lyrion's username and password, if set |
@@ -104,7 +104,7 @@ Free API keys for label logos (FanArt.tv, Discogs) and music videos on the wall 
 ## Test builds
 
 Every change merged into `dev` is published once its tests pass: the server as
-`ghcr.io/meltface-80/musicd-lms-remote:dev` (use `:dev` in place of `:latest`), and Mallard as
+`ghcr.io/meltface-80/musicd-lms-remote:dev` (use `:dev` in place of `:latest`), and Mallard for Android as
 [mallard-test.apk](https://github.com/meltface-80/MusicD-LMS-Remote/releases/download/mallard-test/mallard-test.apk).
 Test builds are never offered to anyone on a release.
 
@@ -116,7 +116,7 @@ lib/                its modules — lms.js (Lyrion's JSON-RPC), search.js, the p
                     phoneplayers.js, phonefiles.js), Tailscale (tailscale.js), plugins (apps.js, lmsplugins.js) …
 lib/*.test.js       the tests (npm test)
 public/             the web app and the wall display — no build step
-android/            Mallard: :core (pure Kotlin, tested on the JVM) and :app (Compose)
+android/            Mallard for Android: :core (pure Kotlin, tested on the JVM) and :app (Compose)
 musicdnet/          the built-in Tailscale engine (Go, tsnet)
 docs/               the website (GitHub Pages)
 ```
@@ -127,7 +127,7 @@ changed.
 
 ## Support
 
-MusicD LMS Remote is free. If you enjoy it, you can [buy its maker a coffee](https://buymeacoffee.com/musicd_projects).
+Mallard is free. If you enjoy it, you can [buy its maker a coffee](https://buymeacoffee.com/musicd_projects).
 
 ## Licence
 

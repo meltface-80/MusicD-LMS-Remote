@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Install the server · MusicD LMS Remote</title>
-<meta name="description" content="Install the MusicD LMS Remote server with Docker: one command, written for your setup.">
+<title>Install the server · Mallard</title>
+<meta name="description" content="Install the Mallard server with Docker: one command, written for your setup.">
 <link rel="icon" href="mallard-mark.png">
 <link rel="stylesheet" href="site.css">
 </head>
@@ -13,7 +13,7 @@
 <header class="pagehead">
   <div class="wrap">
     <a class="back" href="index.html">← Contents</a>
-    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>MusicD LMS Remote</span></a>
+    <a class="brand" href="index.html"><img src="mallard-mark.png" alt=""><span>Mallard</span></a>
     <span class="spacer"></span>
     <a class="pill solid" href="downloads.html">Downloads</a>
   </div>
@@ -121,31 +121,31 @@
   <ol class="steps">
     <li><b>In a browser</b><span><code>http://&lt;this machine&gt;:3390</code> — the web app. On a phone, add it to the
         home screen and it runs full screen, like an app (<a href="apps.html#web">how</a>).</span></li>
-    <li><b>On Android</b><span>Install <a href="downloads.html">Mallard</a>; it finds the server on your network by
+    <li><b>On Android</b><span>Install <a href="downloads.html">Mallard for Android</a>; it finds the server on your network by
         itself.</span></li>
     <li><b>On a TV or tablet</b><span><code>http://&lt;this machine&gt;:3390/display</code> — the
         <a href="apps.html#wall">wall display</a>.</span></li>
-    <li><b>Away from home</b><span>Sign the server and Mallard in to Tailscale (<a href="this-phone.html#tailscale">how</a>).</span></li>
+    <li><b>Away from home</b><span>Sign the server and the Android app in to Tailscale (<a href="this-phone.html#tailscale">how</a>).</span></li>
   </ol>
   <h2 id="music">Your music folder (optional)</h2>
   <p>If the machine running the server can see your music files, mount them read-only into the container — the configurator's
      <b>Mount local music library</b> does it, or add this to <code>docker run</code>:</p>
   <div class="codebox"><button class="copy-btn" type="button" data-copy>Copy</button><pre>-v /path/to/your/music:/music:ro</pre></div>
-  <p>Mallard then keeps the next tracks of your own music on the phone ahead of time, read straight from the folder, and the
+  <p>The Android app then keeps the next tracks of your own music on the phone ahead of time, read straight from the folder, and the
      record-label scan reads each file's <code>LABEL</code> tag. Use the folder Lyrion scans. If it lives somewhere other
      than <code>/music</code> inside the container, set <code>MUSIC_DIR</code> to match.</p>
   <h2 id="updating">Updating</h2>
   <p>Settings → System offers each new release in the app, one tap. Or pull the newest image and recreate the container
      with the same command — with Compose, <code>docker compose up -d</code> fetches it by itself
      (<code>pull_policy: always</code>). Everything the app keeps — settings, favourites, play history, caches, the
-     server's Tailscale identity — lives in the <code>musicd-lms-remote-data</code> volume and carries over. Mallard
+     server's Tailscale identity — lives in the <code>musicd-lms-remote-data</code> volume and carries over. The Android app
      offers its own updates on its Home screen and in Settings → System.</p>
   <nav class="pager"><a class="back" href="index.html">← Back to contents</a><a class="pill" href="apps.html">Next: On your phone, browser and TV →</a></nav>
 </main>
 
 <footer>
   <p class="coffee"><a href="https://buymeacoffee.com/musicd_projects"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" loading="lazy"></a></p>
-  <p>MusicD LMS Remote · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
+  <p>Mallard · MIT · © 2026 Music Duck · <a href="https://github.com/meltface-80/MusicD-LMS-Remote">Source on GitHub</a><br>
      Lyrion Music Server is a separate project. Qobuz, TIDAL and Tailscale are trademarks of their owners. This is an
      independent project, affiliated with none of them.</p>
 </footer>
