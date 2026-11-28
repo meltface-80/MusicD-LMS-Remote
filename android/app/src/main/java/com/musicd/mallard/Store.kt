@@ -50,6 +50,12 @@ object Store {
     fun homePrefs(context: Context): String? = prefs(context).getString("home_prefs", null)
     fun setHomePrefs(context: Context, json: String) { prefs(context).edit().putString("home_prefs", json).apply() }
 
+    /** Settings → Labels: a label's albums "alpha" or "random", and the fewest albums a label needs to be listed. */
+    fun labelOrder(context: Context): String = if (prefs(context).getString("label_order", "alpha") == "random") "random" else "alpha"
+    fun setLabelOrder(context: Context, order: String) { prefs(context).edit().putString("label_order", order).apply() }
+    fun labelMin(context: Context): Int = prefs(context).getInt("label_min", 1).coerceAtLeast(1)
+    fun setLabelMin(context: Context, min: Int) { prefs(context).edit().putInt("label_min", min).apply() }
+
     /** The side menu's rows as the owner arranged them. */
     fun menuKept(context: Context): String? = prefs(context).getString("menu_kept", null)
     fun setMenuKept(context: Context, kept: String) { prefs(context).edit().putString("menu_kept", kept).apply() }

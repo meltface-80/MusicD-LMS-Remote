@@ -155,11 +155,15 @@ object CollectionRoute {
     const val LIVE_PLAYLISTS = "liveplaylists?$ZONE={$ZONE}"
     const val LIVE_PLAYLIST = "liveplaylist?$ID={$ID}&$NAME={$NAME}&$ZONE={$ZONE}"
     const val IMPORT = "import?$ZONE={$ZONE}"
+    const val LABELS = "labels?$ZONE={$ZONE}"
+    const val LABEL = "label?$NAME={$NAME}&$ZONE={$ZONE}"
     fun merges(zone: String) = "merges?$ZONE=" + enc(zone)
     fun playlists(zone: String) = "playlists?$ZONE=" + enc(zone)
     fun playlist(p: Playlist, zone: String) = "playlist?$ID=" + enc(p.id) + "&$NAME=" + enc(p.title) + "&$OWN=" + p.own + "&$ZONE=" + enc(zone)
     fun livePlaylists(zone: String) = "liveplaylists?$ZONE=" + enc(zone)
     fun livePlaylist(p: LivePlaylist, zone: String) = "liveplaylist?$ID=" + enc(p.id) + "&$NAME=" + enc(p.name) + "&$ZONE=" + enc(zone)
     fun import(zone: String) = "import?$ZONE=" + enc(zone)
+    fun labels(zone: String) = "labels?$ZONE=" + enc(zone)
+    fun label(name: String, zone: String) = "label?$NAME=" + enc(name) + "&$ZONE=" + enc(zone)
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 }
