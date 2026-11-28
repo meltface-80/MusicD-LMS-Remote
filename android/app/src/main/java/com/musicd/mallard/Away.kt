@@ -107,8 +107,12 @@ internal object Away {
     }
 
     private fun set(via: Boolean) {
-        if (Store.awayVia == via) return
+        val c = app
+        if (Store.awayVia == via) { if (via && c != null && PhoneZone.id == null) PhoneZone.goAway(c); return }
+        val home = c?.let { Store.client(it) }   // the client before the switch: away, the tunnel; home, the home address
         Store.awayVia = via
+        // Away: this phone's own player (hello, its stream, the screens in it alone); home: goodbye, back to the home room.
+        if (c != null) { if (via) PhoneZone.goAway(c) else PhoneZone.goHome(c, home) }
         main.post { changed() }
     }
 
@@ -122,7 +126,11 @@ internal object Away {
     }
 
     /** The app back on screen: looked at again, and the lease taken up. */
-    fun resumed() { lookSoon(0); main.post { lease() } }
+    fun resumed() {
+        lookSoon(0); main.post { lease() }
+        // Away, the phone's stream played again if it was stopped (its notification's Stop, or Android not letting it start off screen).
+        app?.let { c -> if (PhoneZone.id != null) work.execute { PhoneZone.play(c) } }
+    }
 
     /** Off screen: the lease let go (the engine stops itself once nothing uses it; the next look starts it again). */
     fun paused() { main.post { lease() } }

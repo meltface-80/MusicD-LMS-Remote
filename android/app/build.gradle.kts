@@ -101,5 +101,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.navigation:navigation-compose:2.9.0")
+    // The phone's own player away from home (PhoneStreamService): the server's Ogg Opus / FLAC stream, played by ExoPlayer.
+    implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 }
