@@ -63,10 +63,9 @@ internal fun SettingsPane(pane: String, client: () -> ServerClient?, onBack: () 
             "smartpicks" -> PicksPane(client, onBack, showInfo)
             "lms" -> LmsPane(client, onBack, showInfo)
             "display" -> DisplayPane(client, onBack, showInfo)
-            "shelf", "away" -> MorePane(pane, client, onBack, showInfo)   // SettingsShelf.kt, SettingsAway.kt
+            "away" -> AwayPane(client, onBack, showInfo)   // SettingsAway.kt
             "appearance" -> AppearancePane(onBack, showInfo)
-            "system" -> SystemPane(client, onBack)
-            else -> SystemPane(client, onBack)   // the server's address is here too (owner: Mallard's own pane folded in)
+            else -> SystemPane(client, onBack)   // "system"; the server's address is here too (owner: Mallard's own pane folded in)
         }
         info?.let { InfoTip(it, Modifier) }
     }
@@ -396,6 +395,7 @@ private fun DisplayPane(client: () -> ServerClient?, onBack: () -> Unit, info: (
             }
             SetupNote("Open it on the screen: " + (client()?.address?.baseUrl ?: "the server") + "/display", Modifier)
         }
+        ShelfBlock(client, info)   // SettingsShelf.kt
     }
 }
 

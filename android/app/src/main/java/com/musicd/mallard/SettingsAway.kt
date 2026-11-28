@@ -33,12 +33,6 @@ import kotlinx.coroutines.withContext
  * its tailnet name and address once connected. Read again every 3 s while open, as signing in happens in the browser.
  */
 
-/** Settings panes past SettingsMallard.kt's own (which only shrinks): Shelf and Away from home. */
-@Composable
-internal fun MorePane(pane: String, client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
-    if (pane == "away") AwayPane(client, onBack, info) else ShelfPane(client, onBack, info)
-}
-
 @Composable
 internal fun AwayPane(client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
     val context = LocalContext.current

@@ -140,7 +140,7 @@ private fun MenuDrawer(zoom: Double, client: () -> ServerClient?, scope: Corouti
     LaunchedEffect(Unit) {
         val c = client() ?: return@LaunchedEffect
         lms = withContext(Dispatchers.IO) { runCatching { c.health().lms }.getOrNull() }.orEmpty()
-        withContext(Dispatchers.IO) { runCatching { c.features() }.getOrNull() }?.let { features = it }
+        withContext(Dispatchers.IO) { runCatching { c.features() }.getOrNull() }?.let { features = it; NavShelf.on.value = it.on("shelf") }
     }
     Box(Modifier.fillMaxSize().parity("menu.close", Contract.label("menu.close")).pointerInput(widthPx, open) {
         detectTapGestures { at -> if (!open) return@detectTapGestures; if (at.x > widthPx) onClose() }

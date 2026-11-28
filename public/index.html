@@ -1153,35 +1153,13 @@
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
-          <button class="settings-nav-item" type="button" data-pane="away">
-            <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3,12 a9,9,0,1,0,18,0 a9,9,0,1,0,-18,0 M3,12 h18 M12,3 a14,14,0,0,1,0,18 a14,14,0,0,1,0,-18 Z"/></svg>
-            </span>
-            <span class="settings-nav-txt">
-              <span class="settings-nav-title">Away from home</span>
-              <span class="settings-nav-desc">Tailscale built in: your music anywhere</span>
-            </span>
-            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-
           <button class="settings-nav-item" type="button" data-pane="display">
             <span class="settings-nav-ico" aria-hidden="true">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4,3 h16 a2,2,0,0,1,2,2 v10 a2,2,0,0,1,-2,2 h-16 a2,2,0,0,1,-2,-2 v-10 a2,2,0,0,1,2,-2 Z M8,21 L16,21 M12,17 L12,21"/></svg>
             </span>
             <span class="settings-nav-txt">
               <span class="settings-nav-title">Wall display</span>
-              <span class="settings-nav-desc">Always-on screen &amp; video</span>
-            </span>
-            <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
-          </button>
-
-          <button class="settings-nav-item" type="button" data-pane="shelf">
-            <span class="settings-nav-ico" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="3" height="16" rx="1"/><rect x="8" y="4" width="3" height="16" rx="1"/><path d="M13.5 5.2l2.9-.8 3.9 14.6-2.9.8z"/><line x1="2" y1="21" x2="22" y2="21"/></svg>
-            </span>
-            <span class="settings-nav-txt">
-              <span class="settings-nav-title">Shelf</span>
-              <span class="settings-nav-desc">The record-shop browser, on or off</span>
+              <span class="settings-nav-desc">Always-on screen, video &amp; the Shelf</span>
             </span>
             <svg class="settings-nav-caret" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -1473,17 +1451,6 @@
         </div>
       </div>
 
-      <!-- Away from home: Tailscale built into the server (away-settings.js; Mallard's AwayPane is its twin). -->
-      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="away">
-        <div class="settings-pane-head">
-          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <h2>Away from home</h2>
-        </div>
-        <div id="away-pane-body"></div>
-      </div>
-
       <div class="settings-view settings-pane hidden" data-view="pane" data-pane="display">
         <div class="settings-pane-head">
           <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
@@ -1514,20 +1481,10 @@
           </div>
           <div id="youtube-key-status" class="settings-token-status"></div>
         </div>
-
-      </div>
-
-      <!-- Shelf (as Mandarin's Settings → Shelf): its switch, read by both apps (shelf-entry.js, Mallard's ShelfPane). -->
-      <div class="settings-view settings-pane hidden" data-view="pane" data-pane="shelf">
-        <div class="settings-pane-head">
-          <button class="settings-back" type="button" data-settings-back aria-label="Back to settings">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-          </button>
-          <h2>Shelf</h2>
-        </div>
+        <!-- The Shelf's switch (owner: "Shelf isn't in wall display"), read by both apps (shelf-entry.js, Mallard's ShelfBlock). -->
         <div class="settings-block">
           <div class="settings-row">
-            <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and in the side menu (and Mallard's) while it is on." aria-label="Info">ⓘ</button></span>
+            <span class="settings-label">Shelf <button class="settings-info-btn" data-info="Off by default. A full-screen way to browse the whole library like a record shop's racks — flick through the spines, narrow by genre, artist, decade, format or favourites, tap to turn a case over and play it. At http://<server-ip>:3390/shelf, and while it is on, in both apps' menus and Mallard's bottom bar." aria-label="Info">ⓘ</button></span>
             <label class="switch">
               <input type="checkbox" id="shelf-enabled" aria-label="Shelf">
               <span class="switch-track"><span class="switch-thumb"></span></span>
@@ -1535,6 +1492,7 @@
           </div>
           <div class="settings-note" id="shelf-enabled-note">Off. Switch it on to add Shelf to the menu.</div>
         </div>
+
       </div>
 
       <!-- Appearance -->
@@ -1777,7 +1735,6 @@
   <script src="/shelf-entry.js"></script>
   <script src="/apps-browser.js"></script>
   <script src="/lms-plugins.js"></script>
-  <script src="/away-settings.js"></script>
   <script src="/home-head.js"></script>
 </body>
 </html>
