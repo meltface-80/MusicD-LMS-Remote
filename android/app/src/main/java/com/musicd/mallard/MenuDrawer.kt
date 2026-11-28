@@ -101,6 +101,7 @@ internal fun menuTap(nav: NavHostController, what: String, context: android.cont
     when (what) {
         "home" -> navTap(nav, "home")
         "random" -> overHome(nav, ShellRoute.wall("random", z, ""))
+        "labels" -> overHome(nav, CollectionRoute.labels(z))
         "favourites" -> overHome(nav, ShellRoute.wall("favourites", z, ""))
         "apps" -> overHome(nav, ShellRoute.apps("app", z))
         "shelf" -> overHome(nav, ShellRoute.shelf(z))
@@ -185,6 +186,7 @@ private fun MenuList(lms: String, features: Features, onRescan: () -> Unit, onIt
         MenuItem(Modifier.clip(ITEM).clickable { onItem("random") }, R.drawable.tn_reshuffle, "Random albums")
         if (features.on("shelf")) MenuItem(Modifier.clip(ITEM).clickable { onItem("shelf") }, R.drawable.mn_shelf, "Shelf")
         MenuSep()
+        if (features.on("labels")) MenuItem(Modifier.clip(ITEM).clickable { onItem("labels") }, R.drawable.mn_labels, "Labels")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("favourites") }, R.drawable.np_heart, "Favourites")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("apps") }, R.drawable.mn_apps, "Apps")
         MenuItem(Modifier.clip(ITEM).clickable { onItem("radio") }, R.drawable.np_device, "Radio")

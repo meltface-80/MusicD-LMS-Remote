@@ -3,6 +3,12 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- Mallard: Labels, as the web app has it — a side-menu row (while Record labels is on) to every label as a tile, its
+  logo or its name in words, with its album count and "N merged". A tap opens its albums with Set logo (Discogs'
+  logos, or a pasted address); a long press picks labels to merge ("Merge N into …"), and "N merged" undoes one.
+  While the scan runs it says how far it has got; with none found, Rescan now. Settings → Labels gains the web's
+  Label album order, Minimum albums per label and Force rescan.
+
 - Mallard: save the Library's view as a Dynamic Playlist, and edit one's rules, as the web app does. The Focus sheet's
   foot is Clear all · Save as Dynamic Playlist · Show albums; Save asks for a name (suggested from the rules on, as the
   page's) and says what it plays. A Dynamic Playlist's page gains Edit rules: its rules open in the Library's Focus

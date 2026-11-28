@@ -252,31 +252,6 @@ private fun PlayerPane(client: () -> ServerClient?, onBack: () -> Unit, info: (S
     }
 }
 
-// ---- Labels ------------------------------------------------------------------------------------------------------
-
-@Composable
-private fun LabelsPane(client: () -> ServerClient?, onBack: () -> Unit, info: (String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val kept = remember { keptSetting("labels") }
-    var on by remember { mutableStateOf(kept?.optBoolean("enabled") ?: false) }
-    var count by remember { mutableStateOf(kept?.optInt("count", 0) ?: 0) }
-    var known by remember { mutableStateOf(kept != null) }
-    LaunchedEffect(Unit) { readSetting(client, "labels")?.let { on = it.optBoolean("enabled"); count = it.optInt("count", 0); known = true } }
-    SettingsFrame {
-        PaneHead("Labels", onBack)
-        Block {
-            SetupRow("Record labels", Modifier, Modifier.clickable { info("Off by default. When on, the server works out each album's record label (from your files' tags and online sources) for Label of the week on Home and for search. When off it does no label work at all.") }) {
-                Toggle(on, Modifier.clickable {
-                    val was = on; on = !on
-                    saveSetting(scope, context, client, "labels", JSONObject().put("enabled", on), if (on) "Labels on — the first scan runs in the background" else "Labels off", undo = { on = was })
-                }, known)
-            }
-            SetupNote(if (on && count > 0) "$count labels found so far." else "The label list, its logos and merges are managed on the server page.", Modifier)
-        }
-    }
-}
-
 // ---- Artwork & metadata ------------------------------------------------------------------------------------------
 
 /** A key's row: what is set (masked, as the server says it), a box to type a new one, Save. */
