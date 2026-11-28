@@ -100,7 +100,8 @@ internal fun DevicePane(id: String, client: () -> ServerClient?, onBack: () -> U
         }
     }
     val s = settings
-    val name = if (thisPhone) "This phone" else s?.optString("name")?.takeIf { it.isNotEmpty() } ?: "Device"
+    // This phone goes by its own name (owner request), as Lyrion knows it once it has played, else the phone's.
+    val name = s?.optString("name")?.takeIf { it.isNotEmpty() } ?: if (thisPhone) PhoneZone.phoneName(context) else "Device"
     SettingsFrame {
         PaneHead(name, onBack)
         if (s == null) { SetupNote(failed ?: "Asking Lyrion…", Modifier); return@SettingsFrame }
@@ -128,7 +129,7 @@ internal fun DevicePane(id: String, client: () -> ServerClient?, onBack: () -> U
             DeviceTitle("Name")
             // Lyrion answers no name for a phone's player it isn't connected to (it plays only while chosen): say what it will be.
             if (phone) SetupNote(s.optString("name").takeIf { thisPhone && it.isNotEmpty() }?.let { "Lyrion knows it as “$it”." }
-                ?: "A phone's own player, named after the phone (${android.os.Build.MODEL}) while it plays.".takeIf { thisPhone } ?: "A phone's own player, named after the phone.", Modifier)
+                ?: "A phone's own player, named after the phone (${PhoneZone.phoneName(context)}) while it plays.".takeIf { thisPhone } ?: "A phone's own player, named after the phone.", Modifier)
             else RenameField(s.optString("name")) { n -> act("Renamed ✓") { it.renamePlayer(id, n) } }
         }
         SettingsDivider(18, 18)
