@@ -3,6 +3,13 @@
 What each version of MusicD LMS Remote (the server, its web app and the wall display) and Mallard (the Android remote)
 changed. Work merged into `dev` goes under `## Unreleased` until the owner says to cut a version; then that heading is
 
+- The Shelf's switch lives in Settings → Wall display in both apps (owner: "Shelf isn't in wall display"); its own
+  Settings row is gone, which saves a row. In Mallard, switching it on also puts Shelf in the bottom bar between
+  Library and Search, as Mandarin's row does (`NavShelf`), as well as in the menu. The web app has no bottom bar, so
+  there it is in the menu.
+- Away from home is no longer in the web app's Settings (owner decision): the server's built-in Tailscale is managed
+  from Mallard. The server side is unchanged.
+
 - Plugin repositories (owner request: a developer's own plugins to try). Settings → LMS server → Plugins has a third
   tab, Repositories, in both apps: LMS's extra repository addresses, each with Remove, and a box to paste a new one's
   .xml address. The server saves LMS's own plugin page with the list changed (LMS keeps only `http(s)://….xml`, the

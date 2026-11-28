@@ -119,6 +119,7 @@ internal fun navTap(nav: NavHostController, what: String) {
         // Opened over Home in one step (item 199): Home was drawn for a moment between the screen left and this one.
         "library" -> overHome(nav, ShellRoute.library(NativeShell.libraryView, NativeShell.prefs.orEmpty(), NativeShell.zone))
         "search" -> { SearchKept.reset(""); overHome(nav, ShellRoute.search("", NativeShell.zone)) }
+        "shelf" -> overHome(nav, ShellRoute.shelf(NativeShell.zone))
         "menu" -> NativeShell.menuOpen.value = true   // over the screen showing (item 296); an item chosen closes the screens over Home (menuTap)
     }
 }
