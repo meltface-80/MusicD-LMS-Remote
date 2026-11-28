@@ -520,7 +520,7 @@ function lmsConfigFromSettings() {
 function rebuildAdapter() {
   const cfg = lmsConfigFromSettings();
   if (!cfg.host) { state.lms = null; return null; }
-  state.lms = createLms({ ...cfg, log: makeLogger("lms") });
+  state.lms = createLms({ ...cfg, log: makeLogger("lms"), watch: require("./lib/lmswatch").watch });   // outages and slow answers logged
   return state.lms;
 }
 
