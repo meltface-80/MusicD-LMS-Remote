@@ -315,6 +315,13 @@ tags, no automatic releases, no cluttered history.
   STMs,DSCO,STMd. The caps' FORMAT ORDER (`wav,alc,ogg,ops,flc,…`) is what makes each a passthrough; `flc` first
   re-encodes WAV/ALAC. Player prefs `digitalVolumeControl 0`, level 100, `mp3StreamingMethod 1`; audg is ignored.
   Away, over the tailnet, `/api/zones` is that phone's player alone ("This phone").
+  CACHE AHEAD, AS MANDARIN'S (`lib/phonefiles.js`, Mallard `StreamCache`/`PhoneAhead`/`CachePlan`): LMS hands a player
+  ONE track ahead, so the phone asks `/api/phone/ahead` (LMS's own play order) and fetches each track by its LMS id from
+  `/api/phone/file?id=[&q=opus]` (the file via LMS's `/music/<id>/download`, Range passed through; or Opus made once and
+  kept in data/cache/phone-opus, LRU 2 GB) into its own LRU cache keyed `t<id>:orig|opus`. `identify` tells the phone
+  which track each `strm s` is (`track_id`), so it plays it by id from the cache; a streaming service's track or a
+  part-way start (a seek) has none and plays as the player's bytes. Relative addresses, resolved at open: a track
+  cached at home plays away.
   THIS PHONE'S VOLUME IS THE PHONE'S (Mandarin's rule): the server sets every phone player fixed at 100%
   (`digitalVolumeControl 0` + level 100, `playerUp`), and Mallard's `ServerClient` hands every volume call for this
   phone's player to `ThisPhone.volume` (`PhoneVolume.kt`: Android's media volume, or the USB DAC's level) instead of

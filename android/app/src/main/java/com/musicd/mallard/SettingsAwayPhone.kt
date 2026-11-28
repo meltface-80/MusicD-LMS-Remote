@@ -88,6 +88,7 @@ internal fun PhoneTailscaleBlock() {
             })
         }
         SetupNote(PhoneStream.NOTE, Modifier)
+        PhoneCacheRows()   // SettingsCache.kt
         val target = PhoneTailscale.target(Store.awayLearned(context))
         SetupNote(
             "Sign in with the same Tailscale account as the server. Away from home, Mallard then reaches the server through it by itself — no Tailscale app needed. " +

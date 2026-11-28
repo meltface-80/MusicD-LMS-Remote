@@ -16,7 +16,15 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
+import android.net.Uri
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.datasource.cache.CacheDataSink
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -31,12 +39,18 @@ import com.musicd.mallard.client.PhoneStream
  * With USB direct on and a DAC on the port (Settings → Away from home → USB DAC) the sound goes to the DAC through the
  * app's own USB driver (UsbAudioSink), Android's mixer out of the way; the decoders give float (the app's own libopus for
  * Opus), which carries a 16- or 24-bit sample exactly, and WordsSink hands the DAC each sample's own word.
+ *
+ * The library's tracks are played by their LMS id through the phone's cache (StreamCache, Mandarin's): what is there
+ * plays from the phone, what isn't is fetched and kept as it plays, and the tracks ahead are fetched into it (PhoneAhead).
+ * Addresses are relative and sent where the server is now — home or away — as each is opened.
  */
 @OptIn(UnstableApi::class)
 class PhoneStreamService : Service() {
     private var player: ExoPlayer? = null
     private val main = Handler(Looper.getMainLooper())
     private var relay: PhoneRelay? = null
+    private lateinit var routed: DataSource.Factory
+    private lateinit var cached: CacheDataSource.Factory
     private var relayFor: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -51,18 +65,31 @@ class PhoneStreamService : Service() {
 
     /** The player's tracks, as a playlist on this player (PhoneRelay). */
     private fun play(playerId: String) {
-        val client = Store.client(this) ?: return
+        if (Store.client(this) == null) return
+        val client = { Store.client(this) }   // where the server is now, home or away
         relay?.stop()
         val p = ensurePlayer()
         p.stop(); p.clearMediaItems()
         relayFor = playerId
         // Opus only away with Opus chosen (Mandarin's rule): at home always the file itself. Asked as each track is queued.
-        relay = PhoneRelay(p, client, playerId) { PhoneStream.opus(Store.awayVia, Store.awayQuality(this)) }.also { it.start() }
+        val opus = { PhoneStream.opus(Store.awayVia, Store.awayQuality(this)) }
+        val ahead = PhoneAhead(this, p, cached, client, playerId, opus)
+        relay = PhoneRelay(p, client, playerId, opus, DefaultMediaSourceFactory(cached), DefaultMediaSourceFactory(routed), ahead).also { it.start() }
     }
 
     /** The one player, built once: its audio through WordsSink and UsbAudioSink, so a USB DAC can take it. */
     private fun ensurePlayer(): ExoPlayer {
         player?.let { return it }
+        val http = DefaultHttpDataSource.Factory().setConnectTimeoutMs(5_000).setReadTimeoutMs(15_000).setAllowCrossProtocolRedirects(true)
+        routed = ResolvingDataSource.Factory(http) { spec ->
+            val u = spec.uri.toString()
+            if (u.startsWith("/")) spec.withUri(Uri.parse((Store.client(this)?.address?.baseUrl ?: "") + u)) else spec
+        }
+        val cache = StreamCache.get(this)
+        cached = CacheDataSource.Factory().setCache(cache).setUpstreamDataSourceFactory(routed)
+            .setCacheWriteDataSinkFactory(CacheDataSink.Factory().setCache(cache))
+            .setCacheKeyFactory(CacheKeyFactory { spec -> PhoneStream.cacheKey(spec.uri.toString()) ?: spec.key ?: spec.uri.toString() })
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                 WordsSink(UsbAudioSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(true)
