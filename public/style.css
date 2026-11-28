@@ -1283,7 +1283,9 @@ main { padding-top: calc(var(--topbar-h) + 14px); }
      requires exactly one, because headless Chromium reports every inset as 0
      and measures a perfectly proportioned pill either way. */
   left: 10px; right: 10px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  /* --tnav-lift: the bottom row's height while it shows (the touch layout, at the foot of this file); 0 otherwise.
+     A variable rather than a second `bottom` so the inset is still applied exactly once. */
+  bottom: calc(8px + var(--tnav-lift, 0px) + env(safe-area-inset-bottom));
   border-radius: 18px;
   /* Both of these are load-bearing, not decoration. --bg-veil is the ground
      with alpha, so where nothing is scrolled behind the pill — the very bottom
@@ -4745,3 +4747,41 @@ body.show-quality .album-quality.hidden { display: none; }
 /* Random Album's disc (Mallard's RandomAlbumTile): an outline drawing at about half the sleeve. */
 .unheard-glyph svg { display: block; width: 3.2rem; height: 3.2rem; }
 .home-today { margin-bottom: 26px; }
+
+/* ------------------------------------------------------------------ */
+/*  The touch layout: the row along the foot (touch-nav.js)            */
+/* ------------------------------------------------------------------ */
+/* Menu, Home, Library, Shelf (while it is on) and Search, evenly across, as Mallard's TouchNav.kt and Mandarin's page
+   draw it: on a phone or a tablet, never with a mouse. The mini player is lifted above it by --tnav-lift (its one
+   `bottom`, so the inset is still applied once), the page's bottom reserve grows by the row, and the toasts ride up
+   with it. An album's page or Now playing over the screen (tn-over) and the open side menu put it away, as they do
+   the mini player: both sit outside .app's stacking context, so no z-index could put the menu over them. The row
+   PADS for the home indicator (it is welded to the bottom edge); nothing here touches a top inset. */
+.touch-nav { display: none; }
+@media (hover: none), (pointer: coarse) {
+  :root { --tnav-h: 58px; --tnav-lift: var(--tnav-h); }
+  html.tn-over { --tnav-lift: 0px; }
+  .touch-nav {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: center;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 69;
+    height: calc(var(--tnav-h) + env(safe-area-inset-bottom));
+    padding: 0 max(10px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(10px, env(safe-area-inset-left));
+    background: var(--bg); border-top: 1px solid var(--border);
+  }
+  html.tn-over .touch-nav, body.menu-open .touch-nav { display: none; }
+  .tnav-btn {
+    width: 100%; min-width: 0; height: var(--tnav-h);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    background: none; border: 0; padding: 0; color: var(--text-dim); font: inherit; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tnav-btn.feature-off { display: none; }
+  .tnav-btn svg { width: 26px; height: 26px; }
+  .tnav-btn span { font-size: 11px; font-weight: 600; letter-spacing: .02em; }
+  .tnav-btn:active { transform: scale(.94); }
+  .tn-home #tnav-home, .tn-lib #tnav-library { color: var(--accent-text); }
+  /* The menu lives in the row now. */
+  .topbar #menu-toggle { display: none; }
+  main { padding-bottom: calc(152px + env(safe-area-inset-bottom)); }
+  .toast, .settings-info-toast { margin-bottom: var(--tnav-lift); }
+}

@@ -14,8 +14,10 @@
   /** The row and the switch, as the server has them. */
   function paint(on) {
     if (row) row.classList.toggle("hidden", !on);
+    const nav = document.getElementById("tnav-shelf");   // the bottom row's Shelf (touch-nav.js), as Mallard's
+    if (nav) nav.classList.toggle("feature-off", !on);
     if (toggle) toggle.checked = on;
-    if (note) note.textContent = on ? "On: Shelf is in the menu, and at /shelf." : "Off. Switch it on to add Shelf to the menu.";
+    if (note) note.textContent = on ? "On: Shelf is in the bottom bar and the menu." : "Off. Switch it on to add Shelf to the bottom bar and the menu.";
   }
   async function load() {
     try {
@@ -33,7 +35,7 @@
       const j = await r.json().catch(() => ({}));
       if (!r.ok || !j.ok) throw new Error(j.error || "Couldn’t save that");
       paint(!!j.enabled);
-      if (window.__showToast) window.__showToast(on ? "Shelf on — it's in the menu" : "Shelf off");
+      if (window.__showToast) window.__showToast(on ? "Shelf on — it's in the bottom bar and the menu" : "Shelf off");
     } catch (e) {
       toggle.checked = !on;   // the server refused — don't show what isn't so
       if (window.__showToast) window.__showToast(e.message, "error");
